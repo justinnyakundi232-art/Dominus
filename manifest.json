@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "Dominus",
+  "version": "1.0",
+  "description": "Discipline through digital control.",
+  "permissions": [
+    "storage",
+    "tabs",
+    "webNavigation"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "action": {
+    "default_popup": "Popup.html"
+  },
+  "background": {
+    "service_worker": "Background.js"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["Blocked.html"],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  "icons":{
+    "16": "Assets/SHIELDICON.png",
+    "48": "Assets/SHIELDICON.png",
+    "128": "Assets/SHIELDICON.png"
+  }
+}

@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Build Fortress</title>
+    
+    <!-- Font (optional but recommended early) -->
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="icon" href="Assets/SHIELDICON.png">
+    <link rel="stylesheet" href="Styles/BuildFortress.css" />
+  </head>
+  <body>
+    <div class="fortress-page">
+
+      <header>
+        <h1>BUILD YOUR FORTRESS</h1>
+
+        <p class="tagline">
+          A STRONG FORTRESS IS BUILT BEFORE THE BATTLE...
+        </p>
+
+        <img src="Assets/Fortress.png" class="fortress-icon">
+      </header>
+
+      <section class="fortress-panels">
+
+        <div class="panel defenses-panel">
+          <!-- Example categories, you can customize these -->
+          <h2 class="panel-heading">CHOOSE YOUR DEFENSES</h2>
+          <p class="panel-description">SELECT CATEGORIES TO BLOCK</p>
+          <div class="category-row">
+            <label class="category">
+                <input type="checkbox" id="socialMedia">
+                <span>Social Media</span>
+            </label>
+          </div>
+
+          <div class="category-options">
+            <label title="The blocked page will show no way to unlock this category. The only way to re-enable access is to come back here and uncheck this.">
+              <input id="socialMediaPermanent" type="checkbox">
+              Permanently Block (disables unlocks)
+            </label>
+          </div>
+
+          <div class="category-row">
+            <label class="category">
+                <input type="checkbox" id="videoStreaming">
+                <span>Video Streaming</span>
+            </label>
+          </div>
+          
+          <div class="category-options">
+            <label title="The blocked page will show no way to unlock this category. The only way to re-enable access is to come back here and uncheck this.">
+              <input id="videoStreamingPermanent" type="checkbox">
+              Permanently Block (disables unlocks)
+            </label>
+          </div>
+
+          <div class="category-row">
+            <label class="category">
+                <input type="checkbox" id="gaming">
+                <span>Gaming</span>
+            </label>
+          </div>
+
+          <div class="category-options">
+            <label title="The blocked page will show no way to unlock this category. The only way to re-enable access is to come back here and uncheck this.">
+              <input id="gamingPermanent" type="checkbox">
+              Permanently Block (disables unlocks)
+            </label>
+          </div>
+        </div>
+
+        <div class="panel standards-panel">
+          <!-- Example tasks, you can customize these -->
+          <h2 class="panel-heading">SET YOUR STANDARDS</h2>
+          <p class = "panel-description">TASKS TO EARN ACCESS</p>
+          <p>(more comming soon...)</p>
+          <div class="task-row">
+            <button class="task-btn" id = "addTaskBtn">
+              Add task
+            </button>
+          </div>
+        </div>
+
+      </section>
+
+      <button class="save-btn">
+        SAVE FORTRESS
+      </button>
+
+    </div>
+  <script src="BuildFortress.js"></script>
+  </body>
+</html>

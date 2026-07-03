@@ -1,0 +1,90 @@
+html, body {
+  width: 380px;
+  min-width: 380px;
+  min-height: 600px;
+  margin: 0;
+  overflow-x: hidden;
+}
+
+
+body {
+  font-family: 'Playfair Display', serif;
+  text-align: center;
+  background-color: black;
+  border: 3px solid #B8860B;
+  margin: 0;
+  min-height: 100vh;
+  overflow: auto;
+  position: relative;
+}
+
+header {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  margin-top: 0px;
+  align-items: center;
+}
+
+h1 {
+  font-size: 3rem;
+  margin-bottom: 0px;
+  margin-top: 0px;
+  color: #D4AF37;
+}
+
+p.subtitle {
+  margin-top: 0px;
+  font-size: 1rem;
+  margin-bottom: 40px;
+  color: #E5E5E5;
+}
+
+main {
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+  align-items: center;
+}
+
+button {
+  font-size: 1.2rem;
+  padding: 20px 40px;
+  width: 300px;
+  cursor: pointer;
+  background: linear-gradient(
+    to bottom,
+    #D4AF37,
+    #B8860B,
+    #8B6F1A
+    );
+  border:none;
+}
+    
+button:hover{
+  background: #FFD700;
+}
+    
+img {
+  padding: 0px;
+  margin-bottom: 0;
+  transition: transform 2s;
+}
+    
+img:hover{
+  transform: rotate(360deg);
+}
+footer {
+  margin-top: 60px;
+  font-size: 0.9rem;
+  background-color: #191814;
+  position: absolute;
+  bottom: 0;
+  width: 100%;
+}
+      
+footer p {
+  margin: 0px;
+  color: #B8860B;
+  padding: 20px;
+}
