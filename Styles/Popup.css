@@ -88,3 +88,53 @@ footer p {
   color: #B8860B;
   padding: 20px;
 }
+
+.blocked-list-section {
+  width: 300px;
+  margin-bottom: 20px;
+}
+
+.blocked-list-heading {
+  font-size: 0.85rem;
+  color: #B8860B;
+  letter-spacing: 0.5px;
+  margin: 0 0 8px;
+  text-align: left;
+}
+
+.blocked-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 160px;
+  overflow-y: auto;
+  border: 1px solid #B8860B;
+}
+
+.blocked-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  font-size: 0.85rem;
+  color: #E5E5E5;
+  border-bottom: 1px solid #3d3210;
+}
+
+.blocked-item:last-child {
+  border-bottom: none;
+}
+
+.remove-blocked-btn {
+  width: auto;
+  padding: 2px 8px;
+  font-size: 0.9rem;
+  background: none;
+  color: #E63D3D;
+  border: 1px solid #E63D3D;
+}
+
+.remove-blocked-btn:hover {
+  background: #E63D3D;
+  color: black;
+}

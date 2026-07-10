@@ -23,7 +23,7 @@
   <!-- Header -->
   <header>
     <h1 id="mainHeading">ACCESS DENIED</h1>
-    <p class="subtitle" id="subtitle">"You are in control."</p>
+    <p class="subtitle" id="subtitle" aria-live="polite">"You are in control."</p>
 
     <div class="logo">
       <img src="Assets/Ornate_golden_shield_logo-removebg-preview.png" alt="Crest Logo" width = "400"/>
@@ -43,7 +43,17 @@
       <button id="completeTaskBtn">COMPLETE TASK TO UNBLOCK</button>
     </div>
     <button id="unlockBtn" class="unlock-btn disabled" disabled>UNLOCK SITE</button>
-    
+
+    <div id="unlockModal" class="modal-overlay" hidden>
+      <div class="modal-box">
+        <p id="unlockModalText"></p>
+        <div class="modal-actions">
+          <button id="unlockModalCancel" class="modal-btn modal-btn-secondary">CANCEL</button>
+          <button id="unlockModalConfirm" class="modal-btn">UNLOCK</button>
+        </div>
+      </div>
+    </div>
+
     <script src="Blocked.js"></script>
   </main>
 

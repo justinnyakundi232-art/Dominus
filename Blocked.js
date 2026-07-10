@@ -56,6 +56,9 @@ document.getElementById("focusBtn").addEventListener("click", async () => {
         currentWindow: true
     });
 
+    // Open a fresh tab first so closing this one never closes the whole window
+    // if it happened to be the only tab open.
+    await chrome.tabs.create({});
     chrome.tabs.remove(tab.id);
 });
 
@@ -108,10 +111,10 @@ function renderTaskConfirmBox(targetMessage) {
 
     document.getElementById("confirmTaskBtn")
         .addEventListener("click", () => {
-            const input = document.getElementById("confirmInput").value;
+            const input = document.getElementById("confirmInput").value.trim();
             const errorEl = document.getElementById("taskError");
 
-            if (input === targetMessage) {
+            if (input === targetMessage.trim()) {
                 startCountdown(targetMessage);
             } else {
                 errorEl.textContent = "That doesn't match. Try again.";
@@ -160,17 +163,33 @@ function activateUnlockButton() {
 }
 
 // Handles the actual unlock: temporary window, then redirect to the original site
+const unlockModal = document.getElementById("unlockModal");
+const unlockModalText = document.getElementById("unlockModalText");
+const unlockModalCancel = document.getElementById("unlockModalCancel");
+const unlockModalConfirm = document.getElementById("unlockModalConfirm");
+
+let pendingUnlockDomain = null;
+
 unlockBtn.addEventListener("click", () => {
     if (unlockBtn.disabled) return;
     if (!originalUrl) return;
 
-    const domain = new URL(originalUrl).hostname.replace(/^www\./, "");
+    pendingUnlockDomain = new URL(originalUrl).hostname.replace(/^www\./, "");
 
-    const confirmed = confirm(
-        `You are about to unlock ${domain} for 1 hour.\n\nAfter that, it will be blocked again automatically.\n\nAre you sure?`
-    );
-    if (!confirmed) return;
+    unlockModalText.textContent =
+        `You are about to unlock ${pendingUnlockDomain} for 1 hour. After that, it will be blocked again automatically. Are you sure?`;
+    unlockModal.hidden = false;
+});
 
+unlockModalCancel.addEventListener("click", () => {
+    unlockModal.hidden = true;
+    pendingUnlockDomain = null;
+});
+
+unlockModalConfirm.addEventListener("click", () => {
+    if (!pendingUnlockDomain) return;
+
+    const domain = pendingUnlockDomain;
     const expiry = Date.now() + TEMP_UNLOCK_DURATION_MS;
 
     chrome.storage.local.get(["tempUnlocks"], (result) => {
@@ -178,6 +197,7 @@ unlockBtn.addEventListener("click", () => {
         tempUnlocks[domain] = expiry;
 
         chrome.storage.local.set({ tempUnlocks: tempUnlocks }, async () => {
+            unlockModal.hidden = true;
             let [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
             chrome.tabs.update(tab.id, { url: originalUrl });
         });
