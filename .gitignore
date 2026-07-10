@@ -2,3 +2,9 @@
 Thumbs.db
 .vscode/
 node_modules/
+
+# Editor/tooling config
+jsconfig.json
+
+# Generated code-quiz documents (not part of the extension)
+*.docx

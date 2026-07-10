@@ -211,3 +211,8 @@ h1{
     left:5px;
     top:-1px;
 }
+
+.category-options input[type="checkbox"]:disabled{
+    opacity:0.4;
+    cursor:not-allowed;
+}
