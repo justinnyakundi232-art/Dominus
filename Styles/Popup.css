@@ -16,6 +16,8 @@ body {
   min-height: 100vh;
   overflow: auto;
   position: relative;
+  display: flex;
+  flex-direction: column;
 }
 
 header {
@@ -45,6 +47,7 @@ main {
   flex-direction: column;
   gap: 30px;
   align-items: center;
+  flex: 1 0 auto;
 }
 
 button {
@@ -78,9 +81,8 @@ footer {
   margin-top: 60px;
   font-size: 0.9rem;
   background-color: #191814;
-  position: absolute;
-  bottom: 0;
   width: 100%;
+  flex-shrink: 0;
 }
       
 footer p {

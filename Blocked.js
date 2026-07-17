@@ -51,6 +51,9 @@ let originalUrl = getOriginalUrl();
 
 // "RETURN" / "STAY FOCUSED" button — always available, closes the tab
 document.getElementById("focusBtn").addEventListener("click", async () => {
+    // Feeds the Stay Focused/Unlock ratio only — never affects the streak.
+    recordStayFocused();
+
     let [tab] = await chrome.tabs.query({
         active: true,
         currentWindow: true
@@ -191,6 +194,11 @@ unlockModalConfirm.addEventListener("click", () => {
 
     const domain = pendingUnlockDomain;
     const expiry = Date.now() + TEMP_UNLOCK_DURATION_MS;
+
+    // Record the unlock for stats (separate `stats` key, so it runs alongside
+    // the tempUnlocks write without conflicting): counts it and marks today
+    // not-clean, breaking the streak.
+    recordUnlock();
 
     chrome.storage.local.get(["tempUnlocks"], (result) => {
         let tempUnlocks = result.tempUnlocks || {};
