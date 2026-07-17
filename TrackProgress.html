@@ -25,7 +25,7 @@
       <section class="progress-section">
         <img src="Assets/Laurel_Wreath.png" class="progress-emblem" alt="Laurel wreath">
 
-        <div class="progress-bar">
+        <div class="progress-bar" id="progressBar">
           <span class="progress-square filled"></span>
           <span class="progress-square filled"></span>
           <span class="progress-square filled"></span>
@@ -42,13 +42,22 @@
       </section>
 
       <p class="victory-rate">
-        Victory rate: <span class="victory-value">70%</span> (?)
+        Victory rate: <span class="victory-value" id="victoryValue">…</span>
+        <span class="info-tip" tabindex="0" role="button" aria-label="What does victory rate mean?">(?)<span class="info-tooltip" role="tooltip">Your victory rate is how often you hold the line — the share of blocked-site moments where you chose STAY FOCUSED instead of unlocking. It's Stay Focused &divide; (Stay Focused + Unlocks).</span></span>
       </p>
+
+      <div class="streak-block">
+        <p class="streak-line">Current streak: <span class="streak-value" id="currentStreak">…</span></p>
+        <p class="streak-line">Longest streak: <span class="streak-value" id="longestStreak">…</span></p>
+      </div>
 
       <p class="coming-soon">
         More analytics coming soon...
       </p>
 
     </div>
+
+    <script src="Stats.js"></script>
+    <script src="TrackProgress.js"></script>
   </body>
 </html>

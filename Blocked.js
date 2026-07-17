@@ -212,5 +212,18 @@ unlockModalConfirm.addEventListener("click", () => {
     });
 });
 
+// Fills the discipline-streak line from the stats layer. getStats() refreshes
+// the streak first, so simply landing on the blocked page keeps today counted
+// (as clean, until/unless the user unlocks).
+function renderStreak() {
+    getStats().then((stats) => {
+        const el = document.getElementById("streakValue");
+        if (!el) return;
+        const days = stats.currentStreak;
+        el.textContent = `${days} ${days === 1 ? "DAY" : "DAYS"}`;
+    });
+}
+
 // Initial render on page load
 renderCompleteTaskButton();
+renderStreak();
