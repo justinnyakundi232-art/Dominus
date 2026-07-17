@@ -54,6 +54,12 @@ document.getElementById("blockBtn").addEventListener("click", async () => {
     });
 });
 
+document.getElementById("trackBtn").addEventListener("click", async () => {
+    chrome.tabs.create({
+        url: chrome.runtime.getURL("TrackProgress.html")
+    });
+});
+
 // For creating a new tab with the "Build Fortress" page when the user clicks the "BUILD THE FORTRESS" button
 document.getElementById("buildBtn").addEventListener("click", async () => {
     chrome.tabs.create({

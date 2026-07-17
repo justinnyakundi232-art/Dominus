@@ -1,0 +1,84 @@
+body{
+    background:#0b0b0b;
+    color:white;
+    font-family:'Playfair Display', serif;
+    margin:0;
+}
+
+.progress-page{
+    width:90%;
+    max-width:1200px;
+    margin:30px auto;
+    padding:40px 20px 60px;
+    border:3px solid #D4AF37;
+    box-sizing:border-box;
+    text-align:center;
+}
+
+h1{
+    color:#D4AF37;
+    font-size:4rem;
+    margin-top:20px;
+    margin-bottom:10px;
+}
+
+.tagline{
+    max-width:850px;
+    margin:auto;
+    font-size:1.6rem;
+}
+
+.strategy-map{
+    width:276px;
+    max-width:60%;
+    margin:40px auto 30px;
+    display:block;
+}
+
+.progress-section{
+    display:flex;
+    flex-wrap:wrap;
+    justify-content:center;
+    align-items:center;
+    gap:30px;
+    margin:20px 0 10px;
+}
+
+.progress-emblem{
+    width:210px;
+    height:auto;
+}
+
+.progress-bar{
+    display:flex;
+    flex-wrap:wrap;
+    justify-content:center;
+    gap:15px;
+}
+
+.progress-square{
+    width:40px;
+    height:40px;
+    border:2px solid #D4AF37;
+    border-radius:10px;
+    background:#252525;
+    box-sizing:border-box;
+}
+
+.progress-square.filled{
+    background:#D4AF37;
+}
+
+.victory-rate{
+    font-size:1.9rem;
+    margin:20px 0 0;
+}
+
+.victory-value{
+    color:#D4AF37;
+}
+
+.coming-soon{
+    font-size:1.9rem;
+    margin-top:80px;
+}
