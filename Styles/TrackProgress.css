@@ -78,7 +78,69 @@ h1{
     color:#D4AF37;
 }
 
+/* Hover/focus tooltip on the "(?)" next to the victory rate */
+.info-tip{
+    position:relative;
+    display:inline-block;
+    color:#D4AF37;
+    cursor:help;
+    outline:none;
+}
+
+.info-tooltip{
+    position:absolute;
+    left:50%;
+    bottom:calc(100% + 12px);
+    transform:translateX(-50%);
+    width:300px;
+    max-width:80vw;
+    background:#0d0d0d;
+    color:#E5E5E5;
+    border:1px solid #D4AF37;
+    border-radius:4px;
+    padding:12px 14px;
+    font-size:1rem;
+    line-height:1.4;
+    text-align:center;
+    box-shadow:0 0 12px rgba(0,0,0,0.7);
+    opacity:0;
+    visibility:hidden;
+    transition:opacity 0.15s ease;
+    z-index:10;
+}
+
+/* little arrow pointing down at the (?) */
+.info-tooltip::after{
+    content:"";
+    position:absolute;
+    top:100%;
+    left:50%;
+    transform:translateX(-50%);
+    border:6px solid transparent;
+    border-top-color:#D4AF37;
+}
+
+.info-tip:hover .info-tooltip,
+.info-tip:focus .info-tooltip,
+.info-tip:focus-within .info-tooltip{
+    opacity:1;
+    visibility:visible;
+}
+
+.streak-block{
+    margin-top:24px;
+}
+
+.streak-line{
+    font-size:1.5rem;
+    margin:6px 0;
+}
+
+.streak-value{
+    color:#D4AF37;
+}
+
 .coming-soon{
     font-size:1.9rem;
-    margin-top:80px;
+    margin-top:60px;
 }
