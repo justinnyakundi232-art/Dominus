@@ -16,7 +16,17 @@ Live on the chrome webstore here: [Dominus](https://chromewebstore.google.com/de
 
 ## Roadmap
 
-- [ ] Statistics page
+- [x] Statistics page
 - [ ] Password-protected settings
 - [ ] Scheduling
 - [ ] Sync across devices
+
+## Screenshots
+
+| Popup | Build Your Fortress |
+|:---:|:---:|
+| ![Popup](docs/screenshots/Popup.png) | ![Build Your Fortress](docs/screenshots/Build-Fortress.png) |
+| **Blocked page** | **Cooldown** |
+| ![Blocked page](docs/screenshots/Blocked.png) | ![Cooldown](docs/screenshots/Cooldown.png) |
+| **Unlock** | **Track Your Progress** |
+| ![Unlock](docs/screenshots/Unlock.png) | ![Track Your Progress](docs/screenshots/Track-Progress.png) |
