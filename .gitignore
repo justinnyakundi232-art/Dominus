@@ -8,3 +8,6 @@ jsconfig.json
 
 # Generated code-quiz documents (not part of the extension)
 *.docx
+
+# Build artifacts / packaged extension uploads
+*.zip
