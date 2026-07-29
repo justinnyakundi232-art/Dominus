@@ -12,7 +12,7 @@ A free, open-source Chrome extension designed to help users reduce distractions 
 
 ## Installation
 
-Live on the chrome webstore here: [Dominus](https://chromewebstore.google.com/detail/fomplffbhfacdafjgiigkchoebbkcbjd?utm_source=item-share-cb)
+Find projects like this here: [AJ7 developments](aj7developments.com)
 
 ## Roadmap
 
