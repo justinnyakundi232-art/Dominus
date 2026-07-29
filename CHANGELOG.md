@@ -3,6 +3,11 @@
 All notable changes to **Dominus** are documented here.
 This project loosely follows [Keep a Changelog](https://keepachangelog.com/) and [Semantic Versioning](https://semver.org/).
 
+## [1.4.5] — 2026-07-29
+
+### Added
+- **Removal friction gate** — removing a site from the popup's *Currently Blocked* list now opens a confirmation that shows your discipline streak at stake and locks the confirm button behind a short cooldown, so a block can't be undone on impulse.
+
 ## [1.4] — 2026-07-17
 
 ### Added
@@ -31,6 +36,7 @@ This project loosely follows [Keep a Changelog](https://keepachangelog.com/) and
 ### Added
 - Chrome Web Store MVP: block distracting sites, the **Build Your Fortress** setup page, and the main popup.
 
+[1.4.5]: https://github.com/justinnyakundi232-art/Dominus/releases
 [1.4]: https://github.com/justinnyakundi232-art/Dominus/releases
 [1.2]: https://github.com/justinnyakundi232-art/Dominus/releases
 [1.0]: https://github.com/justinnyakundi232-art/Dominus/releases

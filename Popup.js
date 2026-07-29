@@ -1,6 +1,11 @@
 // For blocking the current site when the user clicks the "BLOCK SITE" button
 let currentDomain = null;
 
+// Seconds the confirm button stays locked before a block can be permanently
+// removed from the popup. Kept as a constant so a future "normal/hard" strictness
+// setting can simply dial this up.
+const REMOVE_COOLDOWN_SECONDS = 10;
+
 document.addEventListener("DOMContentLoaded", async () => {
     renderBlockedList();
 
@@ -94,7 +99,7 @@ function renderBlockedList() {
             removeBtn.className = "remove-blocked-btn";
             removeBtn.textContent = "×";
             removeBtn.setAttribute("aria-label", `Unblock ${domain}`);
-            removeBtn.addEventListener("click", () => removeBlockedSite(domain));
+            removeBtn.addEventListener("click", () => openRemoveModal(domain));
 
             item.appendChild(label);
             item.appendChild(removeBtn);
@@ -102,6 +107,80 @@ function renderBlockedList() {
         });
     });
 }
+
+// --- Removal friction gate ------------------------------------------------
+// Instead of the "x" instantly deleting a block (which quietly undoes the whole
+// blocked-page gauntlet), route it through a confirmation that (a) shows the
+// discipline streak at stake and (b) enforces a short cooldown before the
+// confirm button works — beating the impulsive in-the-moment decision.
+
+const removeModal = document.getElementById("removeModal");
+const removeModalStreak = document.getElementById("removeModalStreak");
+const removeModalText = document.getElementById("removeModalText");
+const removeModalCancel = document.getElementById("removeModalCancel");
+const removeModalConfirm = document.getElementById("removeModalConfirm");
+
+let pendingRemoveDomain = null;
+let removeCountdownInterval = null;
+
+function openRemoveModal(domain) {
+    pendingRemoveDomain = domain;
+
+    removeModalText.textContent =
+        `Permanently remove ${domain} from your blocked list? This undoes the block completely.`;
+
+    // Show the streak at stake. getStats() is async; guard against the modal
+    // being closed or retargeted before it resolves.
+    removeModalStreak.textContent = "";
+    getStats().then((stats) => {
+        if (pendingRemoveDomain !== domain) return;
+        if (stats.currentStreak > 0) {
+            const days = stats.currentStreak;
+            removeModalStreak.textContent =
+                `You're on a ${days}-day discipline streak — don't dismantle what you've built.`;
+        }
+    });
+
+    removeModal.hidden = false;
+    startRemoveCooldown();
+}
+
+// Locks the confirm button, then counts down before enabling it.
+function startRemoveCooldown() {
+    clearInterval(removeCountdownInterval);
+    let remaining = REMOVE_COOLDOWN_SECONDS;
+
+    removeModalConfirm.disabled = true;
+    removeModalConfirm.classList.add("disabled");
+    removeModalConfirm.textContent = `CONFIRM (${remaining})`;
+
+    removeCountdownInterval = setInterval(() => {
+        remaining--;
+        if (remaining <= 0) {
+            clearInterval(removeCountdownInterval);
+            removeModalConfirm.disabled = false;
+            removeModalConfirm.classList.remove("disabled");
+            removeModalConfirm.textContent = "REMOVE BLOCK";
+        } else {
+            removeModalConfirm.textContent = `CONFIRM (${remaining})`;
+        }
+    }, 1000);
+}
+
+function closeRemoveModal() {
+    clearInterval(removeCountdownInterval);
+    removeModal.hidden = true;
+    pendingRemoveDomain = null;
+}
+
+removeModalCancel.addEventListener("click", closeRemoveModal);
+
+removeModalConfirm.addEventListener("click", () => {
+    if (removeModalConfirm.disabled || !pendingRemoveDomain) return;
+    const domain = pendingRemoveDomain;
+    closeRemoveModal();
+    removeBlockedSite(domain);
+});
 
 // Removes a single domain from the blocked list and refreshes the popup UI
 function removeBlockedSite(domain) {
