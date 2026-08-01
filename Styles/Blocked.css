@@ -186,6 +186,15 @@ body {
   margin-bottom: 0;
 }
 
+/* Shown under the clock when escalation has lengthened this cooldown. */
+.countdown-note {
+  margin: 0 auto 10px;
+  max-width: 420px;
+  font-size: 0.9rem;
+  color: #B8860B;
+  font-style: italic;
+}
+
 .unlock-btn {
   transition: opacity 0.4s ease, box-shadow 0.4s ease;
 }
@@ -254,6 +263,12 @@ body {
   color: #E5E5E5;
   font-size: 1rem;
   margin: 0 0 20px;
+}
+
+/* The confirmation copy is built as newline-separated lines and set with
+   textContent, so the blank lines between them have to survive in CSS. */
+#unlockModalText {
+  white-space: pre-line;
 }
 
 .modal-actions {

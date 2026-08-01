@@ -8,6 +8,7 @@
     <!-- Font (optional but recommended early) -->
     <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&display=swap" rel="stylesheet">
     <link rel="icon" href="Assets/SHIELDICON.png">
+    <link rel="stylesheet" href="Styles/Common.css" />
     <link rel="stylesheet" href="Styles/BuildFortress.css" />
   </head>
   <body>
@@ -76,11 +77,39 @@
           <!-- Example tasks, you can customize these -->
           <h2 class="panel-heading">SET YOUR STANDARDS</h2>
           <p class = "panel-description">TASKS TO EARN ACCESS</p>
-          <p>(more coming soon...)</p>
           <div class="task-row">
             <button class="task-btn" id = "addTaskBtn">
               Add task
             </button>
+          </div>
+
+          <!-- Shared by every task (and by the no-task case): the cooldown that
+               has to elapse on the blocked page before UNLOCK SITE goes live. -->
+          <div class="cooldown-block">
+            <p class="cooldown-heading">
+              COOLDOWN
+              <span class="info-tip" tabindex="0" role="button" aria-label="What is the cooldown?">(?)<span class="info-tooltip" role="tooltip">Time you must sit on the blocked page before UNLOCK SITE becomes clickable. The countdown pauses if you switch away from the tab, so it only runs while you are actually looking at it.</span></span>
+            </p>
+
+            <label class="cooldown-field">
+              <span>Duration</span>
+              <input type="number" id="cooldownMinutes" min="1" step="1" value="1">
+              <span>minutes</span>
+            </label>
+
+            <label class="cooldown-toggle">
+              <input type="checkbox" id="cooldownEscalate">
+              <span>
+                Escalate on repeat unlocks
+                <span class="info-tip" tabindex="0" role="button" aria-label="What is escalation?">(?)<span class="info-tooltip" role="tooltip">Each time you unlock the same site on the same day, its next cooldown is multiplied by this rate. The count resets at midnight, and the cooldown is capped at 60 minutes so you can never lock yourself out for good.</span></span>
+              </span>
+            </label>
+
+            <label class="cooldown-field" id="cooldownFactorField">
+              <span>Rate</span>
+              <input type="number" id="cooldownFactor" min="1.25" step="0.05" value="1.25">
+              <span>&times; per unlock</span>
+            </label>
           </div>
         </div>
 
@@ -91,6 +120,7 @@
       </button>
 
     </div>
+  <script src="Tasks.js"></script>
   <script src="BuildFortress.js"></script>
   </body>
 </html>
