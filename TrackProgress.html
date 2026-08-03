@@ -23,9 +23,15 @@
 
       <img src="Assets/Medieval_Strategy.png" class="strategy-map" alt="Medieval strategy map emblem">
 
-      <section class="progress-section">
-        <img src="Assets/Laurel_Wreath.png" class="progress-emblem" alt="Laurel wreath">
+      <!-- Pinned to the sides of the viewport rather than sitting in the flow,
+           so they flank whatever stat is currently in the middle as you scroll.
+           Purely decorative, hence empty alt and aria-hidden: they label
+           nothing, and a screen reader announcing them between stats would be
+           noise. -->
+      <img src="Assets/Laurel_Wreath.png" class="side-emblem side-emblem-left" alt="" aria-hidden="true">
+      <img src="Assets/Cracked_Shield.png" class="side-emblem side-emblem-right" alt="" aria-hidden="true">
 
+      <section class="progress-section">
         <div class="progress-bar" id="progressBar">
           <span class="progress-square filled"></span>
           <span class="progress-square filled"></span>
@@ -38,8 +44,6 @@
           <span class="progress-square"></span>
           <span class="progress-square"></span>
         </div>
-
-        <img src="Assets/Cracked_Shield.png" class="progress-emblem" alt="Cracked shield">
       </section>
 
       <p class="victory-rate">
@@ -47,9 +51,21 @@
         <span class="info-tip" tabindex="0" role="button" aria-label="What does victory rate mean?">(?)<span class="info-tooltip" role="tooltip">Your victory rate is how often you hold the line — the share of blocked-site moments where you chose STAY FOCUSED instead of unlocking. It's Stay Focused &divide; (Stay Focused + Unlocks).</span></span>
       </p>
 
+      <!-- Two streaks measuring different things, so each is labelled rather
+           than leaving four bare "current/longest" lines to be told apart. -->
       <div class="streak-block">
-        <p class="streak-line">Current streak: <span class="streak-value" id="currentStreak">…</span></p>
-        <p class="streak-line">Longest streak: <span class="streak-value" id="longestStreak">…</span></p>
+        <h2 class="streak-heading">DISCIPLINE STREAK</h2>
+        <p class="streak-line">Current: <span class="streak-value" id="currentStreak">…</span></p>
+        <p class="streak-line">Longest: <span class="streak-value" id="longestStreak">…</span></p>
+      </div>
+
+      <div class="streak-block">
+        <h2 class="streak-heading">
+          RESISTANCE STREAK
+          <span class="info-tip" tabindex="0" role="button" aria-label="What does resistance streak mean?">(?)<span class="info-tooltip" role="tooltip">How many times in a row you chose STAY FOCUSED without unlocking anything. It counts choices, not days — every stand adds one, and a single unlock puts it back to zero. Your discipline streak measures clean days; this measures how often you held the line.</span></span>
+        </h2>
+        <p class="streak-line">Current: <span class="streak-value" id="currentResistance">…</span></p>
+        <p class="streak-line">Longest: <span class="streak-value" id="longestResistance">…</span></p>
       </div>
 
       <p class="coming-soon">

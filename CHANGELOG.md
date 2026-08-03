@@ -12,8 +12,11 @@ This project loosely follows [Keep a Changelog](https://keepachangelog.com/) and
 - **Configurable cooldown** — the countdown before *Unlock Site* becomes clickable is now adjustable, with a floor of one minute.
 - **Escalating cooldown** — optionally multiply a site's cooldown for each repeat unlock on the same day (minimum rate 1.25×). The count resets at midnight and the result is capped at one hour, so escalation can never become a permanent lockout.
 - **Streak cost in the unlock confirmation** — the modal now states the streak you are about to break, and what your next unlock of that site would cost.
+- **Resistance streak** on Track Your Progress — how many times in a row you chose *Stay Focused* without unlocking, with a current and longest figure and a `(?)` tooltip. It counts choices rather than days, so it complements the discipline streak instead of repeating it; a single unlock returns it to zero, and the record survives.
 
 ### Changed
+- **The laurel wreath and cracked shield are now pinned to the sides of the screen** instead of sitting beside the victory meter. They stay level with whatever stat you've scrolled to, so new stats can be added below without needing new artwork for each one. On screens too narrow to fit them beside the page they are hidden rather than allowed to overlap the text.
+- The two streaks are now under their own headings, since one counts days and the other counts choices.
 - **Removing a task now goes through a friction gate** — the same confirmation the popup uses for unblocking a site: it names what you're giving up, shows the streak at stake, and holds the confirm button shut for ten seconds. Removing a *Guarded Code* warns that the saved code is discarded for good. Previously one click here quietly undid whatever gauntlet the blocked page was meant to put up.
 - **The cooldown pauses when you leave the tab** and resumes when you return, so it only runs while you are actually looking at it. It pauses rather than resets, so an accidental alt-tab or a notification stealing focus doesn't wipe your progress.
 - **Pasting is disabled** on every typing task — the target text is on screen, so without this the tasks were one Ctrl+V away from meaningless.
