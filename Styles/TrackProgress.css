@@ -13,10 +13,11 @@ body{
     border:3px solid #D4AF37;
     box-sizing:border-box;
     text-align:center;
-    /* Positioned so it can out-stack the fixed emblem layer below. On a short
-       window the heading and tagline — the only elements wide enough to reach
-       the emblems — can scroll level with them; this keeps the words on top of
-       the artwork rather than under it. */
+    /* Positioned so it out-stacks the fixed emblem layer below. The layer's
+       height gate should already prevent the heading and tagline from ever
+       reaching the emblems, so this is a backstop: if the copy grows or the
+       type scale changes, text still paints over the artwork rather than
+       disappearing behind it. */
     position:relative;
     z-index:1;
 }
@@ -61,12 +62,18 @@ h1{
    centred) so the emblems track the CONTAINER's edges, not the viewport's —
    left:0/right:0 plus auto margins centres a fixed element the same way.
    Below 1340px the container is too narrow to seat them beside the centre
-   content, so they're hidden rather than allowed to cover it. */
+   content, so they're hidden rather than allowed to cover it.
+
+   The height gate exists for the same reason. The heading and tagline are the
+   only elements wide enough to reach the emblems, and they sit lowest on screen
+   at scroll 0 — measured at 222px down, so a viewport-centred 210px emblem
+   clears them only above roughly 654px of height. 720px leaves margin for font
+   and chrome differences. */
 .side-emblem-layer{
     display:none;
 }
 
-@media (min-width:1340px){
+@media (min-width:1340px) and (min-height:720px){
     .side-emblem-layer{
         display:flex;
         position:fixed;
