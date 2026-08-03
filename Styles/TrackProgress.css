@@ -13,6 +13,12 @@ body{
     border:3px solid #D4AF37;
     box-sizing:border-box;
     text-align:center;
+    /* Positioned so it can out-stack the fixed emblem layer below. On a short
+       window the heading and tagline — the only elements wide enough to reach
+       the emblems — can scroll level with them; this keeps the words on top of
+       the artwork rather than under it. */
+    position:relative;
+    z-index:1;
 }
 
 h1{
@@ -44,44 +50,59 @@ h1{
     margin:20px 0 10px;
 }
 
-/* Laurel wreath and cracked shield. Pinned to the viewport rather than sitting
-   in the flow, so they flank whatever stat is currently in the middle of the
-   screen as you scroll, instead of scrolling away with the victory meter they
-   used to sit beside. This is also what lets new stats be added below without
-   needing new art for each one.
+/* Laurel wreath and cracked shield. They keep the position they had when they
+   sat in the flex row beside the victory meter — inset within the page's gold
+   border — but the layer holding them is fixed to the viewport, so they stay
+   level with whatever stat you've scrolled to instead of scrolling away with
+   the meter. That's what lets further stats be added below without needing new
+   art for each one.
 
-   They live in the gutter next to the 1200px-wide page, so the width is derived
-   from how much gutter there actually is and never exceeds the art's natural
-   size. Below 1400px the page is 90% wide and there's no usable gutter, so they
-   are hidden outright rather than allowed to sit on top of the text. */
-.side-emblem{
+   The layer mirrors .progress-page's own width rules (90%, capped at 1200px,
+   centred) so the emblems track the CONTAINER's edges, not the viewport's —
+   left:0/right:0 plus auto margins centres a fixed element the same way.
+   Below 1340px the container is too narrow to seat them beside the centre
+   content, so they're hidden rather than allowed to cover it. */
+.side-emblem-layer{
     display:none;
 }
 
-@media (min-width:1400px){
-    .side-emblem{
-        display:block;
+@media (min-width:1340px){
+    .side-emblem-layer{
+        display:flex;
         position:fixed;
-        top:50%;
-        transform:translateY(-50%);
-        /* 100vw counts the scrollbar, so the real gutter is a few px narrower
-           than this implies — the 28px of clearance covers that and still
-           leaves a visible gap at the tightest supported width. */
-        width:min(210px, calc((100vw - 1200px) / 2 - 28px));
+        top:0;
+        bottom:0;
+        left:0;
+        right:0;
+        width:90%;
+        max-width:1200px;
+        margin:0 auto;
+        box-sizing:border-box;
+        align-items:center;
+        justify-content:space-between;
+        /* Reproduces where the old flex row seated them: past the page's 3px
+           border and 20px padding, then centred in the space beside the meter,
+           which lands 92px inside the border box and leaves the same 30px gap
+           the row's `gap` used to. A px value, not a percentage — percentage
+           padding on a FIXED element resolves against the viewport, not against
+           this layer, so it drifts with window width. Safe as a constant
+           because the container is at or within a few px of its 1200px max
+           everywhere this query applies; near the breakpoint the scrollbar
+           trims the container slightly, which narrows the gap to the meter by
+           a few px but never closes it. */
+        padding:0 92px;
+        /* Decorative: never intercept a click, a scroll, or a drag-select, and
+           never paint over the text (see .progress-page's z-index). */
+        pointer-events:none;
+        z-index:0;
+    }
+
+    .side-emblem{
+        width:210px;
         height:auto;
-        /* Keeps a tall viewport-centred image from running off a short screen. */
+        /* Keeps a viewport-centred image on screen when the window is short. */
         max-height:40vh;
         object-fit:contain;
-        /* Decorative only: never intercept a click or a drag-select. */
-        pointer-events:none;
-    }
-
-    .side-emblem-left{
-        left:14px;
-    }
-
-    .side-emblem-right{
-        right:14px;
     }
 }
 

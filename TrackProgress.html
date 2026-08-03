@@ -23,13 +23,18 @@
 
       <img src="Assets/Medieval_Strategy.png" class="strategy-map" alt="Medieval strategy map emblem">
 
-      <!-- Pinned to the sides of the viewport rather than sitting in the flow,
-           so they flank whatever stat is currently in the middle as you scroll.
-           Purely decorative, hence empty alt and aria-hidden: they label
-           nothing, and a screen reader announcing them between stats would be
-           noise. -->
-      <img src="Assets/Laurel_Wreath.png" class="side-emblem side-emblem-left" alt="" aria-hidden="true">
-      <img src="Assets/Cracked_Shield.png" class="side-emblem side-emblem-right" alt="" aria-hidden="true">
+      <!-- The emblems keep the place they had when they flanked the victory
+           meter, but the layer holding them is fixed to the viewport, so they
+           stay level with whatever stat you've scrolled to instead of scrolling
+           away with the meter.
+
+           Purely decorative, hence empty alt and aria-hidden on the layer: they
+           label nothing, and a screen reader announcing them between stats
+           would be noise. -->
+      <div class="side-emblem-layer" aria-hidden="true">
+        <img src="Assets/Laurel_Wreath.png" class="side-emblem" alt="">
+        <img src="Assets/Cracked_Shield.png" class="side-emblem" alt="">
+      </div>
 
       <section class="progress-section">
         <div class="progress-bar" id="progressBar">
