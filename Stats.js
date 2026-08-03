@@ -29,7 +29,14 @@ const DEFAULT_STATS = {
     lastCleanDate: null,   // "YYYY-MM-DD" local, or null if never set
     lastUnlockDate: null,  // "YYYY-MM-DD" local, set when an unlock is confirmed
     stayFocusedCount: 0,
-    unlockCount: 0
+    unlockCount: 0,
+    // Resistance streak: consecutive Stay Focused choices with no unlock in
+    // between. Counted in CHOICES, not days — unlike the discipline streak
+    // above, which is a run of calendar days. The two measure different things
+    // on purpose: one rewards showing restraint often, the other rewards
+    // staying clean over time.
+    currentResistance: 0,
+    longestResistance: 0
 };
 
 // Merge whatever is in storage over the defaults so a partial/missing object
@@ -179,6 +186,11 @@ function recordUnlock() {
         stats.unlockCount += 1;
         stats.lastUnlockDate = today;
 
+        // An unlock is what a resistance run is a run *against*, so it ends
+        // here. longestResistance already holds the high-water mark and is
+        // never rolled back.
+        stats.currentResistance = 0;
+
         if (stats.lastCleanDate === today) {
             stats.currentStreak = Math.max(0, stats.currentStreak - 1);
             stats.lastCleanDate =
@@ -189,11 +201,17 @@ function recordUnlock() {
     });
 }
 
-// Call from the "Stay Focused" handler. Feeds the ratio only — Stay Focused
-// clicks never keep a streak alive and must never reset it.
+// Call from the "Stay Focused" handler. Feeds the ratio and extends the
+// resistance streak. It still must never touch the DAY streak: choosing Stay
+// Focused can't manufacture a clean day, and can't reset one either.
 function recordStayFocused() {
     return enqueueStatsUpdate((stats) => {
         stats.stayFocusedCount += 1;
+
+        stats.currentResistance += 1;
+        stats.longestResistance =
+            Math.max(stats.longestResistance, stats.currentResistance);
+
         return stats;
     });
 }
@@ -211,6 +229,8 @@ function getStats() {
         return {
             currentStreak: stats.currentStreak,
             longestStreak: stats.longestStreak,
+            currentResistance: stats.currentResistance,
+            longestResistance: stats.longestResistance,
             ratio: ratio,
             stayFocusedCount: stats.stayFocusedCount,
             unlockCount: stats.unlockCount

@@ -44,9 +44,45 @@ h1{
     margin:20px 0 10px;
 }
 
-.progress-emblem{
-    width:210px;
-    height:auto;
+/* Laurel wreath and cracked shield. Pinned to the viewport rather than sitting
+   in the flow, so they flank whatever stat is currently in the middle of the
+   screen as you scroll, instead of scrolling away with the victory meter they
+   used to sit beside. This is also what lets new stats be added below without
+   needing new art for each one.
+
+   They live in the gutter next to the 1200px-wide page, so the width is derived
+   from how much gutter there actually is and never exceeds the art's natural
+   size. Below 1400px the page is 90% wide and there's no usable gutter, so they
+   are hidden outright rather than allowed to sit on top of the text. */
+.side-emblem{
+    display:none;
+}
+
+@media (min-width:1400px){
+    .side-emblem{
+        display:block;
+        position:fixed;
+        top:50%;
+        transform:translateY(-50%);
+        /* 100vw counts the scrollbar, so the real gutter is a few px narrower
+           than this implies — the 28px of clearance covers that and still
+           leaves a visible gap at the tightest supported width. */
+        width:min(210px, calc((100vw - 1200px) / 2 - 28px));
+        height:auto;
+        /* Keeps a tall viewport-centred image from running off a short screen. */
+        max-height:40vh;
+        object-fit:contain;
+        /* Decorative only: never intercept a click or a drag-select. */
+        pointer-events:none;
+    }
+
+    .side-emblem-left{
+        left:14px;
+    }
+
+    .side-emblem-right{
+        right:14px;
+    }
 }
 
 .progress-bar{
@@ -78,57 +114,18 @@ h1{
     color:#D4AF37;
 }
 
-/* Hover/focus tooltip on the "(?)" next to the victory rate */
-.info-tip{
-    position:relative;
-    display:inline-block;
-    color:#D4AF37;
-    cursor:help;
-    outline:none;
-}
-
-.info-tooltip{
-    position:absolute;
-    left:50%;
-    bottom:calc(100% + 12px);
-    transform:translateX(-50%);
-    width:300px;
-    max-width:80vw;
-    background:#0d0d0d;
-    color:#E5E5E5;
-    border:1px solid #D4AF37;
-    border-radius:4px;
-    padding:12px 14px;
-    font-size:1rem;
-    line-height:1.4;
-    text-align:center;
-    box-shadow:0 0 12px rgba(0,0,0,0.7);
-    opacity:0;
-    visibility:hidden;
-    transition:opacity 0.15s ease;
-    z-index:10;
-}
-
-/* little arrow pointing down at the (?) */
-.info-tooltip::after{
-    content:"";
-    position:absolute;
-    top:100%;
-    left:50%;
-    transform:translateX(-50%);
-    border:6px solid transparent;
-    border-top-color:#D4AF37;
-}
-
-.info-tip:hover .info-tooltip,
-.info-tip:focus .info-tooltip,
-.info-tip:focus-within .info-tooltip{
-    opacity:1;
-    visibility:visible;
-}
+/* The "(?)" tooltip next to the victory rate lives in Styles/Common.css,
+   shared with the task picker on Build Fortress. */
 
 .streak-block{
-    margin-top:24px;
+    margin-top:34px;
+}
+
+.streak-heading{
+    font-size:1.3rem;
+    letter-spacing:2px;
+    color:#D4AF37;
+    margin:0 0 10px;
 }
 
 .streak-line{

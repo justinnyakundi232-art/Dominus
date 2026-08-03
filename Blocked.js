@@ -4,8 +4,11 @@ function getOriginalUrl() {
     return params.get("url");
 }
 
-const COOLDOWN_SECONDS = 60;
 const TEMP_UNLOCK_DURATION_MS = 60 * 60 * 1000; // 1 hour
+
+// Per-domain, per-day unlock counts that drive cooldown escalation.
+// Shape: { "youtube.com": { date: "YYYY-MM-DD", count: 2 }, ... }
+const ESCALATION_KEY = "escalationState";
 
 const mainHeading = document.getElementById("mainHeading");
 const subtitle = document.getElementById("subtitle");
@@ -47,7 +50,16 @@ function getCategoryForDomain(domain) {
     return null;
 }
 let countdownInterval = null;
+let visibilityHandler = null;
 let originalUrl = getOriginalUrl();
+
+// Bare hostname of the blocked site — the key for both tempUnlocks and the
+// escalation counter. Null if the page was somehow opened without a ?url=.
+function currentDomain() {
+    return originalUrl
+        ? new URL(originalUrl).hostname.replace(/^www\./, "")
+        : null;
+}
 
 // "RETURN" / "STAY FOCUSED" button — always available, closes the tab
 document.getElementById("focusBtn").addEventListener("click", async () => {
@@ -90,72 +102,238 @@ function renderCompleteTaskButton() {
         document.getElementById("completeTaskBtn")
             .addEventListener("click", () => {
                 chrome.storage.local.get(["unlockTask"], (taskResult) => {
-                    if (taskResult.unlockTask && taskResult.unlockTask.message) {
-                        renderTaskConfirmBox(taskResult.unlockTask.message);
-                    } else {
-                        startCountdown();
-                    }
+                    beginTask(taskResult.unlockTask || null);
                 });
             });
     });
 }
 
-// Renders the "type the message back" confirmation form
-function renderTaskConfirmBox(targetMessage) {
+// Routes to the challenge for the configured task, or straight to the cooldown
+// when there is none. An unrecognised type (a task saved by a newer version)
+// falls through to the plain cooldown rather than leaving a dead button.
+function beginTask(task) {
+    if (!task) {
+        return beginCooldown(null);
+    }
+
+    if (task.type === "cooldown") {
+        return renderTypingChallenge({
+            instruction: "Type the message below exactly to begin your cooldown:",
+            target: task.message,
+            // The user's own words carry through to the countdown as the heading.
+            carryToHeading: true
+        });
+    }
+
+    if (task.type === "passage") {
+        return renderTypingChallenge({
+            instruction: "Type this passage exactly to begin your cooldown:",
+            target: generatePassage(),
+            carryToHeading: false
+        });
+    }
+
+    if (task.type === "code") {
+        return renderCodeChallenge(task.code);
+    }
+
+    return beginCooldown(null);
+}
+
+// Shared "retype this text" challenge, used by both the reflection message and
+// the random passage. Pasting is blocked — the target is on screen, so without
+// that the whole task is one Ctrl+C away from meaningless.
+function renderTypingChallenge({ instruction, target, carryToHeading }) {
     taskArea.innerHTML = `
         <div class="task-confirm-box">
-            <p class="task-instruction">Type the message below exactly to begin your cooldown:</p>
-            <p class="task-target-message">"${targetMessage}"</p>
+            <p class="task-instruction">${escapeHtml(instruction)}</p>
+            <p class="task-target-message">${escapeHtml(target)}</p>
             <textarea id="confirmInput" placeholder="Type it here..."></textarea>
             <p class="task-error" id="taskError"></p>
             <button id="confirmTaskBtn">CONFIRM</button>
         </div>
     `;
 
+    const input = document.getElementById("confirmInput");
+    blockPasteOn(input);
+
     document.getElementById("confirmTaskBtn")
         .addEventListener("click", () => {
-            const input = document.getElementById("confirmInput").value.trim();
             const errorEl = document.getElementById("taskError");
 
-            if (input === targetMessage.trim()) {
-                startCountdown(targetMessage);
+            if (input.value.trim() === target.trim()) {
+                beginCooldown(carryToHeading ? target : null);
             } else {
                 errorEl.textContent = "That doesn't match. Try again.";
             }
         });
 }
 
-// Starts the cooldown countdown, updates heading/subtitle, and manages the unlock button
-function startCountdown(taskMessage) {
-    taskArea.innerHTML = "";
-
-    if (taskMessage) {
-        mainHeading.textContent = taskMessage;
+// Guarded Code challenge. The code itself is never displayed here — the only
+// copy the user can reach is the one they wrote down and walked away from.
+function renderCodeChallenge(expectedCode) {
+    // A task saved without a code (shouldn't happen, but storage is storage)
+    // must not become an unopenable lock.
+    if (!expectedCode) {
+        return beginCooldown(null);
     }
 
-    let remaining = COOLDOWN_SECONDS;
+    taskArea.innerHTML = `
+        <div class="task-confirm-box">
+            <p class="task-instruction">Enter the code you wrote down:</p>
+            <textarea id="confirmInput" placeholder="Your code..."></textarea>
+            <p class="task-error" id="taskError"></p>
+            <button id="confirmTaskBtn">CONFIRM</button>
+        </div>
+    `;
+
+    const input = document.getElementById("confirmInput");
+    blockPasteOn(input);
+
+    document.getElementById("confirmTaskBtn")
+        .addEventListener("click", () => {
+            const errorEl = document.getElementById("taskError");
+            // Case-insensitive: the friction is fetching the paper, not
+            // remembering whether it was written in capitals.
+            const entered = input.value.trim().toUpperCase();
+
+            if (entered === expectedCode.trim().toUpperCase()) {
+                beginCooldown(null);
+            } else {
+                errorEl.textContent = "That code isn't right.";
+            }
+        });
+}
+
+// ---- Escalation state -----------------------------------------------------
+
+// How many times this domain has already been unlocked today. Any entry from a
+// previous day reads as 0, which is what makes the counter reset at midnight.
+function getPriorUnlocks(domain) {
+    return new Promise((resolve) => {
+        if (!domain) return resolve(0);
+
+        chrome.storage.local.get([ESCALATION_KEY], (result) => {
+            const entry = (result[ESCALATION_KEY] || {})[domain];
+            if (!entry || entry.date !== todayLocal()) return resolve(0);
+            resolve(entry.count || 0);
+        });
+    });
+}
+
+// Counts an unlock against today's total for this domain. Entries from earlier
+// days are dropped on the way through so the object can't grow without bound.
+function recordEscalationUnlock(domain) {
+    return new Promise((resolve) => {
+        if (!domain) return resolve();
+
+        chrome.storage.local.get([ESCALATION_KEY], (result) => {
+            const today = todayLocal();
+            const stored = result[ESCALATION_KEY] || {};
+            const fresh = {};
+
+            for (const key in stored) {
+                if (stored[key] && stored[key].date === today) {
+                    fresh[key] = stored[key];
+                }
+            }
+
+            const count = fresh[domain] ? (fresh[domain].count || 0) : 0;
+            fresh[domain] = { date: today, count: count + 1 };
+
+            chrome.storage.local.set({ [ESCALATION_KEY]: fresh }, resolve);
+        });
+    });
+}
+
+function getCooldownSettings() {
+    return new Promise((resolve) => {
+        chrome.storage.local.get(["cooldownSettings"], (result) => {
+            resolve(normalizeCooldown(result.cooldownSettings));
+        });
+    });
+}
+
+// ---- Cooldown -------------------------------------------------------------
+
+// Works out how long this particular cooldown should run, then starts it.
+function beginCooldown(headingMessage) {
+    const domain = currentDomain();
+
+    Promise.all([getCooldownSettings(), getPriorUnlocks(domain)])
+        .then(([cooldown, priorUnlocks]) => {
+            const seconds = effectiveCooldownSeconds(cooldown, priorUnlocks);
+
+            // Escalation is only a deterrent if the user can see it happening,
+            // so say so rather than silently handing them a longer wait.
+            const note = (cooldown.escalate && priorUnlocks > 0)
+                ? `Unlock #${priorUnlocks + 1} of ${domain} today — cooldown raised to ${formatHuman(seconds)}.`
+                : "";
+
+            startCountdown(seconds, headingMessage, note);
+        });
+}
+
+// Runs the countdown, then arms the unlock button.
+//
+// The clock only advances while the tab is actually visible: switching away
+// pauses it rather than resetting it. Resetting would punish an accidental
+// alt-tab or a notification stealing focus, which in practice just trains the
+// user to disable the feature. visibilitychange (not window blur) is the right
+// signal — blur also fires for a notification popup on a second monitor, where
+// the page is still perfectly visible.
+function startCountdown(totalSeconds, headingMessage, escalationNote) {
+    taskArea.innerHTML = escalationNote
+        ? `<p class="countdown-note">${escapeHtml(escalationNote)}</p>`
+        : "";
+
+    if (headingMessage) {
+        mainHeading.textContent = headingMessage;
+    }
+
+    let remaining = totalSeconds;
+    let paused = document.hidden;
 
     function updateDisplay() {
-        const minutes = Math.floor(remaining / 60);
-        const seconds = remaining % 60;
-        subtitle.textContent =
-            `${minutes}:${seconds.toString().padStart(2, "0")}`;
+        subtitle.textContent = paused
+            ? "PAUSED — RETURN TO THIS TAB"
+            : formatClock(remaining);
     }
+
+    visibilityHandler = () => {
+        paused = document.hidden;
+        updateDisplay();
+    };
+    document.addEventListener("visibilitychange", visibilityHandler);
 
     updateDisplay();
 
     countdownInterval = setInterval(() => {
+        if (paused) return;
+
         remaining--;
 
         if (remaining <= 0) {
-            clearInterval(countdownInterval);
             remaining = 0;
+            stopCountdown();
             updateDisplay();
             activateUnlockButton();
         } else {
             updateDisplay();
         }
     }, 1000);
+}
+
+// Tears down both the interval and the visibility listener together, so a
+// finished countdown can't leave a handler behind still rewriting the subtitle.
+function stopCountdown() {
+    clearInterval(countdownInterval);
+    countdownInterval = null;
+
+    if (visibilityHandler) {
+        document.removeEventListener("visibilitychange", visibilityHandler);
+        visibilityHandler = null;
+    }
 }
 
 // Switches the unlock button from disabled/faded to active/glowing
@@ -173,15 +351,47 @@ const unlockModalConfirm = document.getElementById("unlockModalConfirm");
 
 let pendingUnlockDomain = null;
 
+// Assembles the confirmation copy: what's about to happen, what it costs in
+// streak terms, and what the *next* unlock today would cost. Joined with blank
+// lines and rendered via textContent (#unlockModalText is white-space:pre-line),
+// so none of it can be interpreted as markup.
+function buildUnlockModalText(domain) {
+    return Promise.all([
+        getStats(),
+        getCooldownSettings(),
+        getPriorUnlocks(domain)
+    ]).then(([stats, cooldown, priorUnlocks]) => {
+        const lines = [
+            `You are about to unlock ${domain} for 1 hour. After that, it will be blocked again automatically.`
+        ];
+
+        // Suppressed at zero — "this breaks your 0-day streak" undercuts the
+        // warning instead of reinforcing it.
+        if (stats.currentStreak > 0) {
+            const days = stats.currentStreak;
+            lines.push(`This breaks your ${days}-day discipline streak.`);
+        }
+
+        if (cooldown.escalate) {
+            const next = effectiveCooldownSeconds(cooldown, priorUnlocks + 1);
+            lines.push(`Your next unlock of ${domain} today would cost a ${formatHuman(next)} cooldown.`);
+        }
+
+        lines.push("Are you sure?");
+        return lines.join("\n\n");
+    });
+}
+
 unlockBtn.addEventListener("click", () => {
     if (unlockBtn.disabled) return;
     if (!originalUrl) return;
 
-    pendingUnlockDomain = new URL(originalUrl).hostname.replace(/^www\./, "");
+    pendingUnlockDomain = currentDomain();
 
-    unlockModalText.textContent =
-        `You are about to unlock ${pendingUnlockDomain} for 1 hour. After that, it will be blocked again automatically. Are you sure?`;
-    unlockModal.hidden = false;
+    buildUnlockModalText(pendingUnlockDomain).then((text) => {
+        unlockModalText.textContent = text;
+        unlockModal.hidden = false;
+    });
 });
 
 unlockModalCancel.addEventListener("click", () => {
@@ -199,6 +409,10 @@ unlockModalConfirm.addEventListener("click", () => {
     // the tempUnlocks write without conflicting): counts it and marks today
     // not-clean, breaking the streak.
     recordUnlock();
+
+    // Counted separately from stats because escalation is per-domain and
+    // per-day, where the streak is global and historical.
+    recordEscalationUnlock(domain);
 
     chrome.storage.local.get(["tempUnlocks"], (result) => {
         let tempUnlocks = result.tempUnlocks || {};

@@ -35,11 +35,17 @@ function renderVictoryRate(stats) {
 }
 
 function renderStreak(stats) {
-    setDays(document.getElementById("currentStreak"), stats.currentStreak);
-    setDays(document.getElementById("longestStreak"), stats.longestStreak);
+    // Discipline is measured in calendar days, resistance in individual
+    // choices, so the two are deliberately given different units rather than
+    // showing four bare numbers.
+    setUnit(document.getElementById("currentStreak"), stats.currentStreak, "day", "days");
+    setUnit(document.getElementById("longestStreak"), stats.longestStreak, "day", "days");
+
+    setUnit(document.getElementById("currentResistance"), stats.currentResistance, "stand", "stands");
+    setUnit(document.getElementById("longestResistance"), stats.longestResistance, "stand", "stands");
 }
 
-// "1 day" vs "N days".
-function setDays(el, n) {
-    if (el) el.textContent = n + (n === 1 ? " day" : " days");
+// "1 day" vs "N days", "1 stand" vs "N stands".
+function setUnit(el, n, singular, plural) {
+    if (el) el.textContent = n + " " + (n === 1 ? singular : plural);
 }
