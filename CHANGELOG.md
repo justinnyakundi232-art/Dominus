@@ -3,6 +3,12 @@
 All notable changes to **Dominus** are documented here.
 This project loosely follows [Keep a Changelog](https://keepachangelog.com/) and [Semantic Versioning](https://semver.org/).
 
+## [1.7.1] — 2026-08-03
+
+### Fixed
+- **Progress emblems sit back inside the page border.** 1.7 moved the laurel wreath and cracked shield out into the page margins; they are now seated where they were before, flanking the victory meter, while still staying level with whatever stat you have scrolled to.
+- Emblems are hidden on short windows, where the heading would otherwise scroll straight through them.
+
 ## [1.7] — 2026-08-01
 
 ### Added
@@ -59,6 +65,7 @@ This project loosely follows [Keep a Changelog](https://keepachangelog.com/) and
 ### Added
 - Chrome Web Store MVP: block distracting sites, the **Build Your Fortress** setup page, and the main popup.
 
+[1.7.1]: https://github.com/justinnyakundi232-art/Dominus/releases
 [1.7]: https://github.com/justinnyakundi232-art/Dominus/releases
 [1.4.5]: https://github.com/justinnyakundi232-art/Dominus/releases
 [1.4]: https://github.com/justinnyakundi232-art/Dominus/releases
