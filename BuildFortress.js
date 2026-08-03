@@ -258,12 +258,86 @@ function renderTaskPanel(task) {
     // innerHTML line above runs. Querying for it any earlier would return
     // null, and calling .addEventListener on null throws immediately.
     document.querySelector(".remove-task-btn")
-        .addEventListener("click", () => {
-            chrome.storage.local.set({ unlockTask: null }, () => {
-                renderTaskPanel(null);
-            });
-        });
+        .addEventListener("click", () => openRemoveTaskModal(task));
 }
+
+// ---- Task-removal friction gate -------------------------------------------
+// Deleting the task here used to be one click, which quietly undid whatever
+// gauntlet the blocked page was supposed to put up — a Guarded Code you'd
+// walked across the house to fetch could be erased in less time than it took
+// to fetch it.
+//
+// The point isn't to trap anyone. Dominus can be uninstalled, and it should be
+// possible to drop a task you no longer want. It's to make sure that choice is
+// made by the version of you that's thinking, not the one that's reaching.
+
+const removeTaskModal = document.getElementById("removeTaskModal");
+const removeTaskModalStreak = document.getElementById("removeTaskModalStreak");
+const removeTaskModalText = document.getElementById("removeTaskModalText");
+const removeTaskModalCancel = document.getElementById("removeTaskModalCancel");
+const removeTaskModalConfirm = document.getElementById("removeTaskModalConfirm");
+
+let removeTaskCountdownInterval = null;
+
+function openRemoveTaskModal(task) {
+    // A Guarded Code is the one task that can't be reconstructed — the stored
+    // code is the only copy the extension has, so say so plainly.
+    removeTaskModalText.textContent = task && task.type === "code"
+        ? `Remove your ${getTaskTitle(task.type)} task? The saved code is discarded for good — the copy you wrote down will stop working, and a new task means a new code.`
+        : `Remove your ${getTaskTitle(task && task.type)} task? Unlocking a blocked site will only require the cooldown after this.`;
+
+    removeTaskModalStreak.textContent = "";
+    getStats().then((stats) => {
+        // Guard against the modal being closed before this resolves.
+        if (removeTaskModal.hidden) return;
+        if (stats.currentStreak > 0) {
+            const days = stats.currentStreak;
+            removeTaskModalStreak.textContent =
+                `You're on a ${days}-day discipline streak — this is the wall you built to protect it.`;
+        }
+    });
+
+    removeTaskModal.hidden = false;
+    startRemoveTaskCooldown();
+}
+
+// Locks the confirm button, then counts down before enabling it.
+function startRemoveTaskCooldown() {
+    clearInterval(removeTaskCountdownInterval);
+    let remaining = REMOVE_COOLDOWN_SECONDS;
+
+    removeTaskModalConfirm.disabled = true;
+    removeTaskModalConfirm.classList.add("disabled");
+    removeTaskModalConfirm.textContent = `CONFIRM (${remaining})`;
+
+    removeTaskCountdownInterval = setInterval(() => {
+        remaining--;
+        if (remaining <= 0) {
+            clearInterval(removeTaskCountdownInterval);
+            removeTaskModalConfirm.disabled = false;
+            removeTaskModalConfirm.classList.remove("disabled");
+            removeTaskModalConfirm.textContent = "REMOVE TASK";
+        } else {
+            removeTaskModalConfirm.textContent = `CONFIRM (${remaining})`;
+        }
+    }, 1000);
+}
+
+function closeRemoveTaskModal() {
+    clearInterval(removeTaskCountdownInterval);
+    removeTaskModal.hidden = true;
+}
+
+removeTaskModalCancel.addEventListener("click", closeRemoveTaskModal);
+
+removeTaskModalConfirm.addEventListener("click", () => {
+    if (removeTaskModalConfirm.disabled) return;
+    closeRemoveTaskModal();
+
+    chrome.storage.local.set({ unlockTask: null }, () => {
+        renderTaskPanel(null);
+    });
+});
 
 // Swaps the "Add task" button for the picker.
 function attachAddTaskListener() {

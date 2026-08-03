@@ -1,10 +1,9 @@
 // For blocking the current site when the user clicks the "BLOCK SITE" button
 let currentDomain = null;
 
-// Seconds the confirm button stays locked before a block can be permanently
-// removed from the popup. Kept as a constant so a future "normal/hard" strictness
-// setting can simply dial this up.
-const REMOVE_COOLDOWN_SECONDS = 10;
+// REMOVE_COOLDOWN_SECONDS — seconds the confirm button stays locked before a
+// block can be permanently removed — now lives in Tasks.js, shared with the
+// task-removal gate on the fortress page.
 
 document.addEventListener("DOMContentLoaded", async () => {
     renderBlockedList();

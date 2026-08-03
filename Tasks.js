@@ -27,6 +27,18 @@ const MIN_ESCALATION_FACTOR = 1.25;
 // being friction and becomes an accidental permanent block.
 const MAX_COOLDOWN_SECONDS = 60 * 60; // 1 hour
 
+// How long a "you are about to dismantle your own defences" confirmation stays
+// locked before it can be clicked. Shared by the popup's block-removal gate and
+// the fortress page's task-removal gate, so a future normal/hard strictness
+// setting only has one dial to turn.
+//
+// This is deliberately short. Dominus can be uninstalled in ten seconds by
+// anyone who wants out, so none of this is a lock — it is a pause, aimed at the
+// impulse rather than the decision. Someone who genuinely wants the block gone
+// should be able to remove it; they just shouldn't be able to do it without
+// noticing they did.
+const REMOVE_COOLDOWN_SECONDS = 10;
+
 // ---- Task catalog ---------------------------------------------------------
 
 // The single source of truth for the task dropdown. `id` is what gets persisted

@@ -14,6 +14,7 @@ This project loosely follows [Keep a Changelog](https://keepachangelog.com/) and
 - **Streak cost in the unlock confirmation** — the modal now states the streak you are about to break, and what your next unlock of that site would cost.
 
 ### Changed
+- **Removing a task now goes through a friction gate** — the same confirmation the popup uses for unblocking a site: it names what you're giving up, shows the streak at stake, and holds the confirm button shut for ten seconds. Removing a *Guarded Code* warns that the saved code is discarded for good. Previously one click here quietly undid whatever gauntlet the blocked page was meant to put up.
 - **The cooldown pauses when you leave the tab** and resumes when you return, so it only runs while you are actually looking at it. It pauses rather than resets, so an accidental alt-tab or a notification stealing focus doesn't wipe your progress.
 - **Pasting is disabled** on every typing task — the target text is on screen, so without this the tasks were one Ctrl+V away from meaningless.
 - The cooldown is now configured separately from the task, since it applies to every task and to the no-task case alike.
