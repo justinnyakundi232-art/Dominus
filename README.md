@@ -12,7 +12,7 @@ A free, open-source Chrome extension designed to help users reduce distractions 
 
 ## Installation
 
-Find projects like this here: [AJ7 developments](aj7developments.com)
+Find projects like this here: [AJ7 developments](https://aj7developments.com)
 
 ## Roadmap
 
