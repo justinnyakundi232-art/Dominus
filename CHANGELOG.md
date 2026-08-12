@@ -3,6 +3,29 @@
 All notable changes to **Dominus** are documented here.
 This project loosely follows [Keep a Changelog](https://keepachangelog.com/) and [Semantic Versioning](https://semver.org/).
 
+## [1.8] — 2026-08-12
+
+### Added
+- **Custom categories.** The category list is now yours: rename any of them, edit which sites they hold, add categories of your own, and delete ones you don't want. The three that ship with Dominus are only a starting point — nothing about them is fixed any more.
+- **Per-category tasks and cooldowns.** A category can be given its own standards instead of the fortress-wide ones, so gaming can demand a Guarded Code while the news gets sixty seconds. Task and cooldown are overridden independently, and either one left alone still inherits the fortress default.
+- **The blocked page names the category responsible**, and says when that category sets its own terms — so a longer cooldown or an unexpected task is never a mystery.
+- **The popup groups your blocked sites by category.** *Currently Blocked* is now listed under headings — one per category, in the order they sit in your fortress, with anything you blocked by hand gathered under *Added manually* at the end. The headings stay put as the list scrolls, and a permanent category is marked as one. A site that belongs to more than one category is listed once, under the category that governs it, with a line naming the others.
+- **A banner for each category** — a colour and a mark, chosen from a fixed heraldic set rather than a free colour picker, so nothing can be made to clash with the rest of the page. The banner appears beside the category on the fortress page, on its heading in the popup, and next to the category named on the blocked page.
+
+### Changed
+- **Removing a site from the popup now takes it out of its categories too**, and the confirmation says so before you commit. Previously the site would quietly reappear the next time you saved your fortress, which read as the removal having failed.
+- **Deleting a category that is switched on goes through a friction gate** — the same confirmation used for removing a block or a task. It names how many sites stop being blocked and shows the streak at stake. A category that isn't switched on isn't defending anything, so it just goes.
+- **Turning off a category's own standards is gated as well** when it has a task saved, since that single click otherwise undoes a task you deliberately set. Editing the task inside the picker stays ungated, exactly as it already worked for the fortress-wide task.
+- Sites typed into a category are cleaned up as they're saved — a pasted `https://www.youtube.com/feed` becomes `youtube.com`, so a block can't silently fail to match because of how it was written.
+
+### Fixed
+- **Ticking and unticking a category no longer deletes sites you blocked by hand.** If you blocked `youtube.com` from the popup and then switched Video Streaming on and off, the category removed its whole preset list on the way out — including the site it never added. Blocks made from the popup are now tracked separately, and the blocked list is derived from the two, so a category can only ever take away what it brought.
+
+### Notes
+- A site can sit in more than one category. Permanence resolves most-restrictive — if any category holding a site is permanently blocked, the site is — while its task and cooldown come from the highest such category in your list, which the blocked page names.
+- Fortresses built before this release carry over untouched: the three categories keep their settings, and anything you had blocked by hand is preserved as a manual block.
+- Everything is still stored locally in `chrome.storage.local`; no new permissions were added and no data leaves your device.
+
 ## [1.7.1] — 2026-08-03
 
 ### Fixed

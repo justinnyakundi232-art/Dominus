@@ -1,232 +1,688 @@
-// Master list of sites per category. When a category checkbox is checked,
-// every site in its array gets added to blockedSites; when unchecked,
-// every site in its array gets removed. This is the single source of
-// truth both blocks below (add-on-check / delete-on-uncheck) read from.
-const categories = {
-    socialMedia: [
-        "facebook.com",
-        "instagram.com",
-        "reddit.com",
-        "x.com",
-        "tiktok.com",
-        "snapchat.com"
-    ],
+// BuildFortress.js — the setup page.
+//
+// Two panels: the categories that decide *what* is blocked, and the standards
+// that decide *what it costs* to unlock. Since 1.8 the category list is user
+// data rather than a hardcoded literal (see Categories.js), and any category
+// can carry its own task and cooldown instead of the fortress-wide ones.
+//
+// Everything here edits an in-memory working copy and only touches storage on
+// SAVE FORTRESS, so a half-finished edit never becomes a live block.
 
-    videoStreaming: [
-        "youtube.com",
-        "netflix.com",
-        "twitch.tv",
-        "hulu.com",
-        "disneyplus.com"
-    ],
+// The working copy of the category list. Loaded once on DOMContentLoaded,
+// mutated by the UI, and written back on save.
+let categoryState = [];
 
-    gaming: [
-        "roblox.com",
-        "steamcommunity.com",
-        "epicgames.com",
-        "miniclip.com"
-    ]
-};
+// Domains blocked straight from the popup. This page never edits them, but it
+// has to carry them through so the derived blockedSites doesn't drop them.
+let manualSites = [];
 
-document.querySelector(".save-btn")
-.addEventListener("click", () => {
+// Which category detail panels are open. Held apart from the DOM so a re-render
+// (after a save, or after adding a category) doesn't collapse what the user was
+// working on.
+let expandedCategories = new Set();
 
-    // result only contains the two keys we asked for:
-    // result.blockedSites -> array of site strings saved last time (or missing)
-    // result.unlockTask   -> the saved cooldown task object, or null/missing
-    chrome.storage.local.get(["blockedSites", "unlockTask"], (result) => {
-        // readTaskForm() returns undefined when the picker isn't open. That's
-        // deliberately distinct from null: undefined means "the user never
-        // touched the task, keep whatever was saved", null means "the user
-        // opened the picker and chose no task", which should clear it.
-        const formTask = readTaskForm();
+// Guarded Codes generated while a picker is open, keyed by scope ("fortress" or
+// a category id). They only live here between "user picked Guarded Code" and
+// "user hit save" — once saved the code lives in storage and is never displayed
+// again, which is the entire point of the task.
+let pendingGuardCodes = {};
 
-        const taskToSave = formTask === undefined
-            ? (result.unlockTask || null)
-            : formTask;
+// ---- Task picker ----------------------------------------------------------
+// One implementation, used by the fortress-wide task and by every per-category
+// override. Element ids are scoped so several pickers can be open at once
+// without colliding.
 
-        // The cooldown inputs are static markup, always present, so unlike the
-        // task they're read unconditionally on every save.
-        const cooldownToSave = readCooldownForm();
+function scopedId(scope, name) {
+    return `${scope}__${name}`;
+}
 
-        // Using a Set (not a plain array) here matters: .add() is a no-op
-        // if the site is already in the set, so saving multiple times while
-        // a category stays checked never creates duplicate entries. It also
-        // gives us a clean .delete(site) below instead of manual
-        // indexOf + splice bookkeeping.
-        let blockedSites = new Set(
-            result.blockedSites || []
-        );
+// Draws the picker into `container`. `savedTask` is whatever is currently
+// stored for this scope — it preselects the dropdown and, for a Guarded Code,
+// lets the picker say "already saved" instead of revealing the code.
+function renderTaskPicker(container, scope, savedTask) {
+    const options = TASK_TYPES
+        .map((task) => {
+            const selected = savedTask && savedTask.type === task.id ? " selected" : "";
+            return `<option value="${task.id}"${selected}>${escapeHtml(task.title)}</option>`;
+        })
+        .join("");
 
-        let categorySettings = {};
+    container.innerHTML = `
+        <div class="task-config">
+            <div class="task-picker">
+                <select id="${scopedId(scope, "taskType")}">
+                    <option value="">— No task —</option>
+                    ${options}
+                </select>
+                <span class="info-tip" tabindex="0" role="button" aria-label="What does this task do?">(?)<span class="info-tooltip" role="tooltip" id="${scopedId(scope, "taskTooltip")}">Pick a task to see what it asks of you.</span></span>
+            </div>
+            <div id="${scopedId(scope, "taskConfig")}"></div>
+        </div>
+    `;
 
-        // Pattern repeated for each of the 3 categories below:
-        // - checked   -> record the category's enabled/permanent state and
-        //                add all of its sites to the blocked set.
-        // - unchecked -> remove all of its sites from the blocked set.
-        // (=== false is used instead of a plain else because a checkbox's
-        // .checked is always a real boolean, never undefined/null here, so
-        // it's equivalent to else — just written more explicitly.)
-        if (document.getElementById("socialMedia").checked) {
+    const select = document.getElementById(scopedId(scope, "taskType"));
 
-            categorySettings.socialMedia = {
-                enabled: true,
-                permanent:
-                    document.getElementById(
-                    "socialMediaPermanent"
-                ).checked
-            };
-            categories.socialMedia.forEach(site => {
-                blockedSites.add(site);
-            });
-        }else if(document.getElementById("socialMedia").checked === false ) {
-            categories.socialMedia.forEach(site => {
-                blockedSites.delete(site);
-            });
-        }
-
-        if (document.getElementById("videoStreaming").checked) {
-
-            categorySettings.videoStreaming = {
-                enabled: true,
-                permanent:
-                    document.getElementById(
-                    "videoStreamingPermanent"
-                ).checked
-            };
-
-            categories.videoStreaming.forEach(site => {
-                blockedSites.add(site);
-            });
-        }else if(document.getElementById("videoStreaming").checked === false) {
-            categories.videoStreaming.forEach(site => {
-                blockedSites.delete(site);
-            });
-        }
-
-        if (document.getElementById("gaming").checked) {
-
-            categorySettings.gaming = {
-                enabled: true,
-                permanent:
-                    document.getElementById(
-                    "gamingPermanent"
-                ).checked
-            };
-
-            categories.gaming.forEach(site => {
-                blockedSites.add(site);
-            });
-        }else if(document.getElementById("gaming").checked === false ) {
-            categories.gaming.forEach(site => {
-                blockedSites.delete(site);
-            });
-        }
-        
-        // Set(...) -> [...blockedSites] converts back to a plain array,
-        // since chrome.storage can't store a Set object directly.
-        // Note: .set()'s callback receives no arguments (unlike .get()) —
-        // it only signals that the write finished.
-        chrome.storage.local.set({
-            blockedSites: [...blockedSites],
-            categorySettings: categorySettings,
-            unlockTask: taskToSave,
-            cooldownSettings: cooldownToSave
-        }, () => {
-            // Collapse the picker back down to a summary of what was just
-            // saved, so the panel never sits in a half-edited state that
-            // disagrees with storage.
-            renderTaskPanel(taskToSave);
-            applyCooldownToForm(cooldownToSave);
-
-            const saveBtn = document.querySelector(".save-btn");
-            // Captured here (not hardcoded) so the button reverts to
-            // whatever text it actually had before, not an assumed value.
-            // The setTimeout callback below is a closure — it still has
-            // access to `original` 2 seconds later even though this outer
-            // function has already finished running.
-            const original = saveBtn.textContent;
-            saveBtn.textContent = "✓ FORTRESS SAVED";
-            saveBtn.disabled = true;
-            setTimeout(() => {
-                saveBtn.textContent = original;
-                saveBtn.disabled = false;
-            }, 2000);
-        });
-
+    select.addEventListener("change", () => {
+        // Any change of selection abandons a code generated for the previous
+        // one, so the draft can't leak into a task that isn't a Guarded Code.
+        delete pendingGuardCodes[scope];
+        renderTaskTypeConfig(scope, select.value, savedTask);
     });
 
-});
+    renderTaskTypeConfig(scope, select.value, savedTask);
+}
 
-// Keeps a category's "Permanently Block" checkbox in sync with its parent —
-// unchecking the category clears and disables the permanent option so a
-// stale "permanent" setting can't silently re-apply next time it's saved.
-function wireCategoryToggle(categoryId, permanentId) {
-    const categoryCheckbox = document.getElementById(categoryId);
-    const permanentCheckbox = document.getElementById(permanentId);
+// Draws the tooltip text and any extra fields for the selected task type.
+function renderTaskTypeConfig(scope, typeId, savedTask) {
+    const configEl = document.getElementById(scopedId(scope, "taskConfig"));
+    const tooltipEl = document.getElementById(scopedId(scope, "taskTooltip"));
+    const selected = getTaskType(typeId);
 
-    categoryCheckbox.addEventListener("change", () => {
-        if (!categoryCheckbox.checked) {
-            permanentCheckbox.checked = false;
+    tooltipEl.textContent = selected
+        ? selected.tooltip
+        : "No task — only the cooldown stands between you and the site.";
+
+    if (typeId === "cooldown") {
+        const saved = savedTask && savedTask.type === "cooldown" ? savedTask.message : "";
+        configEl.innerHTML = `
+            <textarea
+                id="${scopedId(scope, "taskMessage")}"
+                placeholder="Message you'll have to type back... (e.g. 'You set this block for a reason.')"
+                maxlength="200"
+            >${escapeHtml(saved)}</textarea>
+        `;
+        return;
+    }
+
+    if (typeId === "code") {
+        // A code already saved for this scope is NOT re-displayed — showing it
+        // again would mean the written copy never has to be fetched, which is
+        // the whole task. The user can still deliberately replace it.
+        if (savedTask && savedTask.type === "code" && savedTask.code && !pendingGuardCodes[scope]) {
+            configEl.innerHTML = `
+                <p class="guard-code-note">
+                    A code is already saved for this scope. It is never shown again —
+                    only the copy you wrote down can unlock.
+                </p>
+                <button type="button" class="task-btn" id="${scopedId(scope, "regenCode")}">
+                    Generate a new code
+                </button>
+            `;
+
+            document.getElementById(scopedId(scope, "regenCode"))
+                .addEventListener("click", () => {
+                    pendingGuardCodes[scope] = generateGuardCode();
+                    renderTaskTypeConfig(scope, typeId, savedTask);
+                });
+            return;
         }
-        permanentCheckbox.disabled = !categoryCheckbox.checked;
+
+        // Generated here rather than at save time so the user can see it while
+        // deciding, and copy it down before committing.
+        if (!pendingGuardCodes[scope]) {
+            pendingGuardCodes[scope] = generateGuardCode();
+        }
+
+        configEl.innerHTML = `
+            <p class="guard-code">${pendingGuardCodes[scope]}</p>
+            <p class="guard-code-note">
+                Write this down and put it somewhere you'd have to get up to reach.
+                It will not be shown again after you save.
+            </p>
+        `;
+        return;
+    }
+
+    // "passage" needs no configuration, and "" (no task) needs no fields.
+    configEl.innerHTML = typeId === "passage"
+        ? `<p class="guard-code-note">Nothing to set up — a new passage is generated at each unlock.</p>`
+        : "";
+}
+
+// Reads an open picker into a task object.
+// Returns undefined when this scope's picker isn't open, so the caller can tell
+// "untouched, keep what was saved" apart from "explicitly set to no task"
+// (which returns null).
+function readTaskPicker(scope, savedTask) {
+    const select = document.getElementById(scopedId(scope, "taskType"));
+    if (!select) return undefined;
+
+    const typeId = select.value;
+    if (!typeId) return null;
+
+    if (typeId === "cooldown") {
+        const messageInput = document.getElementById(scopedId(scope, "taskMessage"));
+        return {
+            type: "cooldown",
+            message: (messageInput ? messageInput.value.trim() : "")
+                || "Take a breath. You set this block."
+        };
+    }
+
+    if (typeId === "code") {
+        // Falls back to the saved code when the user reopened the picker on an
+        // existing Guarded Code without regenerating it.
+        const code = pendingGuardCodes[scope]
+            || (savedTask && savedTask.type === "code" ? savedTask.code : null);
+
+        return { type: "code", code: code };
+    }
+
+    return { type: typeId };
+}
+
+// ---- Cooldown fields ------------------------------------------------------
+// Also shared: the fortress-wide block and every per-category override are the
+// same controls with the same floors, so they can't drift apart.
+
+function renderCooldownBlock(container, scope, cooldown, heading) {
+    const settings = normalizeCooldown(cooldown);
+
+    container.innerHTML = `
+        <p class="cooldown-heading">
+            ${escapeHtml(heading)}
+            <span class="info-tip" tabindex="0" role="button" aria-label="What is the cooldown?">(?)<span class="info-tooltip" role="tooltip">Time you must sit on the blocked page before UNLOCK SITE becomes clickable. The countdown pauses if you switch away from the tab, so it only runs while you are actually looking at it.</span></span>
+        </p>
+
+        <label class="cooldown-field">
+            <span>Duration</span>
+            <input type="number" id="${scopedId(scope, "cooldownMinutes")}" min="1" step="1" value="${Math.max(1, Math.round(settings.seconds / 60))}">
+            <span>minutes</span>
+        </label>
+
+        <label class="cooldown-toggle">
+            <input type="checkbox" id="${scopedId(scope, "cooldownEscalate")}"${settings.escalate ? " checked" : ""}>
+            <span>
+                Escalate on repeat unlocks
+                <span class="info-tip" tabindex="0" role="button" aria-label="What is escalation?">(?)<span class="info-tooltip" role="tooltip">Each time you unlock the same site on the same day, its next cooldown is multiplied by this rate. The count resets at midnight, and the cooldown is capped at 60 minutes so you can never lock yourself out for good.</span></span>
+            </span>
+        </label>
+
+        <label class="cooldown-field" id="${scopedId(scope, "cooldownFactorField")}">
+            <span>Rate</span>
+            <input type="number" id="${scopedId(scope, "cooldownFactor")}" min="${MIN_ESCALATION_FACTOR}" step="0.05" value="${settings.factor}">
+            <span>&times; per unlock</span>
+        </label>
+    `;
+
+    document.getElementById(scopedId(scope, "cooldownEscalate"))
+        .addEventListener("change", () => syncEscalationField(scope));
+
+    syncEscalationField(scope);
+}
+
+// The rate only means anything while escalation is on, so it follows the
+// checkbox — same pattern as a category's "permanent" checkbox following its
+// parent.
+function syncEscalationField(scope) {
+    const toggle = document.getElementById(scopedId(scope, "cooldownEscalate"));
+    const field = document.getElementById(scopedId(scope, "cooldownFactorField"));
+    const factor = document.getElementById(scopedId(scope, "cooldownFactor"));
+    if (!toggle || !field || !factor) return;
+
+    factor.disabled = !toggle.checked;
+    field.classList.toggle("disabled-field", !toggle.checked);
+}
+
+function readCooldownBlock(scope) {
+    const minutesEl = document.getElementById(scopedId(scope, "cooldownMinutes"));
+    if (!minutesEl) return null;
+
+    return normalizeCooldown({
+        // The field is in minutes because the floor is one minute; storage is
+        // in seconds because that's what the countdown ticks in.
+        seconds: Number(minutesEl.value) * 60,
+        escalate: document.getElementById(scopedId(scope, "cooldownEscalate")).checked,
+        factor: Number(document.getElementById(scopedId(scope, "cooldownFactor")).value)
     });
 }
 
-// Restores the 3 category checkboxes (and their "permanent" checkboxes)
-// from whatever was last saved, then wires up the change listeners.
-document.addEventListener("DOMContentLoaded", () => {
+// ---- Category list --------------------------------------------------------
 
-    chrome.storage.local.get(
-        ["categorySettings"],
-        (result) => {
+function findCategory(id) {
+    return categoryState.find((category) => category.id === id) || null;
+}
 
-            let settings =
-                result.categorySettings || {};
+// A one-line summary of what a category currently governs, shown on the
+// collapsed row so the list stays readable without opening every panel.
+function categorySummary(category) {
+    const count = category.sites.length;
+    const sites = `${count} ${count === 1 ? "site" : "sites"}`;
 
-            // settings.socialMedia?.enabled -> if settings.socialMedia
-            // doesn't exist (e.g. first-ever load), the ?. short-circuits
-            // to undefined instead of throwing "Cannot read properties of
-            // undefined". The || false then turns that undefined into an
-            // actual boolean the checkbox can use.
-            document.getElementById("socialMedia").checked =
-                settings.socialMedia?.enabled || false;
+    if ("task" in category || category.cooldown) {
+        return `${sites} · own standards`;
+    }
+    return `${sites} · fortress standards`;
+}
 
-            document.getElementById("videoStreaming").checked =
-                settings.videoStreaming?.enabled || false;
+function renderCategoryList() {
+    const list = document.getElementById("categoryList");
+    list.innerHTML = "";
 
-            document.getElementById("gaming").checked =
-                settings.gaming?.enabled || false;
+    if (categoryState.length === 0) {
+        list.innerHTML = `<p class="category-empty">No categories yet. Add one to group the sites you want walled off.</p>`;
+        return;
+    }
 
-            document.getElementById("socialMediaPermanent").checked =
-                settings.socialMedia?.permanent || false;
+    // Two passes on purpose. renderTaskPicker and renderCooldownBlock look
+    // their controls up with document.getElementById, which only finds an
+    // element once it is in the document — so every block has to be attached
+    // before any standards are rendered into it.
+    const blocks = categoryState.map((category) => {
+        const block = buildCategoryBlock(category);
+        list.appendChild(block);
+        return { block: block, category: category };
+    });
 
-            document.getElementById("videoStreamingPermanent").checked =
-                settings.videoStreaming?.permanent || false;
+    blocks.forEach(({ block, category }) => renderCategoryStandards(block, category));
+}
 
-            document.getElementById("gamingPermanent").checked =
-                settings.gaming?.permanent || false;
+// Fills in a category's task picker and cooldown fields, if it has standards of
+// its own. Rendered even while the detail panel is collapsed: the panel is
+// hidden rather than absent, so harvestCategories() can still read it.
+function renderCategoryStandards(block, category) {
+    const hasOwnStandards = ("task" in category) || Boolean(category.cooldown);
+    if (!hasOwnStandards) return;
 
-            wireCategoryToggle("socialMedia", "socialMediaPermanent");
-            wireCategoryToggle("videoStreaming", "videoStreamingPermanent");
-            wireCategoryToggle("gaming", "gamingPermanent");
-        }
+    renderTaskPicker(
+        block.querySelector(".category-task"),
+        category.id,
+        "task" in category ? category.task : null
     );
 
+    renderCooldownBlock(
+        block.querySelector(".category-cooldown"),
+        category.id,
+        category.cooldown,
+        "COOLDOWN FOR THIS CATEGORY"
+    );
+}
+
+function buildCategoryBlock(category) {
+    const expanded = expandedCategories.has(category.id);
+    const hasOwnStandards = ("task" in category) || Boolean(category.cooldown);
+
+    const block = document.createElement("div");
+    block.className = "category-block";
+    block.dataset.categoryId = category.id;
+
+    // Held on the element rather than in a hidden input: the swatch buttons
+    // write here, and harvestCategories() reads back from here, so the banner
+    // survives a collapse without needing a form control to carry it.
+    block.dataset.color = category.color;
+    block.dataset.glyph = category.glyph;
+
+    block.innerHTML = `
+        <div class="category-row">
+            <label class="category">
+                <input type="checkbox" class="category-enable"${category.enabled ? " checked" : ""}>
+                <span class="category-badge" style="color:${categoryColorValue(category)}">${category.glyph}</span>
+                <span class="category-name">${escapeHtml(category.name)}</span>
+            </label>
+            <span class="category-summary">${escapeHtml(categorySummary(category))}</span>
+            <button type="button" class="category-toggle" aria-expanded="${expanded}">
+                ${expanded ? "▴" : "▾"}
+            </button>
+        </div>
+
+        <div class="category-options">
+            <label title="The blocked page will show no way to unlock this category. The only way to re-enable access is to come back here and uncheck this.">
+                <input type="checkbox" class="category-permanent"${category.permanent ? " checked" : ""}${category.enabled ? "" : " disabled"}>
+                Permanently Block (disables unlocks)
+            </label>
+        </div>
+
+        <div class="category-detail"${expanded ? "" : " hidden"}>
+            <label class="category-field">
+                <span>Name</span>
+                <input type="text" class="category-name-input" maxlength="${MAX_CATEGORY_NAME_LENGTH}" value="${escapeHtml(category.name)}">
+            </label>
+
+            <label class="category-field category-field-block">
+                <span>Sites — one per line</span>
+                <textarea class="category-sites" rows="5" placeholder="youtube.com">${escapeHtml(category.sites.join("\n"))}</textarea>
+            </label>
+
+            <div class="category-field category-field-block">
+                <span>Banner</span>
+                <div class="banner-row" role="group" aria-label="Category colour">
+                    ${CATEGORY_COLORS.map((color) => `
+                        <button type="button"
+                            class="swatch${color.id === category.color ? " selected" : ""}"
+                            data-color="${color.id}"
+                            style="color:${color.value}"
+                            title="${escapeHtml(color.name)}"
+                            aria-label="${escapeHtml(color.name)}"
+                            aria-pressed="${color.id === category.color}">●</button>
+                    `).join("")}
+                </div>
+                <div class="banner-row" role="group" aria-label="Category mark">
+                    ${CATEGORY_GLYPHS.map((glyph) => `
+                        <button type="button"
+                            class="glyph-option${glyph === category.glyph ? " selected" : ""}"
+                            data-glyph="${glyph}"
+                            aria-label="Mark ${glyph}"
+                            aria-pressed="${glyph === category.glyph}">${glyph}</button>
+                    `).join("")}
+                </div>
+            </div>
+
+            <label class="cooldown-toggle category-standards-toggle">
+                <input type="checkbox" class="category-own-standards"${hasOwnStandards ? " checked" : ""}>
+                <span>
+                    Give this category its own standards
+                    <span class="info-tip" tabindex="0" role="button" aria-label="What are own standards?">(?)<span class="info-tooltip" role="tooltip">Overrides the fortress-wide task and cooldown for these sites only. If a site sits in more than one category, the highest category in this list is the one that governs it.</span></span>
+                </span>
+            </label>
+
+            <div class="category-standards"${hasOwnStandards ? "" : " hidden"}>
+                <div class="category-task"></div>
+                <div class="cooldown-block category-cooldown"></div>
+            </div>
+
+            <button type="button" class="category-delete">Delete category</button>
+        </div>
+    `;
+
+    wireCategoryBlock(block, category);
+    return block;
+}
+
+function wireCategoryBlock(block, category) {
+    const enableEl = block.querySelector(".category-enable");
+    const permanentEl = block.querySelector(".category-permanent");
+
+    // Unchecking a category clears and disables its permanent option, so a
+    // stale "permanent" setting can't silently re-apply next time it's ticked.
+    enableEl.addEventListener("change", () => {
+        if (!enableEl.checked) permanentEl.checked = false;
+        permanentEl.disabled = !enableEl.checked;
+    });
+
+    // Banner pickers. These repaint the row badge in place instead of going
+    // through renderCategoryList(), so choosing a colour doesn't blur whatever
+    // field the user was typing in.
+    const badge = block.querySelector(".category-badge");
+
+    function repaintBadge() {
+        const value = categoryColorValue({ color: block.dataset.color });
+        badge.style.color = value;
+        badge.textContent = block.dataset.glyph;
+        block.querySelectorAll(".glyph-option")
+            .forEach((option) => { option.style.color = value; });
+    }
+
+    function selectOption(buttons, chosen) {
+        buttons.forEach((button) => {
+            const isChosen = button === chosen;
+            button.classList.toggle("selected", isChosen);
+            button.setAttribute("aria-pressed", String(isChosen));
+        });
+    }
+
+    const swatches = [...block.querySelectorAll(".swatch")];
+    swatches.forEach((swatch) => {
+        swatch.addEventListener("click", () => {
+            block.dataset.color = swatch.dataset.color;
+            selectOption(swatches, swatch);
+            repaintBadge();
+        });
+    });
+
+    const glyphOptions = [...block.querySelectorAll(".glyph-option")];
+    glyphOptions.forEach((option) => {
+        option.addEventListener("click", () => {
+            block.dataset.glyph = option.dataset.glyph;
+            selectOption(glyphOptions, option);
+            repaintBadge();
+        });
+    });
+
+    repaintBadge();
+
+    block.querySelector(".category-toggle").addEventListener("click", () => {
+        // Harvest before re-rendering, or edits typed into an open panel would
+        // be thrown away by the redraw.
+        harvestCategories();
+
+        if (expandedCategories.has(category.id)) {
+            expandedCategories.delete(category.id);
+        } else {
+            expandedCategories.add(category.id);
+        }
+        renderCategoryList();
+    });
+
+    const ownStandardsEl = block.querySelector(".category-own-standards");
+    ownStandardsEl.addEventListener("change", () => {
+        const saved = findCategory(category.id);
+
+        // Turning the override off on a category that has a saved task is the
+        // one-click equivalent of removing a task, so it goes through the same
+        // gate. Editing it inside the picker stays ungated, exactly as the
+        // fortress-wide picker already works.
+        if (!ownStandardsEl.checked && saved && saved.task) {
+            openRemoveTaskModal(
+                saved.task,
+                `Drop ${saved.name}'s own standards? These sites fall back to the fortress-wide task and cooldown.`,
+                () => {
+                    harvestCategories();
+                    const target = findCategory(category.id);
+                    if (target) {
+                        delete target.task;
+                        delete target.cooldown;
+                    }
+                    delete pendingGuardCodes[category.id];
+                    renderCategoryList();
+                },
+                () => {
+                    ownStandardsEl.checked = true;
+                }
+            );
+            return;
+        }
+
+        harvestCategories();
+        const target = findCategory(category.id);
+        if (target) {
+            if (ownStandardsEl.checked) {
+                if (!("task" in target)) target.task = null;
+                if (!target.cooldown) target.cooldown = normalizeCooldown(null);
+            } else {
+                delete target.task;
+                delete target.cooldown;
+                delete pendingGuardCodes[category.id];
+            }
+        }
+        renderCategoryList();
+    });
+
+    block.querySelector(".category-delete").addEventListener("click", () => {
+        harvestCategories();
+        requestCategoryDelete(category.id);
+    });
+}
+
+// Reads every category block in the DOM back into categoryState. Called before
+// any re-render and before saving, so nothing typed is lost to a redraw.
+function harvestCategories() {
+    document.querySelectorAll(".category-block").forEach((block) => {
+        const category = findCategory(block.dataset.categoryId);
+        if (!category) return;
+
+        category.enabled = block.querySelector(".category-enable").checked;
+        category.permanent = category.enabled
+            && block.querySelector(".category-permanent").checked;
+
+        // Always present, open panel or not — the pickers write to the block's
+        // dataset rather than to a control inside the collapsible detail.
+        category.color = block.dataset.color;
+        category.glyph = block.dataset.glyph;
+
+        // The detail fields only exist while the panel is open.
+        const nameInput = block.querySelector(".category-name-input");
+        if (nameInput) {
+            category.name = nameInput.value.trim().slice(0, MAX_CATEGORY_NAME_LENGTH)
+                || category.name;
+        }
+
+        const sitesInput = block.querySelector(".category-sites");
+        if (sitesInput) {
+            category.sites = parseSiteList(sitesInput.value);
+        }
+
+        const ownStandardsEl = block.querySelector(".category-own-standards");
+        if (ownStandardsEl && ownStandardsEl.checked) {
+            const task = readTaskPicker(
+                category.id,
+                "task" in category ? category.task : null
+            );
+            if (task !== undefined) category.task = task;
+
+            const cooldown = readCooldownBlock(category.id);
+            if (cooldown) category.cooldown = cooldown;
+        }
+    });
+}
+
+// ---- Adding a category ----------------------------------------------------
+
+document.getElementById("addCategoryBtn").addEventListener("click", () => {
+    harvestCategories();
+
+    // Banner assigned by position so consecutive new categories don't all come
+    // out the same colour; the user can still change it in the panel below.
+    const appearance = defaultAppearance(categoryState.length);
+
+    const category = {
+        id: `custom-${Date.now()}-${categoryState.length}`,
+        name: "New category",
+        sites: [],
+        enabled: false,
+        permanent: false,
+        color: appearance.color,
+        glyph: appearance.glyph
+    };
+
+    categoryState.push(category);
+    // Open it straight away: a new category with no sites in it does nothing,
+    // so the next thing the user needs is the editor.
+    expandedCategories.add(category.id);
+    renderCategoryList();
+
+    const input = document.querySelector(
+        `.category-block[data-category-id="${category.id}"] .category-name-input`
+    );
+    if (input) {
+        input.focus();
+        input.select();
+    }
 });
 
-// ---- Task panel -----------------------------------------------------------
+// ---- Category-deletion friction gate --------------------------------------
+// Deleting a category that is switched on takes live blocks down with it, so it
+// gets the same treatment as removing a block or a task: name what's being
+// given up, show the streak at stake, hold the button shut. A category that
+// isn't switched on isn't blocking anything, so it just goes.
 
-// Holds the code generated for a Guarded Code task while the picker is open.
-// It only exists between "user picked Guarded Code" and "user hit save" — once
-// saved it lives in storage and is never displayed again.
-let pendingGuardCode = null;
+const removeCategoryModal = document.getElementById("removeCategoryModal");
+const removeCategoryModalStreak = document.getElementById("removeCategoryModalStreak");
+const removeCategoryModalText = document.getElementById("removeCategoryModalText");
+const removeCategoryModalCancel = document.getElementById("removeCategoryModalCancel");
+const removeCategoryModalConfirm = document.getElementById("removeCategoryModalConfirm");
+
+let pendingDeleteCategoryId = null;
+let removeCategoryCountdownInterval = null;
+
+function requestCategoryDelete(categoryId) {
+    const category = findCategory(categoryId);
+    if (!category) return;
+
+    if (!category.enabled) {
+        deleteCategory(categoryId);
+        return;
+    }
+
+    pendingDeleteCategoryId = categoryId;
+
+    const count = category.sites.length;
+    const permanentNote = category.permanent
+        ? " This category is set to permanently blocked."
+        : "";
+
+    removeCategoryModalText.textContent =
+        `Delete ${category.name}? ${count} ${count === 1 ? "site" : "sites"} `
+        + `will stop being blocked, unless another category also covers them.${permanentNote}`;
+
+    removeCategoryModalStreak.textContent = "";
+    getStats().then((stats) => {
+        if (removeCategoryModal.hidden) return;
+        if (stats.currentStreak > 0) {
+            const days = stats.currentStreak;
+            removeCategoryModalStreak.textContent =
+                `You're on a ${days}-day discipline streak — this is part of the wall protecting it.`;
+        }
+    });
+
+    removeCategoryModal.hidden = false;
+    startModalCooldown(removeCategoryModalConfirm, "DELETE CATEGORY", (interval) => {
+        removeCategoryCountdownInterval = interval;
+    });
+}
+
+function closeRemoveCategoryModal() {
+    clearInterval(removeCategoryCountdownInterval);
+    removeCategoryModal.hidden = true;
+    pendingDeleteCategoryId = null;
+}
+
+removeCategoryModalCancel.addEventListener("click", closeRemoveCategoryModal);
+
+removeCategoryModalConfirm.addEventListener("click", () => {
+    if (removeCategoryModalConfirm.disabled || !pendingDeleteCategoryId) return;
+    const id = pendingDeleteCategoryId;
+    closeRemoveCategoryModal();
+    deleteCategory(id);
+});
+
+function deleteCategory(categoryId) {
+    categoryState = categoryState.filter((category) => category.id !== categoryId);
+    expandedCategories.delete(categoryId);
+    delete pendingGuardCodes[categoryId];
+    renderCategoryList();
+}
+
+// Shared countdown for every confirm button on this page: locks it, ticks down,
+// then arms it. Hands the interval id back so each caller can clear its own.
+function startModalCooldown(button, readyLabel, onInterval) {
+    let remaining = REMOVE_COOLDOWN_SECONDS;
+
+    button.disabled = true;
+    button.classList.add("disabled");
+    button.textContent = `CONFIRM (${remaining})`;
+
+    const interval = setInterval(() => {
+        remaining--;
+        if (remaining <= 0) {
+            clearInterval(interval);
+            button.disabled = false;
+            button.classList.remove("disabled");
+            button.textContent = readyLabel;
+        } else {
+            button.textContent = `CONFIRM (${remaining})`;
+        }
+    }, 1000);
+
+    onInterval(interval);
+}
+
+// ---- Fortress-wide task panel ---------------------------------------------
 
 // Renders whichever of the two states the panel should be in: a summary of the
 // saved task, or the "Add task" button when there is none.
 function renderTaskPanel(task) {
     const taskRow = document.querySelector(".task-row");
-    pendingGuardCode = null;
+    delete pendingGuardCodes.fortress;
 
     if (!task) {
         taskRow.innerHTML = `<button class="task-btn" id="addTaskBtn">Add task</button>`;
@@ -258,11 +714,31 @@ function renderTaskPanel(task) {
     // innerHTML line above runs. Querying for it any earlier would return
     // null, and calling .addEventListener on null throws immediately.
     document.querySelector(".remove-task-btn")
-        .addEventListener("click", () => openRemoveTaskModal(task));
+        .addEventListener("click", () => {
+            openRemoveTaskModal(
+                task,
+                task.type === "code"
+                    ? `Remove your ${getTaskTitle(task.type)} task? The saved code is discarded for good — the copy you wrote down will stop working, and a new task means a new code.`
+                    : `Remove your ${getTaskTitle(task.type)} task? Unlocking a blocked site will only require the cooldown after this.`,
+                () => {
+                    chrome.storage.local.set({ unlockTask: null }, () => {
+                        renderTaskPanel(null);
+                    });
+                }
+            );
+        });
+}
+
+// Swaps the "Add task" button for the picker.
+function attachAddTaskListener() {
+    document.getElementById("addTaskBtn")
+        .addEventListener("click", () => {
+            renderTaskPicker(document.querySelector(".task-row"), "fortress", null);
+        });
 }
 
 // ---- Task-removal friction gate -------------------------------------------
-// Deleting the task here used to be one click, which quietly undid whatever
+// Deleting a task here used to be one click, which quietly undid whatever
 // gauntlet the blocked page was supposed to put up — a Guarded Code you'd
 // walked across the house to fetch could be erased in less time than it took
 // to fetch it.
@@ -270,6 +746,10 @@ function renderTaskPanel(task) {
 // The point isn't to trap anyone. Dominus can be uninstalled, and it should be
 // possible to drop a task you no longer want. It's to make sure that choice is
 // made by the version of you that's thinking, not the one that's reaching.
+//
+// Since 1.8 it also serves the per-category overrides, so `onConfirm` and
+// `onCancel` are supplied by the caller rather than hardcoded to the
+// fortress-wide task.
 
 const removeTaskModal = document.getElementById("removeTaskModal");
 const removeTaskModalStreak = document.getElementById("removeTaskModalStreak");
@@ -278,13 +758,14 @@ const removeTaskModalCancel = document.getElementById("removeTaskModalCancel");
 const removeTaskModalConfirm = document.getElementById("removeTaskModalConfirm");
 
 let removeTaskCountdownInterval = null;
+let pendingTaskRemoval = null;
+let pendingTaskRemovalCancel = null;
 
-function openRemoveTaskModal(task) {
-    // A Guarded Code is the one task that can't be reconstructed — the stored
-    // code is the only copy the extension has, so say so plainly.
-    removeTaskModalText.textContent = task && task.type === "code"
-        ? `Remove your ${getTaskTitle(task.type)} task? The saved code is discarded for good — the copy you wrote down will stop working, and a new task means a new code.`
-        : `Remove your ${getTaskTitle(task && task.type)} task? Unlocking a blocked site will only require the cooldown after this.`;
+function openRemoveTaskModal(task, message, onConfirm, onCancel) {
+    pendingTaskRemoval = onConfirm;
+    pendingTaskRemovalCancel = onCancel || null;
+
+    removeTaskModalText.textContent = message;
 
     removeTaskModalStreak.textContent = "";
     getStats().then((stats) => {
@@ -298,194 +779,120 @@ function openRemoveTaskModal(task) {
     });
 
     removeTaskModal.hidden = false;
-    startRemoveTaskCooldown();
-}
-
-// Locks the confirm button, then counts down before enabling it.
-function startRemoveTaskCooldown() {
-    clearInterval(removeTaskCountdownInterval);
-    let remaining = REMOVE_COOLDOWN_SECONDS;
-
-    removeTaskModalConfirm.disabled = true;
-    removeTaskModalConfirm.classList.add("disabled");
-    removeTaskModalConfirm.textContent = `CONFIRM (${remaining})`;
-
-    removeTaskCountdownInterval = setInterval(() => {
-        remaining--;
-        if (remaining <= 0) {
-            clearInterval(removeTaskCountdownInterval);
-            removeTaskModalConfirm.disabled = false;
-            removeTaskModalConfirm.classList.remove("disabled");
-            removeTaskModalConfirm.textContent = "REMOVE TASK";
-        } else {
-            removeTaskModalConfirm.textContent = `CONFIRM (${remaining})`;
-        }
-    }, 1000);
+    startModalCooldown(removeTaskModalConfirm, "REMOVE TASK", (interval) => {
+        removeTaskCountdownInterval = interval;
+    });
 }
 
 function closeRemoveTaskModal() {
     clearInterval(removeTaskCountdownInterval);
     removeTaskModal.hidden = true;
+    pendingTaskRemoval = null;
+    pendingTaskRemovalCancel = null;
 }
 
-removeTaskModalCancel.addEventListener("click", closeRemoveTaskModal);
+removeTaskModalCancel.addEventListener("click", () => {
+    // The cancel path has to be able to put a checkbox back, so it runs before
+    // the handlers are cleared.
+    if (pendingTaskRemovalCancel) pendingTaskRemovalCancel();
+    closeRemoveTaskModal();
+});
 
 removeTaskModalConfirm.addEventListener("click", () => {
-    if (removeTaskModalConfirm.disabled) return;
+    if (removeTaskModalConfirm.disabled || !pendingTaskRemoval) return;
+    const confirmed = pendingTaskRemoval;
+    // Cleared before running so a re-render triggered by the callback can't
+    // re-enter this handler.
+    pendingTaskRemoval = null;
+    pendingTaskRemovalCancel = null;
     closeRemoveTaskModal();
+    confirmed();
+});
 
-    chrome.storage.local.set({ unlockTask: null }, () => {
-        renderTaskPanel(null);
+// ---- Save -----------------------------------------------------------------
+
+document.querySelector(".save-btn").addEventListener("click", () => {
+    harvestCategories();
+
+    chrome.storage.local.get(["unlockTask", "cooldownSettings"], (result) => {
+        // readTaskPicker returns undefined when the picker isn't open. That's
+        // deliberately distinct from null: undefined means "the user never
+        // touched the task, keep whatever was saved", null means "the user
+        // opened the picker and chose no task", which should clear it.
+        const formTask = readTaskPicker("fortress", result.unlockTask || null);
+
+        const taskToSave = formTask === undefined
+            ? (result.unlockTask || null)
+            : formTask;
+
+        // Null when the fields haven't rendered yet — saving that fast would
+        // otherwise overwrite a real cooldown with the defaults.
+        const cooldownToSave = readCooldownBlock("fortress")
+            || normalizeCooldown(result.cooldownSettings);
+
+        // blockedSites is derived, not edited: the union of every enabled
+        // category and the popup's manual list. Before 1.8 this page added and
+        // deleted entries directly, which meant unticking a category deleted
+        // its preset sites even when the user had blocked one of them by hand.
+        const blockedSites = computeBlockedSites(categoryState, manualSites);
+
+        chrome.storage.local.set({
+            [CATEGORY_DEFS_KEY]: categoryState,
+            [MANUAL_SITES_KEY]: manualSites,
+            blockedSites: blockedSites,
+            unlockTask: taskToSave,
+            cooldownSettings: cooldownToSave
+        }, () => {
+            // Every draft code is now committed to storage, so the pending map
+            // is dropped: from here on a Guarded Code is saved, and the pickers
+            // must stop showing it.
+            pendingGuardCodes = {};
+
+            // Collapse the pickers back down to a summary of what was just
+            // saved, so the panel never sits in a half-edited state that
+            // disagrees with storage.
+            renderTaskPanel(taskToSave);
+            renderCooldownBlock(
+                document.getElementById("fortressCooldown"),
+                "fortress",
+                cooldownToSave,
+                "COOLDOWN"
+            );
+            renderCategoryList();
+
+            const saveBtn = document.querySelector(".save-btn");
+            // Captured here (not hardcoded) so the button reverts to
+            // whatever text it actually had before, not an assumed value.
+            // The setTimeout callback below is a closure — it still has
+            // access to `original` 2 seconds later even though this outer
+            // function has already finished running.
+            const original = saveBtn.textContent;
+            saveBtn.textContent = "✓ FORTRESS SAVED";
+            saveBtn.disabled = true;
+            setTimeout(() => {
+                saveBtn.textContent = original;
+                saveBtn.disabled = false;
+            }, 2000);
+        });
     });
 });
 
-// Swaps the "Add task" button for the picker.
-function attachAddTaskListener() {
-    document.getElementById("addTaskBtn")
-        .addEventListener("click", () => {
-            const taskRow = document.querySelector(".task-row");
+// ---- Load -----------------------------------------------------------------
 
-            const options = TASK_TYPES
-                .map((task) => `<option value="${task.id}">${escapeHtml(task.title)}</option>`)
-                .join("");
-
-            taskRow.innerHTML = `
-                <div class="task-config">
-                    <div class="task-picker">
-                        <select id="taskType">
-                            <option value="">— No task —</option>
-                            ${options}
-                        </select>
-                        <span class="info-tip" id="taskTypeTip" tabindex="0" role="button" aria-label="What does this task do?">(?)<span class="info-tooltip" role="tooltip" id="taskTypeTooltip">Pick a task to see what it asks of you.</span></span>
-                    </div>
-                    <div id="taskTypeConfig"></div>
-                </div>
-            `;
-
-            const select = document.getElementById("taskType");
-            select.addEventListener("change", () => {
-                renderTaskTypeConfig(select.value);
-            });
-
-            renderTaskTypeConfig("");
-        });
-}
-
-// Draws the tooltip text and any extra fields for the selected task type.
-function renderTaskTypeConfig(typeId) {
-    const configEl = document.getElementById("taskTypeConfig");
-    const tooltipEl = document.getElementById("taskTypeTooltip");
-    const selected = getTaskType(typeId);
-
-    tooltipEl.textContent = selected
-        ? selected.tooltip
-        : "No task — only the cooldown below stands between you and the site.";
-
-    pendingGuardCode = null;
-
-    if (typeId === "cooldown") {
-        configEl.innerHTML = `
-            <textarea
-                id="taskMessage"
-                placeholder="Message you'll have to type back... (e.g. 'You set this block for a reason.')"
-                maxlength="200"
-            ></textarea>
-        `;
-        return;
-    }
-
-    if (typeId === "code") {
-        // Generated here rather than at save time so the user can see it while
-        // deciding, and copy it down before committing.
-        pendingGuardCode = generateGuardCode();
-        configEl.innerHTML = `
-            <p class="guard-code">${pendingGuardCode}</p>
-            <p class="guard-code-note">
-                Write this down and put it somewhere you'd have to get up to reach.
-                It will not be shown again after you save.
-            </p>
-        `;
-        return;
-    }
-
-    // "passage" needs no configuration, and "" (no task) needs no fields.
-    configEl.innerHTML = typeId === "passage"
-        ? `<p class="guard-code-note">Nothing to set up — a new passage is generated at each unlock.</p>`
-        : "";
-}
-
-// Reads the open picker into a task object.
-// Returns undefined when the picker isn't open, so the caller can tell
-// "untouched" apart from "explicitly set to no task" (which returns null).
-function readTaskForm() {
-    const select = document.getElementById("taskType");
-    if (!select) return undefined;
-
-    const typeId = select.value;
-    if (!typeId) return null;
-
-    if (typeId === "cooldown") {
-        const messageInput = document.getElementById("taskMessage");
-        return {
-            type: "cooldown",
-            message: messageInput.value.trim() || "Take a breath. You set this block."
-        };
-    }
-
-    if (typeId === "code") {
-        return { type: "code", code: pendingGuardCode };
-    }
-
-    return { type: typeId };
-}
-
-// ---- Cooldown block -------------------------------------------------------
-
-function readCooldownForm() {
-    const minutes = Number(document.getElementById("cooldownMinutes").value);
-
-    return normalizeCooldown({
-        // The field is in minutes because the floor is one minute; storage is
-        // in seconds because that's what the countdown ticks in.
-        seconds: minutes * 60,
-        escalate: document.getElementById("cooldownEscalate").checked,
-        factor: Number(document.getElementById("cooldownFactor").value)
-    });
-}
-
-function applyCooldownToForm(cooldown) {
-    const settings = normalizeCooldown(cooldown);
-
-    document.getElementById("cooldownMinutes").value =
-        Math.max(1, Math.round(settings.seconds / 60));
-    document.getElementById("cooldownEscalate").checked = settings.escalate;
-    document.getElementById("cooldownFactor").value = settings.factor;
-
-    syncEscalationField();
-}
-
-// The rate only means anything while escalation is on, so it follows the
-// checkbox — same pattern as the per-category "permanent" checkboxes above.
-function syncEscalationField() {
-    const enabled = document.getElementById("cooldownEscalate").checked;
-    const field = document.getElementById("cooldownFactorField");
-
-    document.getElementById("cooldownFactor").disabled = !enabled;
-    field.classList.toggle("disabled-field", !enabled);
-}
-
-// On load — restore the saved task and cooldown.
-// This is a SEPARATE DOMContentLoaded listener from the one above that
-// restores the category checkboxes — both fire in the order they were
-// registered when the page loads, they don't conflict, but they could
-// have been merged into one listener instead of two.
 document.addEventListener("DOMContentLoaded", () => {
+    loadCategories().then(({ categories, manualSites: manual }) => {
+        categoryState = categories;
+        manualSites = manual;
+        renderCategoryList();
+    });
+
     chrome.storage.local.get(["unlockTask", "cooldownSettings"], (result) => {
         renderTaskPanel(result.unlockTask || null);
-        applyCooldownToForm(result.cooldownSettings);
-
-        document.getElementById("cooldownEscalate")
-            .addEventListener("change", syncEscalationField);
+        renderCooldownBlock(
+            document.getElementById("fortressCooldown"),
+            "fortress",
+            result.cooldownSettings,
+            "COOLDOWN"
+        );
     });
 });
-

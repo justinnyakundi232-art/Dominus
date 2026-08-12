@@ -98,6 +98,24 @@ body {
   font-size: 1.5rem;
 }
 
+/* Names the category governing this block. Quiet and empty-by-default — it
+   answers a question rather than asking one, and stays blank for a site blocked
+   by hand, where there is no category to name. */
+.category-note-badge {
+  margin-right: 6px;
+  font-style: normal;
+}
+
+.category-note {
+  color: #B8860B;
+  font-size: 0.9rem;
+  font-style: italic;
+  text-align: center;
+  margin: 0 auto 10px;
+  max-width: 80%;
+  min-height: 1.2em;
+}
+
 #taskArea {
   width: 70%;
 }

@@ -113,6 +113,36 @@ footer p {
   border: 1px solid #B8860B;
 }
 
+/* Category heading inside the blocked list. Sticky so the group a row belongs
+   to stays on screen while the list scrolls. */
+.blocked-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  position: sticky;
+  top: 0;
+  padding: 6px 12px;
+  background: #14120c;
+  border-bottom: 1px solid #3d3210;
+  font-size: 0.75rem;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: #D4AF37;
+}
+
+.blocked-group-badge {
+  font-size: 0.85rem;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.blocked-group-note {
+  margin-left: auto;
+  font-size: 0.65rem;
+  color: #E63D3D;
+  letter-spacing: 0.5px;
+}
+
 .blocked-item {
   display: flex;
   align-items: center;
@@ -125,6 +155,37 @@ footer p {
 
 .blocked-item:last-child {
   border-bottom: none;
+}
+
+/* Domain over its source, so the row reads top-down as "what" then "why".
+   min-width:0 lets a long domain ellipsis instead of shoving the remove
+   button out of the fixed-width popup. */
+.blocked-item-label {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+  text-align: left;
+}
+
+.blocked-item-domain {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+/* Which category the block comes from. Deliberately quiet — it explains the
+   row, it isn't the point of it. */
+.blocked-item-source {
+  font-size: 0.7rem;
+  color: #B8860B;
+  letter-spacing: 0.3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
 }
 
 .remove-blocked-btn {
