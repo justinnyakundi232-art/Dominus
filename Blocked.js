@@ -14,41 +14,20 @@ const mainHeading = document.getElementById("mainHeading");
 const subtitle = document.getElementById("subtitle");
 const taskArea = document.getElementById("taskArea");
 const unlockBtn = document.getElementById("unlockBtn");
-const categories = {
-    socialMedia: [
-        "facebook.com",
-        "instagram.com",
-        "reddit.com",
-        "x.com",
-        "tiktok.com",
-        "snapchat.com"
-    ],
+// The category list this page enforces. Before 1.8 it was a hardcoded object
+// duplicated from BuildFortress.js; it now comes from storage via
+// Categories.js, so a category the user renamed, re-stocked or invented is
+// honoured here too.
+//
+// Read once and cached: every lookup below (permanence, task, cooldown) needs
+// it, and it cannot change while this page is open.
+let categoryDefs = [];
 
-    videoStreaming: [
-        "youtube.com",
-        "netflix.com",
-        "twitch.tv",
-        "hulu.com",
-        "disneyplus.com"
-    ],
+const categoriesReady = loadCategories().then(({ categories }) => {
+    categoryDefs = categories;
+    return categories;
+});
 
-    gaming: [
-        "roblox.com",
-        "steamcommunity.com",
-        "epicgames.com",
-        "miniclip.com"
-    ]
-};
-
-// Finds which category (if any) a domain belongs to
-function getCategoryForDomain(domain) {
-    for (const categoryName in categories) {
-        if (categories[categoryName].includes(domain)) {
-            return categoryName;
-        }
-    }
-    return null;
-}
 let countdownInterval = null;
 let visibilityHandler = null;
 let originalUrl = getOriginalUrl();
@@ -77,19 +56,17 @@ document.getElementById("focusBtn").addEventListener("click", async () => {
     chrome.tabs.remove(tab.id);
 });
 
-// Renders the initial "Complete Task to Unblock" button
 // Renders the initial "Complete Task to Unblock" button, or a disabled
-// permanent-block message if the site's category is set to permanent
+// permanent-block message when a category holding this site is permanent.
+//
+// Permanence resolves most-restrictive across every category the site sits in
+// (isPermanentDomain), so adding a site to a second, laxer category can't
+// quietly reopen one that was sealed.
 function renderCompleteTaskButton() {
-    chrome.storage.local.get(["categorySettings"], (result) => {
-        const settings = result.categorySettings || {};
-        const domain = originalUrl
-            ? new URL(originalUrl).hostname.replace(/^www\./, "")
-            : null;
-        const category = domain ? getCategoryForDomain(domain) : null;
-        const isPermanent = category && settings[category]?.permanent;
+    categoriesReady.then(() => {
+        const domain = currentDomain();
 
-        if (isPermanent) {
+        if (isPermanentDomain(categoryDefs, domain)) {
             taskArea.innerHTML = `
                 <button id="completeTaskBtn" disabled class="permanent-disabled">COMPLETE TASK TO UNBLOCK</button>
                 <p class="permanent-note">You set this to permanently blocked for a reason.</p>
@@ -102,9 +79,46 @@ function renderCompleteTaskButton() {
         document.getElementById("completeTaskBtn")
             .addEventListener("click", () => {
                 chrome.storage.local.get(["unlockTask"], (taskResult) => {
-                    beginTask(taskResult.unlockTask || null);
+                    // The category's own task wins over the fortress-wide one
+                    // when it declared an override.
+                    beginTask(resolveTaskForDomain(
+                        categoryDefs,
+                        domain,
+                        taskResult.unlockTask || null
+                    ));
                 });
             });
+    });
+}
+
+// Names the category governing this site under the heading, so which standards
+// apply is never a guess — particularly when a site sits in several categories
+// and only the first one in the fortress list actually governs it.
+function renderGoverningCategory() {
+    categoriesReady.then(() => {
+        const el = document.getElementById("categoryNote");
+        if (!el) return;
+
+        const category = governingCategory(categoryDefs, currentDomain());
+        if (!category) return;
+
+        const hasOwnStandards = ("task" in category) || Boolean(category.cooldown);
+
+        // Built as nodes rather than innerHTML: the category name is user-typed
+        // and has no business being parsed as markup.
+        const badge = document.createElement("span");
+        badge.className = "category-note-badge";
+        badge.style.color = categoryColorValue(category);
+        badge.textContent = category.glyph;
+
+        const text = document.createElement("span");
+        text.textContent = hasOwnStandards
+            ? `Blocked under ${category.name} — this category sets its own terms.`
+            : `Blocked under ${category.name}.`;
+
+        el.textContent = "";
+        el.appendChild(badge);
+        el.appendChild(text);
     });
 }
 
@@ -246,12 +260,20 @@ function recordEscalationUnlock(domain) {
     });
 }
 
+// The cooldown that applies to *this* site: the governing category's override
+// if it set one, otherwise the fortress-wide setting. Resolved the same way as
+// the task but read separately, because the cooldown also runs when there is no
+// task at all.
 function getCooldownSettings() {
-    return new Promise((resolve) => {
+    return categoriesReady.then(() => new Promise((resolve) => {
         chrome.storage.local.get(["cooldownSettings"], (result) => {
-            resolve(normalizeCooldown(result.cooldownSettings));
+            resolve(resolveCooldownForDomain(
+                categoryDefs,
+                currentDomain(),
+                result.cooldownSettings
+            ));
         });
-    });
+    }));
 }
 
 // ---- Cooldown -------------------------------------------------------------
@@ -440,4 +462,5 @@ function renderStreak() {
 
 // Initial render on page load
 renderCompleteTaskButton();
+renderGoverningCategory();
 renderStreak();

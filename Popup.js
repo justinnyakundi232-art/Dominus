@@ -1,6 +1,11 @@
 // For blocking the current site when the user clicks the "BLOCK SITE" button
 let currentDomain = null;
 
+// Cached category model, so the blocked list can name where each block came
+// from without re-reading storage per row. Refreshed by renderBlockedList().
+let categoryDefs = [];
+let manualSites = [];
+
 // REMOVE_COOLDOWN_SECONDS — seconds the confirm button stays locked before a
 // block can be permanently removed — now lives in Tasks.js, shared with the
 // task-removal gate on the fortress page.
@@ -19,8 +24,11 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     currentDomain = new URL(tab.url).hostname.replace(/^www\./, "");
 
-    chrome.storage.local.get(["blockedSites"], (result) => {
-        updateBlockButton(result.blockedSites || []);
+    // Derived rather than read from blockedSites, so the button is right even
+    // on the very first load after upgrading, before migration has written the
+    // derived list back.
+    loadCategories().then(({ categories, manualSites: manual }) => {
+        updateBlockButton(computeBlockedSites(categories, manual));
     });
 });
 
@@ -44,12 +52,18 @@ document.getElementById("blockBtn").addEventListener("click", async () => {
 
     let domain = new URL(tab.url).hostname.replace(/^www\./, "");
 
-    chrome.storage.local.get(["blockedSites"], (result) => {
-        let blocked = result.blockedSites || [];
-        if (blocked.includes(domain)) return;
+    // Recorded in manualSites as well as blockedSites. Without that second
+    // list, ticking and then unticking a category on the fortress page would
+    // delete a hand-blocked site that happened to appear in its preset list.
+    loadCategories().then(({ categories, manualSites: manual }) => {
+        if (computeBlockedSites(categories, manual).includes(domain)) return;
 
-        blocked.push(domain);
-        chrome.storage.local.set({ blockedSites: blocked }, () => {
+        const updatedManual = manual.concat([domain]);
+
+        chrome.storage.local.set({
+            [MANUAL_SITES_KEY]: updatedManual,
+            blockedSites: computeBlockedSites(categories, updatedManual)
+        }, () => {
             chrome.tabs.update(tab.id, {
                 url: chrome.runtime.getURL("Blocked.html") +
                     "?url=" + encodeURIComponent(tab.url)
@@ -71,40 +85,106 @@ document.getElementById("buildBtn").addEventListener("click", async () => {
     });
 });
 
-// Renders the "Currently Blocked" list with per-site remove buttons
+// Renders the "Currently Blocked" list with per-site remove buttons, each
+// annotated with the category (or categories) it comes from.
+//
+// The list is derived from the category model rather than read straight out of
+// blockedSites, so what's shown and what's enforced can't disagree.
 function renderBlockedList() {
-    chrome.storage.local.get(["blockedSites"], (result) => {
-        const blocked = result.blockedSites || [];
+    loadCategories().then(({ categories, manualSites: manual }) => {
+        categoryDefs = categories;
+        manualSites = manual;
+
+        const groups = groupBlockedSites(categories, manual);
         const section = document.getElementById("blockedListSection");
         const list = document.getElementById("blockedList");
 
         list.innerHTML = "";
 
-        if (blocked.length === 0) {
+        if (groups.length === 0) {
             section.hidden = true;
             return;
         }
 
         section.hidden = false;
 
-        blocked.slice().sort().forEach((domain) => {
-            const item = document.createElement("li");
-            item.className = "blocked-item";
-
-            const label = document.createElement("span");
-            label.textContent = domain;
-
-            const removeBtn = document.createElement("button");
-            removeBtn.className = "remove-blocked-btn";
-            removeBtn.textContent = "×";
-            removeBtn.setAttribute("aria-label", `Unblock ${domain}`);
-            removeBtn.addEventListener("click", () => openRemoveModal(domain));
-
-            item.appendChild(label);
-            item.appendChild(removeBtn);
-            list.appendChild(item);
+        groups.forEach((group) => {
+            list.appendChild(buildGroupHeading(group.category));
+            group.sites.forEach((domain) => {
+                list.appendChild(buildBlockedRow(domain, categories));
+            });
         });
     });
+}
+
+// The banner heading a group of blocked sites. A null category is the
+// catch-all: sites blocked by hand, or left over from a category that has since
+// been switched off.
+function buildGroupHeading(category) {
+    const heading = document.createElement("li");
+    heading.className = "blocked-group";
+
+    if (!category) {
+        heading.textContent = "Added manually";
+        return heading;
+    }
+
+    const badge = document.createElement("span");
+    badge.className = "blocked-group-badge";
+    badge.style.color = categoryColorValue(category);
+    badge.textContent = category.glyph;
+
+    const name = document.createElement("span");
+    name.textContent = category.name;
+
+    heading.appendChild(badge);
+    heading.appendChild(name);
+
+    // Worth flagging here rather than only on the blocked page: it is the
+    // difference between a block you can talk your way past and one you can't.
+    if (category.permanent) {
+        const note = document.createElement("span");
+        note.className = "blocked-group-note";
+        note.textContent = "permanent";
+        heading.appendChild(note);
+    }
+
+    return heading;
+}
+
+function buildBlockedRow(domain, categories) {
+    const item = document.createElement("li");
+    item.className = "blocked-item";
+
+    const label = document.createElement("div");
+    label.className = "blocked-item-label";
+
+    const name = document.createElement("span");
+    name.className = "blocked-item-domain";
+    name.textContent = domain;
+    label.appendChild(name);
+
+    // The group heading already names the category governing this site, so the
+    // subtext only carries what the heading can't: the other categories the
+    // site also belongs to, which decide nothing here but explain why removing
+    // it touches more than one place.
+    const also = secondaryCategoriesForDomain(categories, domain);
+    if (also.length) {
+        const source = document.createElement("span");
+        source.className = "blocked-item-source";
+        source.textContent = `also in ${also.map((c) => c.name).join(", ")}`;
+        label.appendChild(source);
+    }
+
+    const removeBtn = document.createElement("button");
+    removeBtn.className = "remove-blocked-btn";
+    removeBtn.textContent = "×";
+    removeBtn.setAttribute("aria-label", `Unblock ${domain}`);
+    removeBtn.addEventListener("click", () => openRemoveModal(domain));
+
+    item.appendChild(label);
+    item.appendChild(removeBtn);
+    return item;
 }
 
 // --- Removal friction gate ------------------------------------------------
@@ -125,8 +205,26 @@ let removeCountdownInterval = null;
 function openRemoveModal(domain) {
     pendingRemoveDomain = domain;
 
-    removeModalText.textContent =
-        `Permanently remove ${domain} from your blocked list? This undoes the block completely.`;
+    const owning = categoriesForDomain(categoryDefs, domain);
+
+    const lines = [
+        `Permanently remove ${domain} from your blocked list? This undoes the block completely.`
+    ];
+
+    // Removing a site that a category is responsible for has to take it out of
+    // that category too, or the next fortress save would silently put it back.
+    // That's a bigger edit than the row suggests, so it gets said out loud
+    // rather than discovered later.
+    if (owning.length) {
+        const names = owning.map((category) => category.name).join(" and ");
+        lines.push(`It will also be removed from ${names}.`);
+
+        if (owning.some((category) => category.permanent)) {
+            lines.push("You marked that category permanently blocked.");
+        }
+    }
+
+    removeModalText.textContent = lines.join(" ");
 
     // Show the streak at stake. getStats() is async; guard against the modal
     // being closed or retargeted before it resolves.
@@ -181,12 +279,28 @@ removeModalConfirm.addEventListener("click", () => {
     removeBlockedSite(domain);
 });
 
-// Removes a single domain from the blocked list and refreshes the popup UI
+// Removes a single domain everywhere it is blocked from, and refreshes the UI.
+//
+// It has to come out of the categories as well as the manual list: leaving it
+// in an enabled category would mean the row reappears the next time the
+// fortress is saved, which reads as the removal having silently failed.
 function removeBlockedSite(domain) {
-    chrome.storage.local.get(["blockedSites"], (result) => {
-        let blocked = (result.blockedSites || []).filter((d) => d !== domain);
+    loadCategories().then(({ categories, manualSites: manual }) => {
+        const updatedCategories = categories.map((category) => {
+            if (!category.sites.includes(domain)) return category;
+            return Object.assign({}, category, {
+                sites: category.sites.filter((site) => site !== domain)
+            });
+        });
 
-        chrome.storage.local.set({ blockedSites: blocked }, () => {
+        const updatedManual = manual.filter((site) => site !== domain);
+        const blocked = computeBlockedSites(updatedCategories, updatedManual);
+
+        chrome.storage.local.set({
+            [CATEGORY_DEFS_KEY]: updatedCategories,
+            [MANUAL_SITES_KEY]: updatedManual,
+            blockedSites: blocked
+        }, () => {
             renderBlockedList();
             updateBlockButton(blocked);
         });

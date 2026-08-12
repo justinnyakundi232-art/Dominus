@@ -7,6 +7,7 @@ A free, open-source Chrome extension designed to help users reduce distractions 
 
 - Website blocking
 - Custom categories
+- Per-category unlock tasks and cooldowns
 - Self accountability
 - Easy configuration
 

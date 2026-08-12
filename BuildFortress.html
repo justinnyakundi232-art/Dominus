@@ -27,56 +27,26 @@
       <section class="fortress-panels">
 
         <div class="panel defenses-panel">
-          <!-- Example categories, you can customize these -->
           <h2 class="panel-heading">CHOOSE YOUR DEFENSES</h2>
           <p class="panel-description">SELECT CATEGORIES TO BLOCK</p>
-          <div class="category-row">
-            <label class="category">
-                <input type="checkbox" id="socialMedia">
-                <span>Social Media</span>
-            </label>
-          </div>
 
-          <div class="category-options">
-            <label title="The blocked page will show no way to unlock this category. The only way to re-enable access is to come back here and uncheck this.">
-              <input id="socialMediaPermanent" type="checkbox">
-              Permanently Block (disables unlocks)
-            </label>
-          </div>
+          <!-- Rendered from storage by renderCategoryList(). The three starting
+               categories are only seeds — they can be renamed, re-stocked or
+               removed like any category the user adds. -->
+          <div id="categoryList" class="category-list"></div>
 
-          <div class="category-row">
-            <label class="category">
-                <input type="checkbox" id="videoStreaming">
-                <span>Video Streaming</span>
-            </label>
-          </div>
-          
-          <div class="category-options">
-            <label title="The blocked page will show no way to unlock this category. The only way to re-enable access is to come back here and uncheck this.">
-              <input id="videoStreamingPermanent" type="checkbox">
-              Permanently Block (disables unlocks)
-            </label>
-          </div>
-
-          <div class="category-row">
-            <label class="category">
-                <input type="checkbox" id="gaming">
-                <span>Gaming</span>
-            </label>
-          </div>
-
-          <div class="category-options">
-            <label title="The blocked page will show no way to unlock this category. The only way to re-enable access is to come back here and uncheck this.">
-              <input id="gamingPermanent" type="checkbox">
-              Permanently Block (disables unlocks)
-            </label>
-          </div>
+          <button type="button" class="add-category-btn" id="addCategoryBtn">
+            + New category
+          </button>
         </div>
 
         <div class="panel standards-panel">
-          <!-- Example tasks, you can customize these -->
           <h2 class="panel-heading">SET YOUR STANDARDS</h2>
           <p class = "panel-description">TASKS TO EARN ACCESS</p>
+          <p class="panel-note">
+            Applies to every blocked site that isn't governed by a category with
+            standards of its own.
+          </p>
           <div class="task-row">
             <button class="task-btn" id = "addTaskBtn">
               Add task
@@ -84,33 +54,11 @@
           </div>
 
           <!-- Shared by every task (and by the no-task case): the cooldown that
-               has to elapse on the blocked page before UNLOCK SITE goes live. -->
-          <div class="cooldown-block">
-            <p class="cooldown-heading">
-              COOLDOWN
-              <span class="info-tip" tabindex="0" role="button" aria-label="What is the cooldown?">(?)<span class="info-tooltip" role="tooltip">Time you must sit on the blocked page before UNLOCK SITE becomes clickable. The countdown pauses if you switch away from the tab, so it only runs while you are actually looking at it.</span></span>
-            </p>
-
-            <label class="cooldown-field">
-              <span>Duration</span>
-              <input type="number" id="cooldownMinutes" min="1" step="1" value="1">
-              <span>minutes</span>
-            </label>
-
-            <label class="cooldown-toggle">
-              <input type="checkbox" id="cooldownEscalate">
-              <span>
-                Escalate on repeat unlocks
-                <span class="info-tip" tabindex="0" role="button" aria-label="What is escalation?">(?)<span class="info-tooltip" role="tooltip">Each time you unlock the same site on the same day, its next cooldown is multiplied by this rate. The count resets at midnight, and the cooldown is capped at 60 minutes so you can never lock yourself out for good.</span></span>
-              </span>
-            </label>
-
-            <label class="cooldown-field" id="cooldownFactorField">
-              <span>Rate</span>
-              <input type="number" id="cooldownFactor" min="1.25" step="0.05" value="1.25">
-              <span>&times; per unlock</span>
-            </label>
-          </div>
+               has to elapse on the blocked page before UNLOCK SITE goes live.
+               Rendered by renderCooldownBlock() rather than written out here, so
+               the per-category override fields below are guaranteed to be the
+               same controls with the same limits. -->
+          <div class="cooldown-block" id="fortressCooldown"></div>
         </div>
 
       </section>
@@ -134,9 +82,25 @@
         </div>
       </div>
 
+      <!-- Deleting a category that is currently switched on takes real blocks
+           down with it, so it goes through the same gate as removing a block or
+           a task rather than vanishing on one click. -->
+      <div id="removeCategoryModal" class="modal-overlay" hidden>
+        <div class="modal-box">
+          <h2 class="modal-title">DELETE THIS CATEGORY?</h2>
+          <p id="removeCategoryModalStreak" class="modal-streak"></p>
+          <p id="removeCategoryModalText" class="modal-text"></p>
+          <div class="modal-actions">
+            <button id="removeCategoryModalCancel" class="modal-btn modal-btn-secondary">CANCEL</button>
+            <button id="removeCategoryModalConfirm" class="modal-btn" disabled>CONFIRM</button>
+          </div>
+        </div>
+      </div>
+
     </div>
   <script src="Stats.js"></script>
   <script src="Tasks.js"></script>
+  <script src="Categories.js"></script>
   <script src="BuildFortress.js"></script>
   </body>
 </html>

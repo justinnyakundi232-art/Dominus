@@ -46,8 +46,216 @@ h1{
 .category-row{
     display:flex;
     align-items:center;
+    justify-content:space-between;
+    gap:10px;
     border:1px solid #B8860B;
-    height:40px;
+    min-height:40px;
+    padding:0 10px;
+    box-sizing:border-box;
+}
+
+/* ---- Category list (rendered from storage since 1.8) ---- */
+
+.category-block{
+    margin-bottom:14px;
+}
+
+.category-empty{
+    color:#B8860B;
+    font-size:0.9rem;
+    font-style:italic;
+}
+
+.category-name{
+    text-align:left;
+}
+
+/* The category's mark, inked in its banner colour. Sized to sit level with the
+   name rather than tower over it. */
+.category-badge{
+    font-size:0.95rem;
+    line-height:1;
+    flex-shrink:0;
+}
+
+.banner-row{
+    display:flex;
+    flex-wrap:wrap;
+    gap:6px;
+}
+
+.swatch,
+.glyph-option{
+    width:28px;
+    height:28px;
+    padding:0;
+    font-size:1rem;
+    line-height:1;
+    cursor:pointer;
+    background:none;
+    border:1px solid #3d3210;
+    font-family:'Playfair Display', serif;
+}
+
+.swatch:hover,
+.glyph-option:hover{
+    border-color:#B8860B;
+    background:none;
+}
+
+/* The chosen option is marked by its border, not by a fill — a filled swatch
+   would hide the very colour it represents. */
+.swatch.selected,
+.glyph-option.selected{
+    border-color:#D4AF37;
+    box-shadow:0 0 4px rgba(212,175,55,0.6);
+}
+
+/* The collapsed row's one-line answer to "what does this category do" —
+   how many sites, and whose standards govern them. */
+.category-summary{
+    margin-left:auto;
+    font-size:0.75rem;
+    color:#B8860B;
+    letter-spacing:0.3px;
+    white-space:nowrap;
+}
+
+.category-toggle{
+    width:auto;
+    padding:2px 8px;
+    font-size:0.9rem;
+    line-height:1;
+    background:none;
+    border:1px solid #B8860B;
+    color:#D4AF37;
+    cursor:pointer;
+    flex-shrink:0;
+}
+
+.category-toggle:hover{
+    background:#B8860B;
+    color:black;
+}
+
+.category-detail{
+    border:1px solid #3d3210;
+    border-top:none;
+    padding:12px;
+    display:flex;
+    flex-direction:column;
+    align-items:stretch;
+    gap:12px;
+    text-align:left;
+}
+
+.category-detail[hidden]{
+    display:none;
+}
+
+.category-field{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    color:#B8860B;
+    font-size:0.9rem;
+}
+
+/* Label above the control rather than beside it, for the sites box where a
+   row of text plus a five-line textarea would be unreadable. */
+.category-field-block{
+    flex-direction:column;
+    align-items:stretch;
+    gap:6px;
+}
+
+.category-field input[type="text"],
+.category-detail textarea{
+    background-color:#0d0d0d;
+    color:#E5E5E5;
+    border:1px solid #B8860B;
+    border-radius:2px;
+    padding:6px 8px;
+    font-family:'Playfair Display', serif;
+    font-size:0.9rem;
+    outline:none;
+    box-sizing:border-box;
+}
+
+.category-field input[type="text"]{
+    flex:1;
+}
+
+.category-detail textarea{
+    width:100%;
+    resize:vertical;
+}
+
+.category-field input[type="text"]:focus,
+.category-detail textarea:focus{
+    border-color:#D4AF37;
+    box-shadow:0 0 4px rgba(212,175,55,0.5);
+}
+
+.category-standards-toggle{
+    align-self:flex-start;
+}
+
+.category-standards{
+    display:flex;
+    flex-direction:column;
+    gap:12px;
+    border-top:1px solid #3d3210;
+    padding-top:12px;
+}
+
+.category-standards[hidden]{
+    display:none;
+}
+
+.category-cooldown{
+    margin-top:0;
+}
+
+.category-delete{
+    align-self:flex-start;
+    width:auto;
+    padding:6px 12px;
+    font-size:0.85rem;
+    cursor:pointer;
+    background:none;
+    border:1px solid #E63D3D;
+    color:#E63D3D;
+}
+
+.category-delete:hover{
+    background:#E63D3D;
+    color:black;
+}
+
+.add-category-btn{
+    width:100%;
+    padding:8px;
+    font-size:0.95rem;
+    cursor:pointer;
+    background:none;
+    border:1px dashed #B8860B;
+    color:#D4AF37;
+    font-family:'Playfair Display', serif;
+}
+
+.add-category-btn:hover{
+    background:#B8860B;
+    color:black;
+}
+
+/* Sits under the standards panel heading to say what these controls actually
+   reach, now that a category can opt out of them. */
+.panel-note{
+    font-size:0.8rem;
+    color:#B8860B;
+    font-style:italic;
+    margin:-10px 0 20px;
 }
 .task-row{
   display: flex;

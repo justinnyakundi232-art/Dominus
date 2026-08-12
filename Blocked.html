@@ -34,6 +34,12 @@
   <div class="streak">
     DISCIPLINE STREAK: <span id="streakValue">…</span>
   </div>
+
+  <!-- Which category is responsible for this block, and whether it sets its own
+       terms. Filled by renderGoverningCategory(); stays empty for a site blocked
+       by hand from the popup, since there is no category to name. Sits outside
+       #taskArea so the countdown's redraws can't wipe it. -->
+  <p class="category-note" id="categoryNote"></p>
   <!-- Actions -->
   <main>
     <button id="focusBtn">STAY FOCUSED</button>
@@ -54,6 +60,7 @@
 
     <script src="Stats.js"></script>
     <script src="Tasks.js"></script>
+    <script src="Categories.js"></script>
     <script src="Blocked.js"></script>
   </main>
 
