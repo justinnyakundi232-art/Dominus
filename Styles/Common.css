@@ -154,3 +154,90 @@
     color:initial;
     background:linear-gradient(to bottom, #6e5a1f, #594a16, #3d3210);
 }
+
+/* ---- The seal prompt ----------------------------------------------------
+ *
+ * Built by Seal.js and raised on both the popup and Build Fortress, so it is
+ * styled once here. Every rule is specific enough to beat the pages' base
+ * `button` and `input` styles — the popup's buttons are 300px wide and 20px
+ * tall by default, which a "Forgot your seal?" link must not inherit. */
+
+.seal-losses{
+    list-style:none;
+    margin:0 0 16px;
+    padding:0;
+    text-align:left;
+    color:#E5E5E5;
+    font-size:0.9rem;
+}
+
+.seal-losses li{
+    padding:6px 0 6px 16px;
+    position:relative;
+    line-height:1.4;
+}
+
+.seal-losses li::before{
+    content:"·";
+    position:absolute;
+    left:2px;
+    color:#D4AF37;
+}
+
+.seal-input{
+    width:100%;
+    box-sizing:border-box;
+    padding:10px 12px;
+    margin:0 0 10px;
+    background:#000;
+    border:1px solid #B8860B;
+    color:#E5E5E5;
+    font-family:inherit;
+    font-size:1rem;
+    text-align:center;
+    letter-spacing:0.15em;
+}
+
+.seal-input:focus{
+    outline:none;
+    border-color:#D4AF37;
+}
+
+.seal-input:disabled{
+    opacity:0.5;
+}
+
+.seal-hint{
+    color:#B8860B;
+    font-size:0.85rem;
+    font-style:italic;
+    margin:0 0 10px;
+}
+
+.seal-error{
+    color:#E63D3D;
+    font-size:0.85rem;
+    margin:0 0 14px;
+    min-height:1.1em;
+}
+
+/* A text link, not a button, whatever the element is. It is the way out of a
+   forgotten seal — findable, but never competing with CANCEL and UNSEAL. */
+.seal-forgot{
+    display:block;
+    width:auto;
+    margin:16px auto 0;
+    padding:4px;
+    background:none;
+    border:none;
+    color:#8B95A3;
+    font-family:inherit;
+    font-size:0.8rem;
+    text-decoration:underline;
+    cursor:pointer;
+}
+
+.seal-forgot:hover{
+    background:none;
+    color:#E5E5E5;
+}

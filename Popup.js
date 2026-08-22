@@ -204,6 +204,17 @@ let pendingRemoveDomain = null;
 let removeCountdownInterval = null;
 
 function openRemoveModal(domain) {
+    // A sealed fortress meets the seal prompt the moment this removal commits,
+    // and that prompt names the same site, shows the same streak, and asks for
+    // the password on top of it. Raising this one first would be two dialogs
+    // for one click, which is how a feature ends up switched off.
+    isSealed().then((sealed) => {
+        if (sealed) return removeBlockedSite(domain);
+        openRemoveConfirmation(domain);
+    });
+}
+
+function openRemoveConfirmation(domain) {
     pendingRemoveDomain = domain;
 
     const owning = categoriesForDomain(categoryDefs, domain);

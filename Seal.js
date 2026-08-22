@@ -436,6 +436,14 @@ function countSites(n) {
     return `${n} ${n === 1 ? "site" : "sites"}`;
 }
 
+// Kept as one phrase rather than countSites() plus a fixed verb, so the verb
+// agrees: "1 site stops", "3 sites stop".
+function sitesStopBeingBlocked(n) {
+    return n === 1
+        ? "1 site stops being blocked"
+        : `${n} sites stop being blocked`;
+}
+
 // "Gaming's" for a category, "Fortress-wide" for the defaults everything else
 // inherits.
 function standardsOwner(categoryName) {
@@ -551,13 +559,13 @@ function describeWeakening(before, after) {
 
         if (!now) {
             if (was.sites.length) {
-                lines.push(`${was.name} deleted — ${countSites(was.sites.length)} stop being blocked.`);
+                lines.push(`${was.name} deleted — ${sitesStopBeingBlocked(was.sites.length)}.`);
             }
             return;
         }
 
         if (!now.enabled) {
-            lines.push(`${was.name} switched off — ${countSites(was.sites.length)} stop being blocked.`);
+            lines.push(`${was.name} switched off — ${sitesStopBeingBlocked(was.sites.length)}.`);
             // Everything else about a category that is now off is moot: its
             // sites aren't blocked either way, and listing further changes to
             // it would pad the prompt with things that don't matter.
@@ -693,9 +701,199 @@ function commitFortress(next) {
     });
 }
 
-// Placeholder — the prompt itself lands in the next commit. Until then a
-// sealed fortress cannot exist (nothing sets a seal yet), so this is never
-// reached.
-function promptForSeal() {
-    return Promise.resolve(true);
+// ---- The prompt -----------------------------------------------------------
+//
+// Built here rather than written into each page's HTML, the way
+// renderCooldownBlock() is: the popup and the fortress page both raise it, and
+// two copies of the markup would be two things to keep in step. It renders
+// into the shared .modal-overlay / .modal-box classes that live in Common.css.
+//
+// Everything is built as nodes rather than innerHTML. The lines it displays
+// contain category names the user typed, which have no business being parsed
+// as markup — the same reason renderGoverningCategory() builds its badge by
+// hand on the blocked page.
+
+function sealElement(tag, className, text) {
+    const el = document.createElement(tag);
+    if (className) el.className = className;
+    if (text !== undefined) el.textContent = text;
+    return el;
+}
+
+// Resolves true if the seal was given, false if the user backed out or started
+// a recovery. False must leave the fortress exactly as it was.
+function promptForSeal(weakenings) {
+    return Promise.all([loadSeal(), sealLockoutRemaining()])
+        .then(([seal, waiting]) => new Promise((resolve) => {
+            buildSealPrompt(seal, waiting, weakenings, resolve);
+        }));
+}
+
+function buildSealPrompt(seal, waiting, weakenings, resolve) {
+    const overlay = sealElement("div", "modal-overlay seal-overlay");
+    const box = sealElement("div", "modal-box");
+    overlay.appendChild(box);
+
+    box.appendChild(sealElement("h2", "modal-title", "THE SEAL"));
+
+    // The streak at stake, filled in when it resolves. Same line the removal
+    // gates have shown since 1.4.5 — the seal replaces those gates when it is
+    // set, so it has to carry what they carried.
+    const streak = sealElement("p", "modal-streak", "");
+    box.appendChild(streak);
+    getStats().then((stats) => {
+        if (!overlay.isConnected || stats.currentStreak <= 0) return;
+        const days = stats.currentStreak;
+        streak.textContent =
+            `You're on a ${days}-day discipline streak — don't dismantle what you've built.`;
+    });
+
+    box.appendChild(sealElement("p", "modal-text", "This takes defences down:"));
+
+    const losses = sealElement("ul", "seal-losses");
+    weakenings.forEach((line) => losses.appendChild(sealElement("li", null, line)));
+    box.appendChild(losses);
+
+    const input = sealElement("input", "seal-input");
+    input.type = "password";
+    input.placeholder = "Your seal";
+    input.setAttribute("aria-label", "Your seal");
+    // Pasting is deliberately NOT blocked here, unlike the typing tasks: the
+    // target text is not on screen, and a password manager filling this in is
+    // someone using their own seal, not shortcutting a challenge.
+    box.appendChild(input);
+
+    if (seal.hint) {
+        box.appendChild(sealElement("p", "seal-hint", `Hint: ${seal.hint}`));
+    }
+
+    const error = sealElement("p", "seal-error", "");
+    box.appendChild(error);
+
+    const actions = sealElement("div", "modal-actions");
+    const cancel = sealElement("button", "modal-btn modal-btn-secondary", "CANCEL");
+    const confirm = sealElement("button", "modal-btn", "UNSEAL");
+    actions.appendChild(cancel);
+    actions.appendChild(confirm);
+    box.appendChild(actions);
+
+    const forgot = sealElement("button", "seal-forgot", "Forgot your seal?");
+    box.appendChild(forgot);
+
+    // ---- wiring ----------------------------------------------------------
+
+    let countdown = null;
+
+    function finish(granted) {
+        clearInterval(countdown);
+        overlay.remove();
+        resolve(granted);
+    }
+
+    // Locks the input for the rest of a wait the throttle has imposed, ticking
+    // down so the user can see it is finite rather than the button being dead.
+    function holdFor(seconds) {
+        clearInterval(countdown);
+
+        let remaining = seconds;
+        input.disabled = true;
+        confirm.disabled = true;
+        confirm.classList.add("disabled");
+
+        function tick() {
+            if (remaining <= 0) {
+                clearInterval(countdown);
+                input.disabled = false;
+                confirm.disabled = false;
+                confirm.classList.remove("disabled");
+                confirm.textContent = "UNSEAL";
+                input.focus();
+                return;
+            }
+            confirm.textContent = `UNSEAL (${remaining})`;
+            remaining--;
+        }
+
+        tick();
+        countdown = setInterval(tick, 1000);
+    }
+
+    function attempt() {
+        if (confirm.disabled) return;
+
+        const password = input.value;
+        input.value = "";
+
+        verifySeal(password).then((result) => {
+            if (!overlay.isConnected) return;
+
+            if (result.ok) return finish(true);
+
+            error.textContent = result.waitSeconds > 0
+                ? `That isn't your seal. Wait ${formatHuman(result.waitSeconds)} before trying again.`
+                : "That isn't your seal.";
+
+            if (result.waitSeconds > 0) holdFor(result.waitSeconds);
+        });
+    }
+
+    confirm.addEventListener("click", attempt);
+    cancel.addEventListener("click", () => finish(false));
+
+    input.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") attempt();
+    });
+
+    overlay.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") finish(false);
+    });
+
+    forgot.addEventListener("click", () => {
+        renderRecoveryOffer(box, finish, seal);
+    });
+
+    document.body.appendChild(overlay);
+
+    if (waiting > 0) {
+        error.textContent = `Wait ${formatHuman(waiting)} before trying again.`;
+        holdFor(waiting);
+    } else {
+        input.focus();
+    }
+}
+
+// The forgot-your-seal path. It replaces the prompt's contents rather than
+// opening a second dialog, so there is only ever one thing on screen — and it
+// states the cost plainly instead of asking "are you sure?", which nobody
+// reads.
+function renderRecoveryOffer(box, finish, seal) {
+    box.textContent = "";
+
+    box.appendChild(sealElement("h2", "modal-title", "LIFT THE SEAL?"));
+    box.appendChild(sealElement("p", "modal-text",
+        "The seal will lift in 1 hour. Your fortress stands untouched until then, "
+        + "and you can call this off at any point before it does."));
+
+    if (seal.hint) {
+        box.appendChild(sealElement("p", "seal-hint", `Your hint: ${seal.hint}`));
+    }
+
+    const actions = sealElement("div", "modal-actions");
+    const back = sealElement("button", "modal-btn modal-btn-secondary", "NEVER MIND");
+    const start = sealElement("button", "modal-btn", "START THE HOUR");
+    actions.appendChild(back);
+    actions.appendChild(start);
+    box.appendChild(actions);
+
+    back.addEventListener("click", () => finish(false));
+
+    start.addEventListener("click", () => {
+        requestSealRecovery().then(() => {
+            // Refused, not granted: the seal is still on for the next hour, so
+            // this edit does not go through. That is the point — recovery is a
+            // way back into your settings tomorrow, not a way past the prompt
+            // tonight.
+            finish(false);
+        });
+    });
 }

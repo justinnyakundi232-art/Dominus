@@ -654,7 +654,25 @@ function deleteCategory(categoryId) {
 
 // Shared countdown for every confirm button on this page: locks it, ticks down,
 // then arms it. Hands the interval id back so each caller can clear its own.
+//
+// On a sealed fortress the countdown gives way. These gates edit the working
+// copy rather than storage, so the seal is charged later, when SAVE FORTRESS
+// commits — and ten seconds on top of a password is friction the user pays
+// twice for one decision. The gate itself stays: it is still the moment to say
+// what is being given up, and the seal prompt at save time is a long way from
+// the click that caused it.
 function startModalCooldown(button, readyLabel, onInterval) {
+    isSealed().then((sealed) => {
+        if (!sealed) return runModalCooldown(button, readyLabel, onInterval);
+
+        button.disabled = false;
+        button.classList.remove("disabled");
+        button.textContent = readyLabel;
+        onInterval(null);
+    });
+}
+
+function runModalCooldown(button, readyLabel, onInterval) {
     let remaining = REMOVE_COOLDOWN_SECONDS;
 
     button.disabled = true;
@@ -715,21 +733,30 @@ function renderTaskPanel(task) {
     // null, and calling .addEventListener on null throws immediately.
     document.querySelector(".remove-task-btn")
         .addEventListener("click", () => {
-            openRemoveTaskModal(
-                task,
-                task.type === "code"
-                    ? `Remove your ${getTaskTitle(task.type)} task? The saved code is discarded for good — the copy you wrote down will stop working, and a new task means a new code.`
-                    : `Remove your ${getTaskTitle(task.type)} task? Unlocking a blocked site will only require the cooldown after this.`,
-                () => {
-                    // The one edit on this page that commits the moment it is
-                    // confirmed rather than waiting for SAVE FORTRESS, which is
-                    // how Remove Task has always behaved. It now goes through
-                    // the same chokepoint as everything else.
-                    commitFortress({ task: null }).then((outcome) => {
-                        if (outcome.saved) renderTaskPanel(null);
-                    });
-                }
-            );
+            // The one edit on this page that commits the moment it is
+            // confirmed rather than waiting for SAVE FORTRESS, which is how
+            // Remove Task has always behaved.
+            const removeTask = () => {
+                commitFortress({ task: null }).then((outcome) => {
+                    if (outcome.saved) renderTaskPanel(null);
+                });
+            };
+
+            // Because it commits straight away, a sealed fortress raises the
+            // seal prompt on the spot — and that prompt already names the task
+            // and shows the streak. So this gate gives way rather than
+            // stacking, exactly as the popup's does.
+            isSealed().then((sealed) => {
+                if (sealed) return removeTask();
+
+                openRemoveTaskModal(
+                    task,
+                    task.type === "code"
+                        ? `Remove your ${getTaskTitle(task.type)} task? The saved code is discarded for good — the copy you wrote down will stop working, and a new task means a new code.`
+                        : `Remove your ${getTaskTitle(task.type)} task? Unlocking a blocked site will only require the cooldown after this.`,
+                    removeTask
+                );
+            });
         });
 }
 
