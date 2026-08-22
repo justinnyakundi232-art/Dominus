@@ -12,6 +12,7 @@ let manualSites = [];
 
 document.addEventListener("DOMContentLoaded", async () => {
     renderBlockedList();
+    renderSealNotice(document.getElementById("sealNotice"));
 
     let [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
@@ -58,12 +59,13 @@ document.getElementById("blockBtn").addEventListener("click", async () => {
     loadCategories().then(({ categories, manualSites: manual }) => {
         if (computeBlockedSites(categories, manual).includes(domain)) return;
 
-        const updatedManual = manual.concat([domain]);
-
-        chrome.storage.local.set({
-            [MANUAL_SITES_KEY]: updatedManual,
-            blockedSites: computeBlockedSites(categories, updatedManual)
-        }, () => {
+        // Blocking a site is strengthening, so this never meets the seal. It
+        // still goes through commitFortress() rather than writing storage
+        // directly, so blockedSites is derived in one place instead of three.
+        commitFortress({
+            categories: categories,
+            manualSites: manual.concat([domain])
+        }).then(() => {
             chrome.tabs.update(tab.id, {
                 url: chrome.runtime.getURL("Blocked.html") +
                     "?url=" + encodeURIComponent(tab.url)
@@ -203,6 +205,17 @@ let pendingRemoveDomain = null;
 let removeCountdownInterval = null;
 
 function openRemoveModal(domain) {
+    // A sealed fortress meets the seal prompt the moment this removal commits,
+    // and that prompt names the same site, shows the same streak, and asks for
+    // the password on top of it. Raising this one first would be two dialogs
+    // for one click, which is how a feature ends up switched off.
+    isSealed().then((sealed) => {
+        if (sealed) return removeBlockedSite(domain);
+        openRemoveConfirmation(domain);
+    });
+}
+
+function openRemoveConfirmation(domain) {
     pendingRemoveDomain = domain;
 
     const owning = categoriesForDomain(categoryDefs, domain);
@@ -293,16 +306,16 @@ function removeBlockedSite(domain) {
             });
         });
 
-        const updatedManual = manual.filter((site) => site !== domain);
-        const blocked = computeBlockedSites(updatedCategories, updatedManual);
+        commitFortress({
+            categories: updatedCategories,
+            manualSites: manual.filter((site) => site !== domain)
+        }).then((outcome) => {
+            // A refused commit wrote nothing, so there is nothing to redraw —
+            // the site is still blocked and the list already says so.
+            if (!outcome.saved) return;
 
-        chrome.storage.local.set({
-            [CATEGORY_DEFS_KEY]: updatedCategories,
-            [MANUAL_SITES_KEY]: updatedManual,
-            blockedSites: blocked
-        }, () => {
             renderBlockedList();
-            updateBlockButton(blocked);
+            updateBlockButton(outcome.blockedSites);
         });
     });
 }

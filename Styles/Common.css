@@ -53,3 +53,234 @@
     opacity:1;
     visibility:visible;
 }
+
+/* ---- Friction-gate modal ------------------------------------------------
+ *
+ * The confirmation used by every "you are about to dismantle your own
+ * defences" gate: removing a block, removing a task, deleting a category,
+ * and (since 1.9) the seal prompt.
+ *
+ * These rules lived in three copies — Popup.css, BuildFortress.css and
+ * Blocked.css — which were identical apart from how big the box was. The
+ * seal prompt is built by Seal.js and rendered on more than one page, so it
+ * needs one definition to render against; the per-page size and weight
+ * differences stay behind in each page's own stylesheet. */
+
+.modal-overlay{
+    position:fixed;
+    inset:0;
+    background:rgba(0,0,0,0.8);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:16px;
+    box-sizing:border-box;
+    z-index:20;
+}
+
+.modal-overlay[hidden]{
+    display:none;
+}
+
+.modal-box{
+    background:#0d0d0d;
+    border:2px solid #B8860B;
+    padding:24px;
+    width:100%;
+    max-width:420px;
+    box-sizing:border-box;
+    text-align:center;
+}
+
+.modal-title{
+    color:#D4AF37;
+    font-size:1.4rem;
+    margin:0 0 12px;
+}
+
+.modal-streak{
+    color:#E63D3D;
+    font-size:0.95rem;
+    font-style:italic;
+    margin:0 0 10px;
+}
+
+.modal-text{
+    color:#E5E5E5;
+    font-size:0.95rem;
+    margin:0 0 18px;
+}
+
+.modal-actions{
+    display:flex;
+    gap:10px;
+    justify-content:center;
+}
+
+/* Carries its own appearance rather than inheriting the page's base button:
+   Build Fortress has no base button rule at all, so a modal button there was
+   invisible without one. */
+.modal-btn{
+    width:auto;
+    padding:10px 18px;
+    font-size:0.95rem;
+    margin-bottom:0;
+    cursor:pointer;
+    border:1px solid #B8860B;
+    background:linear-gradient(to bottom, #D4AF37, #B8860B);
+}
+
+.modal-btn-secondary{
+    background:none;
+    border:1px solid #B8860B;
+    color:#E5E5E5;
+}
+
+.modal-btn-secondary:hover{
+    background:#B8860B;
+    color:black;
+}
+
+.modal-btn.disabled,
+.modal-btn:disabled{
+    opacity:0.4;
+    cursor:not-allowed;
+    background:linear-gradient(to bottom, #6e5a1f, #594a16, #3d3210);
+}
+
+/* Beats the page's own button:hover, which would otherwise light up a button
+   that is deliberately locked. */
+.modal-btn:disabled:hover{
+    color:initial;
+    background:linear-gradient(to bottom, #6e5a1f, #594a16, #3d3210);
+}
+
+/* ---- The seal prompt ----------------------------------------------------
+ *
+ * Built by Seal.js and raised on both the popup and Build Fortress, so it is
+ * styled once here. Every rule is specific enough to beat the pages' base
+ * `button` and `input` styles — the popup's buttons are 300px wide and 20px
+ * tall by default, which a "Forgot your seal?" link must not inherit. */
+
+.seal-losses{
+    list-style:none;
+    margin:0 0 16px;
+    padding:0;
+    text-align:left;
+    color:#E5E5E5;
+    font-size:0.9rem;
+}
+
+.seal-losses li{
+    padding:6px 0 6px 16px;
+    position:relative;
+    line-height:1.4;
+}
+
+.seal-losses li::before{
+    content:"·";
+    position:absolute;
+    left:2px;
+    color:#D4AF37;
+}
+
+.seal-input{
+    width:100%;
+    box-sizing:border-box;
+    padding:10px 12px;
+    margin:0 0 10px;
+    background:#000;
+    border:1px solid #B8860B;
+    color:#E5E5E5;
+    font-family:inherit;
+    font-size:1rem;
+    text-align:center;
+    letter-spacing:0.15em;
+}
+
+.seal-input:focus{
+    outline:none;
+    border-color:#D4AF37;
+}
+
+.seal-input:disabled{
+    opacity:0.5;
+}
+
+.seal-hint{
+    color:#B8860B;
+    font-size:0.85rem;
+    font-style:italic;
+    margin:0 0 10px;
+}
+
+.seal-error{
+    color:#E63D3D;
+    font-size:0.85rem;
+    margin:0 0 14px;
+    min-height:1.1em;
+}
+
+/* A text link, not a button, whatever the element is. It is the way out of a
+   forgotten seal — findable, but never competing with CANCEL and UNSEAL. */
+.seal-forgot{
+    display:block;
+    width:auto;
+    margin:16px auto 0;
+    padding:4px;
+    background:none;
+    border:none;
+    color:#8B95A3;
+    font-family:inherit;
+    font-size:0.8rem;
+    text-decoration:underline;
+    cursor:pointer;
+}
+
+.seal-forgot:hover{
+    background:none;
+    color:#E5E5E5;
+}
+
+/* ---- Recovery notice ----------------------------------------------------
+ *
+ * Shown on the popup and the blocked page only while a seal recovery is
+ * counting down. Deliberately styled as a warning rather than a status line:
+ * an hour from now the fortress loses its seal, and that should read as
+ * something happening TO the user, not something already settled. */
+
+.seal-notice{
+    display:block;
+    margin:0 0 16px;
+    padding:10px 14px;
+    border:1px solid #E63D3D;
+    background:rgba(230,61,61,0.08);
+    color:#E5E5E5;
+    font-size:0.85rem;
+    line-height:1.4;
+    text-align:center;
+}
+
+.seal-notice[hidden]{
+    display:none;
+}
+
+/* The way back is always attached to the warning. Sized explicitly so it can't
+   inherit the popup's 300px-wide base button. */
+.seal-keep{
+    display:inline-block;
+    width:auto;
+    margin:0 0 0 8px;
+    padding:2px 10px;
+    background:none;
+    border:1px solid #E63D3D;
+    color:#E63D3D;
+    font-family:inherit;
+    font-size:0.8rem;
+    cursor:pointer;
+}
+
+.seal-keep:hover{
+    background:#E63D3D;
+    color:black;
+}

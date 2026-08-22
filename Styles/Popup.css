@@ -202,94 +202,17 @@ footer p {
   color: black;
 }
 
-/* Removal confirmation modal (friction gate) */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.8);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
-  box-sizing: border-box;
-  z-index: 10;
-}
-
-.modal-overlay[hidden] {
-  display: none;
-}
-
+/* Modal skeleton lives in Common.css. The popup is 300px wide, so only the
+   box size and type scale differ here. */
 .modal-box {
-  background: #0d0d0d;
-  border: 2px solid #B8860B;
   padding: 20px;
-  width: 100%;
   max-width: 320px;
-  box-sizing: border-box;
-  text-align: center;
 }
 
 .modal-title {
-  color: #D4AF37;
   font-size: 1.3rem;
-  margin: 0 0 12px;
-}
-
-.modal-streak {
-  color: #E63D3D;
-  font-size: 0.95rem;
-  font-style: italic;
-  margin: 0 0 10px;
 }
 
 .modal-text {
-  color: #E5E5E5;
   font-size: 0.9rem;
-  margin: 0 0 18px;
-}
-
-.modal-actions {
-  display: flex;
-  gap: 10px;
-  justify-content: center;
-}
-
-.modal-btn {
-  width: auto;
-  padding: 10px 18px;
-  font-size: 0.95rem;
-  margin-bottom: 0;
-}
-
-.modal-btn-secondary {
-  background: none;
-  border: 1px solid #B8860B;
-  color: #E5E5E5;
-}
-
-.modal-btn-secondary:hover {
-  background: #B8860B;
-  color: black;
-}
-
-.modal-btn.disabled,
-.modal-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-  background: linear-gradient(
-    to bottom,
-    #6e5a1f,
-    #594a16,
-    #3d3210
-    );
-}
-
-.modal-btn:disabled:hover {
-  color: initial;
-  background: linear-gradient(
-    to bottom,
-    #6e5a1f,
-    #594a16,
-    #3d3210
-    );
 }

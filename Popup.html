@@ -8,6 +8,7 @@
   <!-- Font (optional but recommended early) -->
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&display=swap" rel="stylesheet">
   <link rel="icon" href="Assets/SHIELDICON.png">
+  <link href="Styles/Common.css" rel="stylesheet">
   <link href="Styles/Popup.css" rel="stylesheet">
 </head>
 <body>
@@ -20,6 +21,11 @@
   </header>
 
   <main>
+    <!-- Only ever visible while a seal recovery is counting down. It has to be
+         loud somewhere the user actually goes, or a recovery started "just in
+         case" quietly runs out. Filled by renderSealNotice(). -->
+    <p id="sealNotice" class="seal-notice" hidden></p>
+
     <button id="blockBtn">...</button>
     <button id="buildBtn">BUILD THE FORTRESS</button>
     <button id="trackBtn">TRACK PROGRESS</button>
@@ -48,6 +54,7 @@
   <script src="Stats.js" defer></script>
   <script src="Tasks.js" defer></script>
   <script src="Categories.js" defer></script>
+  <script src="Seal.js" defer></script>
   <script src="Popup.js" defer></script>
 </body>
 </html>

@@ -654,7 +654,25 @@ function deleteCategory(categoryId) {
 
 // Shared countdown for every confirm button on this page: locks it, ticks down,
 // then arms it. Hands the interval id back so each caller can clear its own.
+//
+// On a sealed fortress the countdown gives way. These gates edit the working
+// copy rather than storage, so the seal is charged later, when SAVE FORTRESS
+// commits — and ten seconds on top of a password is friction the user pays
+// twice for one decision. The gate itself stays: it is still the moment to say
+// what is being given up, and the seal prompt at save time is a long way from
+// the click that caused it.
 function startModalCooldown(button, readyLabel, onInterval) {
+    isSealed().then((sealed) => {
+        if (!sealed) return runModalCooldown(button, readyLabel, onInterval);
+
+        button.disabled = false;
+        button.classList.remove("disabled");
+        button.textContent = readyLabel;
+        onInterval(null);
+    });
+}
+
+function runModalCooldown(button, readyLabel, onInterval) {
     let remaining = REMOVE_COOLDOWN_SECONDS;
 
     button.disabled = true;
@@ -715,17 +733,30 @@ function renderTaskPanel(task) {
     // null, and calling .addEventListener on null throws immediately.
     document.querySelector(".remove-task-btn")
         .addEventListener("click", () => {
-            openRemoveTaskModal(
-                task,
-                task.type === "code"
-                    ? `Remove your ${getTaskTitle(task.type)} task? The saved code is discarded for good — the copy you wrote down will stop working, and a new task means a new code.`
-                    : `Remove your ${getTaskTitle(task.type)} task? Unlocking a blocked site will only require the cooldown after this.`,
-                () => {
-                    chrome.storage.local.set({ unlockTask: null }, () => {
-                        renderTaskPanel(null);
-                    });
-                }
-            );
+            // The one edit on this page that commits the moment it is
+            // confirmed rather than waiting for SAVE FORTRESS, which is how
+            // Remove Task has always behaved.
+            const removeTask = () => {
+                commitFortress({ task: null }).then((outcome) => {
+                    if (outcome.saved) renderTaskPanel(null);
+                });
+            };
+
+            // Because it commits straight away, a sealed fortress raises the
+            // seal prompt on the spot — and that prompt already names the task
+            // and shows the streak. So this gate gives way rather than
+            // stacking, exactly as the popup's does.
+            isSealed().then((sealed) => {
+                if (sealed) return removeTask();
+
+                openRemoveTaskModal(
+                    task,
+                    task.type === "code"
+                        ? `Remove your ${getTaskTitle(task.type)} task? The saved code is discarded for good — the copy you wrote down will stop working, and a new task means a new code.`
+                        : `Remove your ${getTaskTitle(task.type)} task? Unlocking a blocked site will only require the cooldown after this.`,
+                    removeTask
+                );
+            });
         });
 }
 
@@ -809,6 +840,172 @@ removeTaskModalConfirm.addEventListener("click", () => {
     confirmed();
 });
 
+// ---- The seal panel -------------------------------------------------------
+// Where the seal is set, changed and broken. Everything here goes through
+// Seal.js: this file decides what the panel looks like, never what counts as a
+// valid seal or how one is stored.
+//
+// Three states, redrawn from storage rather than toggled in place, for the
+// same reason the task panel is: a panel that disagrees with what is actually
+// saved is worse than one that flickers.
+
+function renderSealPanel() {
+    const host = document.getElementById("sealControls");
+    if (!host) return;
+
+    loadSeal().then((seal) => {
+        if (!seal.enabled) return renderSealSetup(host);
+        renderSealSummary(host, seal);
+    });
+}
+
+// No seal yet: choose one.
+function renderSealSetup(host, error) {
+    host.innerHTML = `
+        <div class="seal-form">
+            <label class="seal-field">
+                <span>Choose a seal</span>
+                <input type="password" id="sealNew" placeholder="At least ${SEAL_MIN_LENGTH} characters">
+            </label>
+            <label class="seal-field">
+                <span>Type it again</span>
+                <input type="password" id="sealRepeat">
+            </label>
+            <label class="seal-field">
+                <span>Hint (optional)</span>
+                <input type="text" id="sealHint" maxlength="${MAX_SEAL_HINT_LENGTH}" placeholder="Shown on the prompt — not the seal itself">
+            </label>
+            <p class="seal-panel-error">${escapeHtml(error || "")}</p>
+            <button type="button" class="task-btn" id="sealSubmit">Seal the gates</button>
+        </div>
+    `;
+
+    document.getElementById("sealSubmit").addEventListener("click", () => {
+        const password = document.getElementById("sealNew").value;
+        const repeat = document.getElementById("sealRepeat").value;
+        const hint = document.getElementById("sealHint").value;
+
+        if (password !== repeat) {
+            return renderSealSetup(host, "Those two don't match.");
+        }
+
+        setSeal(password, hint).then((result) => {
+            if (!result.ok) return renderSealSetup(host, result.error);
+            renderSealPanel();
+        });
+    });
+}
+
+// Sealed: say so, offer the two ways out, and surface a recovery in progress.
+function renderSealSummary(host, seal) {
+    const remaining = recoveryRemainingMs(seal);
+
+    host.innerHTML = `
+        <div class="seal-form">
+            <p class="seal-state">Your fortress is sealed.</p>
+            ${seal.hint ? `<p class="seal-hint">Hint: ${escapeHtml(seal.hint)}</p>` : ""}
+            ${remaining ? `
+                <p class="seal-pending">
+                    You asked for this seal to be lifted. It goes in
+                    ${escapeHtml(formatRecoveryRemaining(remaining))}.
+                    <button type="button" class="seal-forgot" id="sealKeep">Call it off</button>
+                </p>` : ""}
+            <div class="seal-actions">
+                <button type="button" class="task-btn" id="sealChange">Change seal</button>
+                <button type="button" class="task-btn" id="sealBreak">Break the seal</button>
+            </div>
+        </div>
+    `;
+
+    if (remaining) {
+        document.getElementById("sealKeep").addEventListener("click", () => {
+            cancelSealRecovery().then(renderSealPanel);
+        });
+    }
+
+    document.getElementById("sealChange")
+        .addEventListener("click", () => renderSealChange(host));
+
+    document.getElementById("sealBreak")
+        .addEventListener("click", () => renderSealBreak(host));
+}
+
+function renderSealChange(host, error) {
+    host.innerHTML = `
+        <div class="seal-form">
+            <label class="seal-field">
+                <span>Current seal</span>
+                <input type="password" id="sealCurrent">
+            </label>
+            <label class="seal-field">
+                <span>New seal</span>
+                <input type="password" id="sealNew">
+            </label>
+            <label class="seal-field">
+                <span>Type it again</span>
+                <input type="password" id="sealRepeat">
+            </label>
+            <label class="seal-field">
+                <span>Hint (optional)</span>
+                <input type="text" id="sealHint" maxlength="${MAX_SEAL_HINT_LENGTH}">
+            </label>
+            <p class="seal-panel-error">${escapeHtml(error || "")}</p>
+            <div class="seal-actions">
+                <button type="button" class="task-btn" id="sealCancel">Cancel</button>
+                <button type="button" class="task-btn" id="sealSubmit">Change seal</button>
+            </div>
+        </div>
+    `;
+
+    document.getElementById("sealCancel").addEventListener("click", renderSealPanel);
+
+    document.getElementById("sealSubmit").addEventListener("click", () => {
+        const current = document.getElementById("sealCurrent").value;
+        const password = document.getElementById("sealNew").value;
+        const repeat = document.getElementById("sealRepeat").value;
+        const hint = document.getElementById("sealHint").value;
+
+        if (password !== repeat) {
+            return renderSealChange(host, "Those two don't match.");
+        }
+
+        changeSeal(current, password, hint).then((result) => {
+            if (!result.ok) return renderSealChange(host, result.error);
+            renderSealPanel();
+        });
+    });
+}
+
+// Breaking the seal is itself a weakening — it is the one that makes every
+// other weakening free — so it costs the seal, and says what it costs.
+function renderSealBreak(host, error) {
+    host.innerHTML = `
+        <div class="seal-form">
+            <p class="seal-state">
+                Break the seal and every gate goes back to a ten-second pause.
+            </p>
+            <label class="seal-field">
+                <span>Current seal</span>
+                <input type="password" id="sealCurrent">
+            </label>
+            <p class="seal-panel-error">${escapeHtml(error || "")}</p>
+            <div class="seal-actions">
+                <button type="button" class="task-btn" id="sealCancel">Keep it</button>
+                <button type="button" class="task-btn" id="sealSubmit">Break the seal</button>
+            </div>
+        </div>
+    `;
+
+    document.getElementById("sealCancel").addEventListener("click", renderSealPanel);
+
+    document.getElementById("sealSubmit").addEventListener("click", () => {
+        clearSeal(document.getElementById("sealCurrent").value).then((result) => {
+            if (!result.ok) return renderSealBreak(host, result.error);
+            renderSealPanel();
+        });
+    });
+}
+
 // ---- Save -----------------------------------------------------------------
 
 document.querySelector(".save-btn").addEventListener("click", () => {
@@ -830,19 +1027,18 @@ document.querySelector(".save-btn").addEventListener("click", () => {
         const cooldownToSave = readCooldownBlock("fortress")
             || normalizeCooldown(result.cooldownSettings);
 
-        // blockedSites is derived, not edited: the union of every enabled
-        // category and the popup's manual list. Before 1.8 this page added and
-        // deleted entries directly, which meant unticking a category deleted
-        // its preset sites even when the user had blocked one of them by hand.
-        const blockedSites = computeBlockedSites(categoryState, manualSites);
+        // Everything this page can change goes to storage in one commit, which
+        // is also where the seal is charged: commitFortress() works out whether
+        // this save takes any defence down and asks for the seal if it does.
+        // blockedSites is derived in there rather than here.
+        commitFortress({
+            categories: categoryState,
+            manualSites: manualSites,
+            task: taskToSave,
+            cooldown: cooldownToSave
+        }).then((outcome) => {
+            if (!outcome.saved) return reportSaveRefused();
 
-        chrome.storage.local.set({
-            [CATEGORY_DEFS_KEY]: categoryState,
-            [MANUAL_SITES_KEY]: manualSites,
-            blockedSites: blockedSites,
-            unlockTask: taskToSave,
-            cooldownSettings: cooldownToSave
-        }, () => {
             // Every draft code is now committed to storage, so the pending map
             // is dropped: from here on a Guarded Code is saved, and the pickers
             // must stop showing it.
@@ -877,6 +1073,21 @@ document.querySelector(".save-btn").addEventListener("click", () => {
     });
 });
 
+// A save the seal turned down. Nothing was written, and — just as importantly
+// — nothing on the page is reverted: every edit is still in the form, so the
+// user can enter their seal and try again, or undo the part they didn't mean.
+function reportSaveRefused() {
+    const saveBtn = document.querySelector(".save-btn");
+    const original = saveBtn.textContent;
+
+    saveBtn.textContent = "NOT SAVED — SEAL REQUIRED";
+    saveBtn.disabled = true;
+    setTimeout(() => {
+        saveBtn.textContent = original;
+        saveBtn.disabled = false;
+    }, 2000);
+}
+
 // ---- Load -----------------------------------------------------------------
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -895,4 +1106,6 @@ document.addEventListener("DOMContentLoaded", () => {
             "COOLDOWN"
         );
     });
+
+    renderSealPanel();
 });

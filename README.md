@@ -9,6 +9,7 @@ A free, open-source Chrome extension designed to help users reduce distractions 
 - Streak history you can read at a glance
 - Custom categories
 - Per-category unlock tasks and cooldowns
+- A password on anything that weakens your fortress
 - Self accountability
 - Easy configuration
 
@@ -19,7 +20,7 @@ Find projects like this here: [AJ7 developments](https://aj7developments.com)
 ## Roadmap
 
 - [x] Statistics page
-- [ ] Password-protected settings
+- [x] Password-protected settings
 - [ ] Scheduling
 - [ ] Sync across devices
 

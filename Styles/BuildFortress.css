@@ -32,7 +32,7 @@ h1{
 
 .fortress-panels{
     display:flex;
-    flex-wrap: flex;
+    flex-wrap:wrap;
     justify-content:center;
     gap:25px;
 }
@@ -538,85 +538,7 @@ h1{
     top:-1px;
 }
 
-/* ---- Task-removal confirmation (friction gate) ---- */
-
-.modal-overlay{
-    position:fixed;
-    inset:0;
-    background:rgba(0,0,0,0.8);
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    padding:16px;
-    box-sizing:border-box;
-    z-index:20;
-}
-
-.modal-overlay[hidden]{
-    display:none;
-}
-
-.modal-box{
-    background:#0d0d0d;
-    border:2px solid #B8860B;
-    padding:24px;
-    width:100%;
-    max-width:420px;
-    box-sizing:border-box;
-    text-align:center;
-}
-
-.modal-title{
-    color:#D4AF37;
-    font-size:1.4rem;
-    margin:0 0 12px;
-}
-
-.modal-streak{
-    color:#E63D3D;
-    font-size:0.95rem;
-    font-style:italic;
-    margin:0 0 10px;
-}
-
-.modal-text{
-    color:#E5E5E5;
-    font-size:0.95rem;
-    margin:0 0 18px;
-}
-
-.modal-actions{
-    display:flex;
-    gap:10px;
-    justify-content:center;
-}
-
-.modal-btn{
-    width:auto;
-    padding:10px 18px;
-    font-size:0.95rem;
-    cursor:pointer;
-    border:1px solid #B8860B;
-    background:linear-gradient(to bottom, #D4AF37, #B8860B);
-}
-
-.modal-btn-secondary{
-    background:none;
-    border:1px solid #B8860B;
-    color:#E5E5E5;
-}
-
-.modal-btn-secondary:hover{
-    background:#B8860B;
-    color:black;
-}
-
-.modal-btn.disabled,
-.modal-btn:disabled{
-    opacity:0.4;
-    cursor:not-allowed;
-    background:linear-gradient(to bottom, #6e5a1f, #594a16, #3d3210);
-}
+/* Modal skeleton lives in Common.css; this page uses it unmodified. */
 
 /* Tooltips inside a panel open inward rather than centred on the "(?)".
    The panels are fixed-width and sit off to the side, so the shared 300px
@@ -644,4 +566,100 @@ h1{
 
 .disabled-field input{
     cursor:not-allowed;
+}
+
+/* ---- The seal panel ------------------------------------------------------
+ *
+ * A full-width band under the two panels rather than a third column beside
+ * them: it governs the whole fortress rather than one half of it, and three
+ * 500px panels do not fit on an ordinary screen. */
+
+.seal-panel{
+    width:auto;
+    max-width:1025px;   /* the two panels plus the gap between them */
+    margin:25px auto 0;
+    box-sizing:border-box;
+}
+
+.seal-form{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:10px;
+    margin:18px 0 0;
+}
+
+.seal-field{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    width:100%;
+    max-width:460px;
+    justify-content:space-between;
+    color:#E5E5E5;
+    font-size:0.9rem;
+}
+
+.seal-field span{
+    flex:0 0 130px;
+    text-align:left;
+}
+
+.seal-field input{
+    flex:1 1 auto;
+    min-width:0;
+    padding:8px 10px;
+    background:#000;
+    border:1px solid #B8860B;
+    color:#E5E5E5;
+    font-family:inherit;
+    font-size:0.95rem;
+}
+
+.seal-field input:focus{
+    outline:none;
+    border-color:#D4AF37;
+}
+
+.seal-state{
+    color:#D4AF37;
+    font-size:1rem;
+    margin:0;
+    text-align:center;
+}
+
+.seal-pending{
+    color:#E63D3D;
+    font-size:0.85rem;
+    font-style:italic;
+    margin:0;
+    max-width:460px;
+    text-align:center;
+}
+
+.seal-panel-error{
+    color:#E63D3D;
+    font-size:0.85rem;
+    margin:0;
+    min-height:1.1em;
+    text-align:center;
+}
+
+.seal-actions{
+    display:flex;
+    gap:10px;
+    justify-content:center;
+    flex-wrap:wrap;
+}
+
+/* Says plainly what the seal is and isn't. Set quietly: it is a footnote, not
+   a disclaimer banner. */
+.seal-honesty{
+    margin:20px auto 0;
+    max-width:560px;
+    color:#8B95A3;
+    font-size:0.8rem;
+    font-style:italic;
+    line-height:1.5;
+    text-align:center;
 }
