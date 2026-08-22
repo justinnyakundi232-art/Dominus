@@ -897,3 +897,36 @@ function renderRecoveryOffer(box, finish, seal) {
         });
     });
 }
+
+// ---- The recovery notice --------------------------------------------------
+
+// Fills the "your seal lifts in N" line shown on the popup and the blocked
+// page, and hides it when nothing is pending.
+//
+// A recovery that runs quietly for an hour is one somebody started as
+// insurance and then forgot about, which is how a commitment device stops
+// being one. So it is said out loud in the two places the user actually goes,
+// with the way back always attached.
+function renderSealNotice(el) {
+    if (!el) return Promise.resolve();
+
+    return loadSeal().then((seal) => {
+        const remaining = recoveryRemainingMs(seal);
+
+        if (!remaining) {
+            el.hidden = true;
+            el.textContent = "";
+            return;
+        }
+
+        el.textContent = `Your seal lifts in ${formatRecoveryRemaining(remaining)}.`;
+
+        const keep = sealElement("button", "seal-keep", "Keep it");
+        keep.addEventListener("click", () => {
+            cancelSealRecovery().then(() => renderSealNotice(el));
+        });
+
+        el.appendChild(keep);
+        el.hidden = false;
+    });
+}

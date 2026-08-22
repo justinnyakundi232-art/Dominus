@@ -840,6 +840,172 @@ removeTaskModalConfirm.addEventListener("click", () => {
     confirmed();
 });
 
+// ---- The seal panel -------------------------------------------------------
+// Where the seal is set, changed and broken. Everything here goes through
+// Seal.js: this file decides what the panel looks like, never what counts as a
+// valid seal or how one is stored.
+//
+// Three states, redrawn from storage rather than toggled in place, for the
+// same reason the task panel is: a panel that disagrees with what is actually
+// saved is worse than one that flickers.
+
+function renderSealPanel() {
+    const host = document.getElementById("sealControls");
+    if (!host) return;
+
+    loadSeal().then((seal) => {
+        if (!seal.enabled) return renderSealSetup(host);
+        renderSealSummary(host, seal);
+    });
+}
+
+// No seal yet: choose one.
+function renderSealSetup(host, error) {
+    host.innerHTML = `
+        <div class="seal-form">
+            <label class="seal-field">
+                <span>Choose a seal</span>
+                <input type="password" id="sealNew" placeholder="At least ${SEAL_MIN_LENGTH} characters">
+            </label>
+            <label class="seal-field">
+                <span>Type it again</span>
+                <input type="password" id="sealRepeat">
+            </label>
+            <label class="seal-field">
+                <span>Hint (optional)</span>
+                <input type="text" id="sealHint" maxlength="${MAX_SEAL_HINT_LENGTH}" placeholder="Shown on the prompt — not the seal itself">
+            </label>
+            <p class="seal-panel-error">${escapeHtml(error || "")}</p>
+            <button type="button" class="task-btn" id="sealSubmit">Seal the gates</button>
+        </div>
+    `;
+
+    document.getElementById("sealSubmit").addEventListener("click", () => {
+        const password = document.getElementById("sealNew").value;
+        const repeat = document.getElementById("sealRepeat").value;
+        const hint = document.getElementById("sealHint").value;
+
+        if (password !== repeat) {
+            return renderSealSetup(host, "Those two don't match.");
+        }
+
+        setSeal(password, hint).then((result) => {
+            if (!result.ok) return renderSealSetup(host, result.error);
+            renderSealPanel();
+        });
+    });
+}
+
+// Sealed: say so, offer the two ways out, and surface a recovery in progress.
+function renderSealSummary(host, seal) {
+    const remaining = recoveryRemainingMs(seal);
+
+    host.innerHTML = `
+        <div class="seal-form">
+            <p class="seal-state">Your fortress is sealed.</p>
+            ${seal.hint ? `<p class="seal-hint">Hint: ${escapeHtml(seal.hint)}</p>` : ""}
+            ${remaining ? `
+                <p class="seal-pending">
+                    You asked for this seal to be lifted. It goes in
+                    ${escapeHtml(formatRecoveryRemaining(remaining))}.
+                    <button type="button" class="seal-forgot" id="sealKeep">Call it off</button>
+                </p>` : ""}
+            <div class="seal-actions">
+                <button type="button" class="task-btn" id="sealChange">Change seal</button>
+                <button type="button" class="task-btn" id="sealBreak">Break the seal</button>
+            </div>
+        </div>
+    `;
+
+    if (remaining) {
+        document.getElementById("sealKeep").addEventListener("click", () => {
+            cancelSealRecovery().then(renderSealPanel);
+        });
+    }
+
+    document.getElementById("sealChange")
+        .addEventListener("click", () => renderSealChange(host));
+
+    document.getElementById("sealBreak")
+        .addEventListener("click", () => renderSealBreak(host));
+}
+
+function renderSealChange(host, error) {
+    host.innerHTML = `
+        <div class="seal-form">
+            <label class="seal-field">
+                <span>Current seal</span>
+                <input type="password" id="sealCurrent">
+            </label>
+            <label class="seal-field">
+                <span>New seal</span>
+                <input type="password" id="sealNew">
+            </label>
+            <label class="seal-field">
+                <span>Type it again</span>
+                <input type="password" id="sealRepeat">
+            </label>
+            <label class="seal-field">
+                <span>Hint (optional)</span>
+                <input type="text" id="sealHint" maxlength="${MAX_SEAL_HINT_LENGTH}">
+            </label>
+            <p class="seal-panel-error">${escapeHtml(error || "")}</p>
+            <div class="seal-actions">
+                <button type="button" class="task-btn" id="sealCancel">Cancel</button>
+                <button type="button" class="task-btn" id="sealSubmit">Change seal</button>
+            </div>
+        </div>
+    `;
+
+    document.getElementById("sealCancel").addEventListener("click", renderSealPanel);
+
+    document.getElementById("sealSubmit").addEventListener("click", () => {
+        const current = document.getElementById("sealCurrent").value;
+        const password = document.getElementById("sealNew").value;
+        const repeat = document.getElementById("sealRepeat").value;
+        const hint = document.getElementById("sealHint").value;
+
+        if (password !== repeat) {
+            return renderSealChange(host, "Those two don't match.");
+        }
+
+        changeSeal(current, password, hint).then((result) => {
+            if (!result.ok) return renderSealChange(host, result.error);
+            renderSealPanel();
+        });
+    });
+}
+
+// Breaking the seal is itself a weakening — it is the one that makes every
+// other weakening free — so it costs the seal, and says what it costs.
+function renderSealBreak(host, error) {
+    host.innerHTML = `
+        <div class="seal-form">
+            <p class="seal-state">
+                Break the seal and every gate goes back to a ten-second pause.
+            </p>
+            <label class="seal-field">
+                <span>Current seal</span>
+                <input type="password" id="sealCurrent">
+            </label>
+            <p class="seal-panel-error">${escapeHtml(error || "")}</p>
+            <div class="seal-actions">
+                <button type="button" class="task-btn" id="sealCancel">Keep it</button>
+                <button type="button" class="task-btn" id="sealSubmit">Break the seal</button>
+            </div>
+        </div>
+    `;
+
+    document.getElementById("sealCancel").addEventListener("click", renderSealPanel);
+
+    document.getElementById("sealSubmit").addEventListener("click", () => {
+        clearSeal(document.getElementById("sealCurrent").value).then((result) => {
+            if (!result.ok) return renderSealBreak(host, result.error);
+            renderSealPanel();
+        });
+    });
+}
+
 // ---- Save -----------------------------------------------------------------
 
 document.querySelector(".save-btn").addEventListener("click", () => {
@@ -940,4 +1106,6 @@ document.addEventListener("DOMContentLoaded", () => {
             "COOLDOWN"
         );
     });
+
+    renderSealPanel();
 });

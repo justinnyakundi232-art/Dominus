@@ -567,3 +567,99 @@ h1{
 .disabled-field input{
     cursor:not-allowed;
 }
+
+/* ---- The seal panel ------------------------------------------------------
+ *
+ * A full-width band under the two panels rather than a third column beside
+ * them: it governs the whole fortress rather than one half of it, and three
+ * 500px panels do not fit on an ordinary screen. */
+
+.seal-panel{
+    width:auto;
+    max-width:1025px;   /* the two panels plus the gap between them */
+    margin:25px auto 0;
+    box-sizing:border-box;
+}
+
+.seal-form{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:10px;
+    margin:18px 0 0;
+}
+
+.seal-field{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    width:100%;
+    max-width:460px;
+    justify-content:space-between;
+    color:#E5E5E5;
+    font-size:0.9rem;
+}
+
+.seal-field span{
+    flex:0 0 130px;
+    text-align:left;
+}
+
+.seal-field input{
+    flex:1 1 auto;
+    min-width:0;
+    padding:8px 10px;
+    background:#000;
+    border:1px solid #B8860B;
+    color:#E5E5E5;
+    font-family:inherit;
+    font-size:0.95rem;
+}
+
+.seal-field input:focus{
+    outline:none;
+    border-color:#D4AF37;
+}
+
+.seal-state{
+    color:#D4AF37;
+    font-size:1rem;
+    margin:0;
+    text-align:center;
+}
+
+.seal-pending{
+    color:#E63D3D;
+    font-size:0.85rem;
+    font-style:italic;
+    margin:0;
+    max-width:460px;
+    text-align:center;
+}
+
+.seal-panel-error{
+    color:#E63D3D;
+    font-size:0.85rem;
+    margin:0;
+    min-height:1.1em;
+    text-align:center;
+}
+
+.seal-actions{
+    display:flex;
+    gap:10px;
+    justify-content:center;
+    flex-wrap:wrap;
+}
+
+/* Says plainly what the seal is and isn't. Set quietly: it is a footnote, not
+   a disclaimer banner. */
+.seal-honesty{
+    margin:20px auto 0;
+    max-width:560px;
+    color:#8B95A3;
+    font-size:0.8rem;
+    font-style:italic;
+    line-height:1.5;
+    text-align:center;
+}

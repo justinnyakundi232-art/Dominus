@@ -12,6 +12,7 @@ let manualSites = [];
 
 document.addEventListener("DOMContentLoaded", async () => {
     renderBlockedList();
+    renderSealNotice(document.getElementById("sealNotice"));
 
     let [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 

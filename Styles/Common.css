@@ -241,3 +241,46 @@
     background:none;
     color:#E5E5E5;
 }
+
+/* ---- Recovery notice ----------------------------------------------------
+ *
+ * Shown on the popup and the blocked page only while a seal recovery is
+ * counting down. Deliberately styled as a warning rather than a status line:
+ * an hour from now the fortress loses its seal, and that should read as
+ * something happening TO the user, not something already settled. */
+
+.seal-notice{
+    display:block;
+    margin:0 0 16px;
+    padding:10px 14px;
+    border:1px solid #E63D3D;
+    background:rgba(230,61,61,0.08);
+    color:#E5E5E5;
+    font-size:0.85rem;
+    line-height:1.4;
+    text-align:center;
+}
+
+.seal-notice[hidden]{
+    display:none;
+}
+
+/* The way back is always attached to the warning. Sized explicitly so it can't
+   inherit the popup's 300px-wide base button. */
+.seal-keep{
+    display:inline-block;
+    width:auto;
+    margin:0 0 0 8px;
+    padding:2px 10px;
+    background:none;
+    border:1px solid #E63D3D;
+    color:#E63D3D;
+    font-family:inherit;
+    font-size:0.8rem;
+    cursor:pointer;
+}
+
+.seal-keep:hover{
+    background:#E63D3D;
+    color:black;
+}
