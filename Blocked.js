@@ -464,3 +464,9 @@ function renderStreak() {
 renderCompleteTaskButton();
 renderGoverningCategory();
 renderStreak();
+
+// The seal never gates anything on this page — unlocking is what the task and
+// the cooldown are for, and a password kept in your head is a weaker gate than
+// a Guarded Code you have to walk across the house to fetch. This is purely
+// the notice: if a recovery is running, this is the page where it matters most.
+renderSealNotice(document.getElementById("sealNotice"));

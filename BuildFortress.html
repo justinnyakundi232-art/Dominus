@@ -63,6 +63,27 @@
 
       </section>
 
+      <!-- Fortress-wide rather than a peer of the two panels above, so it sits
+           below them as a full-width band instead of squeezing in beside them.
+           Rendered by renderSealPanel(): what is shown depends on whether a
+           seal is set, and the hint is user-typed. -->
+      <section class="panel seal-panel">
+        <h2 class="panel-heading">SEAL THE GATES</h2>
+        <p class="panel-description">A PASSWORD FOR WEAKENING YOUR FORTRESS</p>
+        <p class="panel-note">
+          Adding blocks, lengthening cooldowns and raising your standards stay
+          free. Anything that takes a defence down will ask for this.
+        </p>
+
+        <div id="sealControls"></div>
+
+        <p class="seal-honesty">
+          This is a pause, not a lock. Anyone at this machine can still switch
+          Dominus off from the extensions page — the seal is here to stop you
+          doing it without meaning to.
+        </p>
+      </section>
+
       <button class="save-btn">
         SAVE FORTRESS
       </button>
@@ -101,6 +122,7 @@
   <script src="Stats.js"></script>
   <script src="Tasks.js"></script>
   <script src="Categories.js"></script>
+  <script src="Seal.js"></script>
   <script src="BuildFortress.js"></script>
   </body>
 </html>
