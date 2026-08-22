@@ -3,6 +3,21 @@
 All notable changes to **Dominus** are documented here.
 This project loosely follows [Keep a Changelog](https://keepachangelog.com/) and [Semantic Versioning](https://semver.org/).
 
+## [1.10] — 2026-08-22
+
+### Added
+- **Streak history.** Track Your Progress now shows the last 26 weeks as a grid — one square per day, weeks running left to right — so a run of good days is something you can see rather than a number you have to take on trust.
+- **Three states, not two.** A day is **held** if you met a blocked site and walked away every time, **slipped** if you unlocked one, and **untested** if nothing asked anything of you. Untested days have always kept your streak; now they look different from days you actually fought for, because they are.
+- **Shade by how hard it was.** Held days deepen towards gold the more times you stood your ground; slipped days deepen the more times you gave way. One square is no longer one bit of information.
+- **Hover any day** for what happened on it: the stands you made, the site that gave way, and the time you first unlocked. That last one is the useful one — "youtube.com at 23:46" tends to explain more about a slip than any counter.
+- **A summary line above the grid** with the same figures in words, for reading without a mouse.
+
+### Notes
+- History starts the day you install this. Dominus has never kept a per-day record — the streak is derived from two dates, which is what lets a day you spent away from the machine still count as clean — so there is nothing to reconstruct.
+- The one exception: your **current streak** is, by definition, that many consecutive days without an unlock, so those days are drawn in from the start. They are marked *before records* and shown as outlines rather than filled squares, because Dominus knows they were clean but genuinely doesn't know whether anything tested you on them. It never claims them as days you held.
+- Roughly a year of history is kept and older days are dropped, so the record can't grow without bound.
+- Everything is still stored locally in `chrome.storage.local`; no new permissions were added and no data leaves your device.
+
 ## [1.8] — 2026-08-12
 
 ### Added
@@ -88,6 +103,8 @@ This project loosely follows [Keep a Changelog](https://keepachangelog.com/) and
 ### Added
 - Chrome Web Store MVP: block distracting sites, the **Build Your Fortress** setup page, and the main popup.
 
+[1.10]: https://github.com/justinnyakundi232-art/Dominus/releases
+[1.8]: https://github.com/justinnyakundi232-art/Dominus/releases
 [1.7.1]: https://github.com/justinnyakundi232-art/Dominus/releases
 [1.7]: https://github.com/justinnyakundi232-art/Dominus/releases
 [1.4.5]: https://github.com/justinnyakundi232-art/Dominus/releases

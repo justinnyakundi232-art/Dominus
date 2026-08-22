@@ -429,8 +429,9 @@ unlockModalConfirm.addEventListener("click", () => {
 
     // Record the unlock for stats (separate `stats` key, so it runs alongside
     // the tempUnlocks write without conflicting): counts it and marks today
-    // not-clean, breaking the streak.
-    recordUnlock();
+    // not-clean, breaking the streak. The domain goes with it so the day log
+    // can name what gave way.
+    recordUnlock(domain);
 
     // Counted separately from stats because escalation is per-domain and
     // per-day, where the streak is global and historical.

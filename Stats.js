@@ -179,8 +179,11 @@ function updateStreak(stats, today) {
 // as a clean day, roll that day back out of the streak (multiple unlocks in one
 // day still only cost the streak once, since the rollback only fires the first
 // time lastCleanDate === today).
-function recordUnlock() {
-    return enqueueStatsUpdate((stats) => {
+//
+// `domain` is optional and only feeds the day log, which uses it to name what
+// actually gave way. The streak has never cared which site it was.
+function recordUnlock(domain) {
+    const counters = enqueueStatsUpdate((stats) => {
         const today = todayLocal();
 
         stats.unlockCount += 1;
@@ -199,13 +202,31 @@ function recordUnlock() {
 
         return stats;
     });
+
+    // Queued behind the counters on the same queue, so the two writes for one
+    // unlock can never interleave with another event's.
+    const log = enqueueDayLogUpdate((log) => touchDay(log, (entry) => {
+        entry.unlocks += 1;
+
+        if (domain) {
+            entry.sites[domain] = (entry.sites[domain] || 0) + 1;
+        }
+
+        // First slip of the day only. "You gave way at 23:14" is the useful
+        // fact; the third unlock's timestamp adds nothing.
+        if (!entry.firstSlip) {
+            entry.firstSlip = localTimeString(new Date());
+        }
+    }));
+
+    return Promise.all([counters, log]).then(([stats]) => stats);
 }
 
 // Call from the "Stay Focused" handler. Feeds the ratio and extends the
 // resistance streak. It still must never touch the DAY streak: choosing Stay
 // Focused can't manufacture a clean day, and can't reset one either.
 function recordStayFocused() {
-    return enqueueStatsUpdate((stats) => {
+    const counters = enqueueStatsUpdate((stats) => {
         stats.stayFocusedCount += 1;
 
         stats.currentResistance += 1;
@@ -214,6 +235,14 @@ function recordStayFocused() {
 
         return stats;
     });
+
+    // This is what makes a HELD day distinguishable from an untested one: a
+    // stand is the only evidence that anything asked something of the user.
+    const log = enqueueDayLogUpdate((log) => touchDay(log, (entry) => {
+        entry.stands += 1;
+    }));
+
+    return Promise.all([counters, log]).then(([stats]) => stats);
 }
 
 // Read-side accessor for a future progress page. Refreshes the streak (so
@@ -235,5 +264,214 @@ function getStats() {
             stayFocusedCount: stats.stayFocusedCount,
             unlockCount: stats.unlockCount
         };
+    });
+}
+
+// ---- Day log ---------------------------------------------------------------
+//
+// Everything above is deliberately historyless: two dates and a few counters,
+// with the streak DERIVED from them. That is what lets a day you never opened
+// the browser count as clean.
+//
+// A heatmap can't be drawn from that, so 1.10 adds a per-day record alongside
+// it. The streak logic above is untouched and remains the source of truth for
+// the streak itself — this log is a second, richer view of the same events,
+// not a replacement.
+//
+// Design note — three states, not two:
+//
+// "Clean vs slipped" throws away the most interesting distinction on the page.
+// A day where a blocked site tempted you six times and you walked away every
+// time is not the same day as one you spent away from the machine, and the
+// streak alone can't tell them apart. So a day is one of:
+//
+//   untested — you never reached a blocked page. Nothing was asked of you.
+//   held     — you reached one, and chose Stay Focused every time.
+//   slipped  — you unlocked at least once.
+//
+// Plus one flag for days that predate this log: `inferred`, meaning "clean,
+// but recorded before Dominus kept daily history". Those are shown differently
+// rather than claimed as held, because we genuinely don't know whether anything
+// tested the user that day.
+
+const DAY_LOG_KEY = "dayLog";
+
+// A little over a year, so a full year can always be shown with some run-up,
+// and the object can't grow without bound. Pruned on every write.
+const DAY_LOG_RETENTION = 400;
+
+const DAY_UNTESTED = "untested";
+const DAY_HELD = "held";
+const DAY_SLIPPED = "slipped";
+const DAY_INFERRED = "inferred";
+
+// Shape of one day, keyed "YYYY-MM-DD" local:
+//   stands     — Stay Focused choices
+//   unlocks    — confirmed unlocks
+//   sites      — { domain: unlocks } so a day can name what gave way
+//   firstSlip  — "HH:MM" local of the first unlock, or null
+//   inferred   — true only for days backfilled from the streak on first run
+const DEFAULT_DAY = {
+    stands: 0,
+    unlocks: 0,
+    sites: null,
+    firstSlip: null,
+    inferred: false
+};
+
+function normalizeDayEntry(raw) {
+    const source = raw || {};
+
+    return {
+        stands: Math.max(0, Math.round(Number(source.stands) || 0)),
+        unlocks: Math.max(0, Math.round(Number(source.unlocks) || 0)),
+        sites: source.sites && typeof source.sites === "object"
+            ? Object.assign({}, source.sites)
+            : {},
+        firstSlip: source.firstSlip || null,
+        inferred: source.inferred === true
+    };
+}
+
+// "HH:MM" local. Deliberately minute-resolution: the point is "late at night",
+// not forensics.
+function localTimeString(date) {
+    const hours = String(date.getHours()).padStart(2, "0");
+    const minutes = String(date.getMinutes()).padStart(2, "0");
+    return `${hours}:${minutes}`;
+}
+
+// Which of the three states a day is in. A missing entry is untested, which is
+// also what a day looks like before anything happens on it.
+function dayState(entry) {
+    if (!entry) return DAY_UNTESTED;
+    if (entry.inferred) return DAY_INFERRED;
+    if (entry.unlocks > 0) return DAY_SLIPPED;
+    if (entry.stands > 0) return DAY_HELD;
+    return DAY_UNTESTED;
+}
+
+// ---- Day log storage ------------------------------------------------------
+//
+// Kept under its own key rather than inside `stats`, because `stats` is
+// rewritten on every read (getStats refreshes the streak) and a year of days
+// riding along on each of those writes would be waste.
+
+function getDayLogRaw() {
+    return new Promise((resolve) => {
+        chrome.storage.local.get([DAY_LOG_KEY], (result) => {
+            resolve(result[DAY_LOG_KEY] || {});
+        });
+    });
+}
+
+function setDayLogRaw(log) {
+    return new Promise((resolve) => {
+        chrome.storage.local.set({ [DAY_LOG_KEY]: log }, () => resolve(log));
+    });
+}
+
+// Shares statsQueue with enqueueStatsUpdate, so an unlock's two writes — the
+// counters and the day's record — can't interleave with anything else.
+function enqueueDayLogUpdate(mutator) {
+    const run = statsQueue.then(async () => {
+        const log = await getDayLogRaw();
+        const updated = await mutator(log);
+        await setDayLogRaw(updated);
+        return updated;
+    });
+    statsQueue = run.catch(() => {});
+    return run;
+}
+
+// Drops anything past the retention window. String comparison works because
+// the keys are "YYYY-MM-DD".
+function pruneDayLog(log) {
+    const cutoff = addDaysLocal(todayLocal(), -DAY_LOG_RETENTION);
+    const kept = {};
+
+    Object.keys(log).forEach((date) => {
+        if (date >= cutoff) kept[date] = log[date];
+    });
+
+    return kept;
+}
+
+// Reads (and creates) today's record.
+function touchDay(log, mutate) {
+    const today = todayLocal();
+    const entry = normalizeDayEntry(log[today]);
+
+    // A day that gets a real event is no longer inferred, whatever the backfill
+    // put there.
+    entry.inferred = false;
+    mutate(entry);
+
+    log[today] = entry;
+    return pruneDayLog(log);
+}
+
+// ---- Backfill -------------------------------------------------------------
+
+// Gives the grid something to show on the day this ships, instead of a wall of
+// empty squares that reads as a year of failure.
+//
+// The current streak is, by definition, that many consecutive days with no
+// unlock ending at lastCleanDate — so those days can be stated with confidence.
+// What can't be stated is whether anything tested the user on them, which is
+// exactly why they are marked `inferred` and drawn differently rather than
+// being claimed as held.
+//
+// Only ever runs against an empty log, so it can't overwrite a real record.
+function seedDayLog(log, stats) {
+    if (Object.keys(log).length > 0) return log;
+    if (!stats.lastCleanDate || stats.currentStreak < 1) return log;
+
+    const today = todayLocal();
+    let date = stats.lastCleanDate;
+
+    for (let i = 0; i < stats.currentStreak; i++) {
+        // Never today. getDayHistory() refreshes the streak before seeding, and
+        // on a brand-new install that makes today the first clean day ever — so
+        // without this guard a fresh fortress opens the page and finds today
+        // already stamped "clean, before daily history began", which is exactly
+        // backwards: today is the first day there IS a record for.
+        if (date !== today) {
+            log[date] = {
+                stands: 0,
+                unlocks: 0,
+                sites: {},
+                firstSlip: null,
+                inferred: true
+            };
+        }
+
+        date = yesterdayOf(date);
+    }
+
+    return log;
+}
+
+// ---- Public API -----------------------------------------------------------
+
+// `days` calendar days ending today, oldest first, every day present whether or
+// not anything was recorded on it — the caller draws a grid and needs the gaps.
+function getDayHistory(days) {
+    return enqueueStatsUpdate((stats) => {
+        updateStreak(stats, todayLocal());
+        return stats;
+    }).then((stats) => enqueueDayLogUpdate(
+        (log) => pruneDayLog(seedDayLog(log, stats))
+    )).then((log) => {
+        const history = [];
+        let date = addDaysLocal(todayLocal(), -(days - 1));
+
+        for (let i = 0; i < days; i++) {
+            const entry = log[date] ? normalizeDayEntry(log[date]) : null;
+            history.push({ date: date, state: dayState(entry), entry: entry });
+            date = addDaysLocal(date, 1);
+        }
+
+        return history;
     });
 }

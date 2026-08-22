@@ -73,6 +73,30 @@
         <p class="streak-line">Longest: <span class="streak-value" id="longestResistance">…</span></p>
       </div>
 
+      <!-- Streak history. The grid, month and weekday labels are all built by
+           renderStreakHistory() from the day log — the markup here is only the
+           frame, the summary line and the legend, since those are the parts a
+           reader needs whether or not there is any history yet. -->
+      <div class="streak-block history-block">
+        <h2 class="streak-heading">
+          STREAK HISTORY
+          <span class="info-tip" tabindex="0" role="button" aria-label="What does the streak history show?">(?)<span class="info-tooltip" role="tooltip">One square per day. A day is HELD if you met a blocked site and walked away every time, SLIPPED if you unlocked one, and UNTESTED if nothing asked anything of you. Untested days keep your streak — they just weren't a fight.</span></span>
+        </h2>
+
+        <p class="history-summary" id="historySummary">…</p>
+
+        <div class="history-scroll">
+          <div class="history-grid" id="historyGrid"></div>
+        </div>
+
+        <div class="history-legend" aria-hidden="true">
+          <span class="legend-item"><span class="heat-cell heat-untested"></span>Untested</span>
+          <span class="legend-item"><span class="heat-cell heat-held level-1"></span><span class="heat-cell heat-held level-2"></span><span class="heat-cell heat-held level-3"></span>Held</span>
+          <span class="legend-item"><span class="heat-cell heat-slipped level-1"></span><span class="heat-cell heat-slipped level-2"></span><span class="heat-cell heat-slipped level-3"></span>Slipped</span>
+          <span class="legend-item"><span class="heat-cell heat-inferred"></span>Before records</span>
+        </div>
+      </div>
+
       <p class="coming-soon">
         More analytics coming soon...
       </p>

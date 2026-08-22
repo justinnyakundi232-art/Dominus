@@ -6,6 +6,7 @@ A free, open-source Chrome extension designed to help users reduce distractions 
 ## Features
 
 - Website blocking
+- Streak history you can read at a glance
 - Custom categories
 - Per-category unlock tasks and cooldowns
 - Self accountability
