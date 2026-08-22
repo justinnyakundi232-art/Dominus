@@ -42,8 +42,16 @@ function currentDomain() {
 
 // "RETURN" / "STAY FOCUSED" button — always available, closes the tab
 document.getElementById("focusBtn").addEventListener("click", async () => {
-    // Feeds the Stay Focused/Unlock ratio only — never affects the streak.
-    recordStayFocused();
+    // Feeds the Stay Focused/Unlock ratio and the day log; never affects the
+    // streak.
+    //
+    // AWAITED, and it has to be. This handler closes the tab a few lines down,
+    // which destroys the page — and with it any storage write still in flight.
+    // recordStayFocused() queues two writes, the counters and then the day's
+    // record, so the day log is always the last thing to land and the first
+    // thing lost. Fire-and-forget here meant a stand you made never showed up
+    // on the calendar.
+    await recordStayFocused();
 
     let [tab] = await chrome.tabs.query({
         active: true,
@@ -421,21 +429,26 @@ unlockModalCancel.addEventListener("click", () => {
     pendingUnlockDomain = null;
 });
 
-unlockModalConfirm.addEventListener("click", () => {
+unlockModalConfirm.addEventListener("click", async () => {
     if (!pendingUnlockDomain) return;
 
     const domain = pendingUnlockDomain;
     const expiry = Date.now() + TEMP_UNLOCK_DURATION_MS;
 
-    // Record the unlock for stats (separate `stats` key, so it runs alongside
-    // the tempUnlocks write without conflicting): counts it and marks today
-    // not-clean, breaking the streak. The domain goes with it so the day log
-    // can name what gave way.
-    recordUnlock(domain);
+    // Both awaited before this page navigates away, for the same reason the
+    // Stay Focused handler awaits: the redirect at the end tears down the page,
+    // and anything still queued dies with it. The day log's write is queued
+    // behind the counters, so it is the one that would go missing.
+    //
+    // Records the unlock for stats (a separate `stats` key, so it runs
+    // alongside the tempUnlocks write without conflicting): counts it and marks
+    // today not-clean, breaking the streak. The domain goes with it so the day
+    // log can name what gave way.
+    await recordUnlock(domain);
 
     // Counted separately from stats because escalation is per-domain and
     // per-day, where the streak is global and historical.
-    recordEscalationUnlock(domain);
+    await recordEscalationUnlock(domain);
 
     chrome.storage.local.get(["tempUnlocks"], (result) => {
         let tempUnlocks = result.tempUnlocks || {};

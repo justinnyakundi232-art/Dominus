@@ -36,7 +36,9 @@ const DEFAULT_STATS = {
     // on purpose: one rewards showing restraint often, the other rewards
     // staying clean over time.
     currentResistance: 0,
-    longestResistance: 0
+    longestResistance: 0,
+    // Whether the one-off day-log backfill has run. See ensureDayLogSeeded().
+    dayLogSeeded: false
 };
 
 // Merge whatever is in storage over the defaults so a partial/missing object
@@ -170,6 +172,30 @@ function updateStreak(stats, today) {
     stats.lastCleanDate = today;
     stats.longestStreak = Math.max(stats.longestStreak, stats.currentStreak);
     return stats;
+}
+
+// Runs the backfill at most once per fortress.
+//
+// It used to be guarded by the log being empty, which was the wrong test: the
+// moment any real day was recorded — one Stay Focused before this page had ever
+// been opened — the backfill was skipped forever and an existing streak never
+// appeared. The flag lives in `stats` so the decision survives pruning, and the
+// whole thing runs as one queued operation so a concurrent write can't land
+// between reading the flag and setting it.
+function ensureDayLogSeeded() {
+    const run = statsQueue.then(async () => {
+        const stats = await getStatsRaw();
+        if (stats.dayLogSeeded) return;
+
+        const log = await getDayLogRaw();
+        await setDayLogRaw(pruneDayLog(seedDayLog(log, stats)));
+
+        stats.dayLogSeeded = true;
+        await setStatsRaw(stats);
+    });
+
+    statsQueue = run.catch(() => {});
+    return run;
 }
 
 // ---- Public API -----------------------------------------------------------
@@ -422,9 +448,9 @@ function touchDay(log, mutate) {
 // exactly why they are marked `inferred` and drawn differently rather than
 // being claimed as held.
 //
-// Only ever runs against an empty log, so it can't overwrite a real record.
+// Never overwrites a day that already has a real record — the backfill only
+// fills gaps.
 function seedDayLog(log, stats) {
-    if (Object.keys(log).length > 0) return log;
     if (!stats.lastCleanDate || stats.currentStreak < 1) return log;
 
     const today = todayLocal();
@@ -436,7 +462,7 @@ function seedDayLog(log, stats) {
         // without this guard a fresh fortress opens the page and finds today
         // already stamped "clean, before daily history began", which is exactly
         // backwards: today is the first day there IS a record for.
-        if (date !== today) {
+        if (date !== today && log[date] === undefined) {
             log[date] = {
                 stands: 0,
                 unlocks: 0,
@@ -452,17 +478,45 @@ function seedDayLog(log, stats) {
     return log;
 }
 
+// Runs the backfill at most once per fortress.
+//
+// It used to be guarded by the log being empty, which was the wrong test: the
+// moment any real day was recorded — one Stay Focused before this page had ever
+// been opened — the backfill was skipped forever and an existing streak never
+// appeared. The flag lives in `stats` so the decision survives pruning, and the
+// whole thing runs as one queued operation so a concurrent write can't land
+// between reading the flag and setting it.
+function ensureDayLogSeeded() {
+    const run = statsQueue.then(async () => {
+        const stats = await getStatsRaw();
+        if (stats.dayLogSeeded) return;
+
+        const log = await getDayLogRaw();
+        await setDayLogRaw(pruneDayLog(seedDayLog(log, stats)));
+
+        stats.dayLogSeeded = true;
+        await setStatsRaw(stats);
+    });
+
+    statsQueue = run.catch(() => {});
+    return run;
+}
+
 // ---- Public API -----------------------------------------------------------
 
 // `days` calendar days ending today, oldest first, every day present whether or
 // not anything was recorded on it — the caller draws a grid and needs the gaps.
 function getDayHistory(days) {
+    // Order matters: the streak is brought current first, because the backfill
+    // reads lastCleanDate and currentStreak off it.
     return enqueueStatsUpdate((stats) => {
         updateStreak(stats, todayLocal());
         return stats;
-    }).then((stats) => enqueueDayLogUpdate(
-        (log) => pruneDayLog(seedDayLog(log, stats))
-    )).then((log) => {
+    }).then(
+        () => ensureDayLogSeeded()
+    ).then(
+        () => enqueueDayLogUpdate(pruneDayLog)
+    ).then((log) => {
         const history = [];
         let date = addDaysLocal(todayLocal(), -(days - 1));
 
