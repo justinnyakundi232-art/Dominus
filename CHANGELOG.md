@@ -3,6 +3,27 @@
 All notable changes to **Dominus** are documented here.
 This project loosely follows [Keep a Changelog](https://keepachangelog.com/) and [Semantic Versioning](https://semver.org/).
 
+## [1.9] — 2026-08-22
+
+### Added
+- **Seal the gates.** You can now set a password on your own settings, from a new panel on Build Your Fortress. The rule it enforces is asymmetric on purpose: **strengthening your fortress stays free, weakening it costs the seal.** Blocking a site, adding a category, lengthening a cooldown or raising your standards will never ask you for anything. Taking a defence down will.
+- **The prompt names what you are giving up** before it asks for the seal — every block that stops being enforced, every cooldown that gets shorter, every task that disappears — alongside the streak you are about to break. It is the same thing the removal gates have done since 1.4.5, applied to the whole save at once instead of one click at a time.
+- **A hint**, if you want one, shown on the prompt. It can't be the seal itself.
+- **Repeated wrong guesses escalate the wait** — the first two are free, then five seconds, ten, twenty, doubling to a five-minute ceiling. The count is kept in storage rather than in the page, so closing the popup and reopening it doesn't clear it.
+- **A way back if you forget it.** *Forgot your seal?* starts an hour; when it elapses the seal lifts on its own. Your fortress stands untouched in the meantime, calling it off is free and instant, and the countdown is shown in the popup and on the blocked page until it resolves — a recovery you started as insurance shouldn't be able to run out quietly. There is no master code and no back door.
+
+### Changed
+- **Where the seal applies, the ten-second countdowns give way to it** rather than stacking on top. Removing a block or a task on a sealed fortress goes straight to the seal, which names the same thing and asks for more; the gates that only stage an edit — deleting a category, dropping a category's own standards — keep their confirmation but arm the button at once, since the seal is charged later, when you save.
+- **Every change to your fortress now goes through a single commit.** Four separate places used to write your blocks to storage, each responsible for re-deriving the blocked list on its way past. They now share one path, which is what makes a rule about *weakening* possible at all — and means what is enforced and what is shown can no longer drift apart.
+- **A save the seal turns down changes nothing on the page.** Your edits stay in the form exactly as you left them, to enter your seal and try again or to undo the part you didn't mean.
+
+### Notes
+- **The seal is a pause, not a lock, and Dominus says so on the panel.** Anyone sitting at your machine can still switch the extension off from Chrome's own extensions page — that has always been true, and no password inside an extension can change it. What the seal is for is the version of you that is reaching for the off switch without quite deciding to.
+- Your seal is never stored. Only a salted PBKDF2-SHA256 verifier is kept, so a password you use elsewhere can't be read out of Dominus's storage.
+- Unlocking a blocked site is deliberately **not** sealed. That is what tasks and cooldowns are for — and a password kept in your head is a weaker gate than a Guarded Code you have to get up and fetch.
+- Fortresses built before this release carry over untouched, and nothing prompts until you set a seal yourself.
+- Everything is still stored locally in `chrome.storage.local`; no new permissions were added and no data leaves your device.
+
 ## [1.8] — 2026-08-12
 
 ### Added
@@ -88,6 +109,8 @@ This project loosely follows [Keep a Changelog](https://keepachangelog.com/) and
 ### Added
 - Chrome Web Store MVP: block distracting sites, the **Build Your Fortress** setup page, and the main popup.
 
+[1.9]: https://github.com/justinnyakundi232-art/Dominus/releases
+[1.8]: https://github.com/justinnyakundi232-art/Dominus/releases
 [1.7.1]: https://github.com/justinnyakundi232-art/Dominus/releases
 [1.7]: https://github.com/justinnyakundi232-art/Dominus/releases
 [1.4.5]: https://github.com/justinnyakundi232-art/Dominus/releases
