@@ -95,8 +95,14 @@ function formatDayLabel(dateStr) {
 function describeDay(day) {
     const entry = day.entry;
 
+    // Deliberately makes no claim about the day. Dominus has no record this far
+    // back, and "you never met a blocked site" would be inventing one.
+    if (day.state === "before") {
+        return "This is before your history begins.";
+    }
+
     if (day.state === "inferred") {
-        return "Clean — from your streak, before daily history began.";
+        return "Clean — drawn from your streak, before daily history began.";
     }
 
     if (day.state === "untested") {
@@ -129,6 +135,7 @@ function stateLabel(state) {
     if (state === "held") return "Held";
     if (state === "slipped") return "Slipped";
     if (state === "inferred") return "Clean";
+    if (state === "before") return "No record";
     return "Untested";
 }
 
@@ -307,7 +314,7 @@ function renderHistorySummary(history) {
     const el = document.getElementById("historySummary");
     if (!el) return;
 
-    const counts = { held: 0, slipped: 0, untested: 0, inferred: 0 };
+    const counts = { held: 0, slipped: 0, untested: 0, inferred: 0, before: 0 };
     history.forEach((day) => { counts[day.state] += 1; });
 
     const recorded = counts.held + counts.slipped + counts.inferred;
@@ -320,8 +327,16 @@ function renderHistorySummary(history) {
 
     el.textContent = "";
 
+    // Days before the history began aren't counted — they aren't untested, they
+    // simply aren't known — so the span is named by when the record starts
+    // rather than by the width of the grid.
+    const covered = history.find((day) => day.state !== "before");
+    const span = counts.before > 0
+        ? `Since ${formatDayLabel(covered.date).slice(4)}`
+        : `${HISTORY_WEEKS} weeks`;
+
     const parts = [
-        [`${HISTORY_WEEKS} weeks`, false],
+        [span, false],
         [`${counts.held} held`, true],
         [`${counts.slipped} slipped`, true],
         [`${counts.untested} untested`, true]

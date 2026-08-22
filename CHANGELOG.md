@@ -13,7 +13,7 @@ This project loosely follows [Keep a Changelog](https://keepachangelog.com/) and
 - **A summary line above the grid** with the same figures in words, for reading without a mouse.
 
 ### Notes
-- History starts the day you install this. Dominus has never kept a per-day record — the streak is derived from two dates, which is what lets a day you spent away from the machine still count as clean — so there is nothing to reconstruct.
+- History starts the day you install this. Dominus has never kept a per-day record — the streak is derived from two dates, which is what lets a day you spent away from the machine still count as clean — so there is nothing to reconstruct. Days before that are left blank rather than called *untested*: untested means you were here and nothing tested you, and Dominus has no business claiming that about a day it wasn't recording.
 - The one exception: your **current streak** is, by definition, that many consecutive days without an unlock, so those days are drawn in from the start. They are marked *before records* and shown as outlines rather than filled squares, because Dominus knows they were clean but genuinely doesn't know whether anything tested you on them. It never claims them as days you held.
 - Roughly a year of history is kept and older days are dropped, so the record can't grow without bound.
 - Everything is still stored locally in `chrome.storage.local`; no new permissions were added and no data leaves your device.

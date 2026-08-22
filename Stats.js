@@ -38,7 +38,12 @@ const DEFAULT_STATS = {
     currentResistance: 0,
     longestResistance: 0,
     // Whether the one-off day-log backfill has run. See ensureDayLogSeeded().
-    dayLogSeeded: false
+    dayLogSeeded: false,
+    // "YYYY-MM-DD" of the earliest day this fortress has any history for.
+    // Stamped once, when the backfill runs, rather than derived from the log on
+    // every read — a long quiet stretch or retention pruning would otherwise
+    // walk it forward and make Dominus claim it wasn't installed yet.
+    historyStartedOn: null
 };
 
 // Merge whatever is in storage over the defaults so a partial/missing object
@@ -185,17 +190,35 @@ function updateStreak(stats, today) {
 function ensureDayLogSeeded() {
     const run = statsQueue.then(async () => {
         const stats = await getStatsRaw();
-        if (stats.dayLogSeeded) return;
+        if (stats.dayLogSeeded) return stats;
 
         const log = await getDayLogRaw();
-        await setDayLogRaw(pruneDayLog(seedDayLog(log, stats)));
+        const seeded = pruneDayLog(seedDayLog(log, stats));
+        await setDayLogRaw(seeded);
+
+        // The earliest day there is any evidence for. On a fresh install that
+        // is today; on a fortress upgrading with a streak it is the oldest day
+        // the backfill just drew in, so those days keep showing.
+        const known = Object.keys(seeded).sort();
 
         stats.dayLogSeeded = true;
+        stats.historyStartedOn = known.length ? known[0] : todayLocal();
+
         await setStatsRaw(stats);
+        return stats;
     });
 
     statsQueue = run.catch(() => {});
     return run;
+}
+
+// Where this fortress's history begins. The stored stamp is authoritative; the
+// fallback covers a log written by a build that predates the stamp.
+function historyStartDate(stats, log) {
+    if (stats.historyStartedOn) return stats.historyStartedOn;
+
+    const known = Object.keys(log).sort();
+    return known.length ? known[0] : todayLocal();
 }
 
 // ---- Public API -----------------------------------------------------------
@@ -326,6 +349,12 @@ const DAY_LOG_KEY = "dayLog";
 // and the object can't grow without bound. Pruned on every write.
 const DAY_LOG_RETENTION = 400;
 
+// Not a state a day can be *in* so much as the absence of one: these are days
+// that fall before this fortress has any history at all. They are kept distinct
+// from "untested" because untested is a positive claim — you were here, nothing
+// tested you — and Dominus has no business making that claim about a day before
+// it was recording anything. Same reason `inferred` exists.
+const DAY_BEFORE = "before";
 const DAY_UNTESTED = "untested";
 const DAY_HELD = "held";
 const DAY_SLIPPED = "slipped";
@@ -489,17 +518,35 @@ function seedDayLog(log, stats) {
 function ensureDayLogSeeded() {
     const run = statsQueue.then(async () => {
         const stats = await getStatsRaw();
-        if (stats.dayLogSeeded) return;
+        if (stats.dayLogSeeded) return stats;
 
         const log = await getDayLogRaw();
-        await setDayLogRaw(pruneDayLog(seedDayLog(log, stats)));
+        const seeded = pruneDayLog(seedDayLog(log, stats));
+        await setDayLogRaw(seeded);
+
+        // The earliest day there is any evidence for. On a fresh install that
+        // is today; on a fortress upgrading with a streak it is the oldest day
+        // the backfill just drew in, so those days keep showing.
+        const known = Object.keys(seeded).sort();
 
         stats.dayLogSeeded = true;
+        stats.historyStartedOn = known.length ? known[0] : todayLocal();
+
         await setStatsRaw(stats);
+        return stats;
     });
 
     statsQueue = run.catch(() => {});
     return run;
+}
+
+// Where this fortress's history begins. The stored stamp is authoritative; the
+// fallback covers a log written by a build that predates the stamp.
+function historyStartDate(stats, log) {
+    if (stats.historyStartedOn) return stats.historyStartedOn;
+
+    const known = Object.keys(log).sort();
+    return known.length ? known[0] : todayLocal();
 }
 
 // ---- Public API -----------------------------------------------------------
@@ -514,18 +561,26 @@ function getDayHistory(days) {
         return stats;
     }).then(
         () => ensureDayLogSeeded()
-    ).then(
-        () => enqueueDayLogUpdate(pruneDayLog)
-    ).then((log) => {
+    ).then((stats) => enqueueDayLogUpdate(pruneDayLog).then((log) => {
+        const start = historyStartDate(stats, log);
         const history = [];
         let date = addDaysLocal(todayLocal(), -(days - 1));
 
         for (let i = 0; i < days; i++) {
-            const entry = log[date] ? normalizeDayEntry(log[date]) : null;
-            history.push({ date: date, state: dayState(entry), entry: entry });
+            // String comparison works on "YYYY-MM-DD". Today can never fall
+            // here: the start date is at worst today itself.
+            const before = date < start;
+            const entry = (!before && log[date]) ? normalizeDayEntry(log[date]) : null;
+
+            history.push({
+                date: date,
+                state: before ? DAY_BEFORE : dayState(entry),
+                entry: entry
+            });
+
             date = addDaysLocal(date, 1);
         }
 
         return history;
-    });
+    }));
 }

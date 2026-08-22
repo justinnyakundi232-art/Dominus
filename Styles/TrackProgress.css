@@ -358,3 +358,13 @@ h1{
 @media (prefers-reduced-motion: reduce){
     .heat-tip{ transition:none; }
 }
+
+/* Days that fall before this fortress has any history. Not a state the day was
+   in — an absence of one — so it is drawn as an empty frame rather than a fill,
+   fainter than an untested day, and counted in nothing. Keeping the full
+   26-week frame rather than shrinking the grid means the layout doesn't shift
+   as history accumulates: the filled part simply grows into it. */
+.heat-cell.heat-before{
+    background:transparent;
+    border-color:#1c1c1c;
+}
