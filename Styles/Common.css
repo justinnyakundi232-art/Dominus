@@ -53,3 +53,104 @@
     opacity:1;
     visibility:visible;
 }
+
+/* ---- Friction-gate modal ------------------------------------------------
+ *
+ * The confirmation used by every "you are about to dismantle your own
+ * defences" gate: removing a block, removing a task, deleting a category,
+ * and (since 1.9) the seal prompt.
+ *
+ * These rules lived in three copies — Popup.css, BuildFortress.css and
+ * Blocked.css — which were identical apart from how big the box was. The
+ * seal prompt is built by Seal.js and rendered on more than one page, so it
+ * needs one definition to render against; the per-page size and weight
+ * differences stay behind in each page's own stylesheet. */
+
+.modal-overlay{
+    position:fixed;
+    inset:0;
+    background:rgba(0,0,0,0.8);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:16px;
+    box-sizing:border-box;
+    z-index:20;
+}
+
+.modal-overlay[hidden]{
+    display:none;
+}
+
+.modal-box{
+    background:#0d0d0d;
+    border:2px solid #B8860B;
+    padding:24px;
+    width:100%;
+    max-width:420px;
+    box-sizing:border-box;
+    text-align:center;
+}
+
+.modal-title{
+    color:#D4AF37;
+    font-size:1.4rem;
+    margin:0 0 12px;
+}
+
+.modal-streak{
+    color:#E63D3D;
+    font-size:0.95rem;
+    font-style:italic;
+    margin:0 0 10px;
+}
+
+.modal-text{
+    color:#E5E5E5;
+    font-size:0.95rem;
+    margin:0 0 18px;
+}
+
+.modal-actions{
+    display:flex;
+    gap:10px;
+    justify-content:center;
+}
+
+/* Carries its own appearance rather than inheriting the page's base button:
+   Build Fortress has no base button rule at all, so a modal button there was
+   invisible without one. */
+.modal-btn{
+    width:auto;
+    padding:10px 18px;
+    font-size:0.95rem;
+    margin-bottom:0;
+    cursor:pointer;
+    border:1px solid #B8860B;
+    background:linear-gradient(to bottom, #D4AF37, #B8860B);
+}
+
+.modal-btn-secondary{
+    background:none;
+    border:1px solid #B8860B;
+    color:#E5E5E5;
+}
+
+.modal-btn-secondary:hover{
+    background:#B8860B;
+    color:black;
+}
+
+.modal-btn.disabled,
+.modal-btn:disabled{
+    opacity:0.4;
+    cursor:not-allowed;
+    background:linear-gradient(to bottom, #6e5a1f, #594a16, #3d3210);
+}
+
+/* Beats the page's own button:hover, which would otherwise light up a button
+   that is deliberately locked. */
+.modal-btn:disabled:hover{
+    color:initial;
+    background:linear-gradient(to bottom, #6e5a1f, #594a16, #3d3210);
+}
