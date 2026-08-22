@@ -596,3 +596,106 @@ function describeWeakening(before, after) {
 
     return lines;
 }
+
+// ---- The chokepoint -------------------------------------------------------
+//
+// Every edit to the fortress goes through commitFortress(). Before 1.9 three
+// separate handlers wrote these keys directly, which meant the rule at the top
+// of this file existed only as an agreement between them — and each one had to
+// remember to re-derive blockedSites on its way past. Routing them through one
+// function makes the rule a thing that exists, and gives Scheduling and Sync
+// somewhere to arrive.
+//
+// The one write that deliberately does NOT come through here is the migration
+// inside loadCategories(): it rewrites the stored shape on first read, which
+// is not a user edit, and charging the seal for it would prompt every fortress
+// upgrading from 1.8 before its owner had touched anything.
+
+function loadStandards() {
+    return new Promise((resolve) => {
+        chrome.storage.local.get(["unlockTask", "cooldownSettings"], (result) => {
+            resolve({
+                task: result.unlockTask || null,
+                cooldown: normalizeCooldown(result.cooldownSettings)
+            });
+        });
+    });
+}
+
+// The whole fortress as one object, which is the unit describeWeakening()
+// compares and writeFortress() persists.
+function readFortress() {
+    return Promise.all([loadCategories(), loadStandards()]).then(([model, standards]) => ({
+        categories: model.categories,
+        manualSites: model.manualSites,
+        task: standards.task,
+        cooldown: standards.cooldown
+    }));
+}
+
+// Fills in whatever the caller left out from what is already stored.
+//
+// A caller can legitimately not know about parts of the fortress — the popup
+// has no idea what the unlock task is — so an absent key has to mean "leave
+// this alone" rather than "clear it". `task` is checked with `in` because null
+// is a real value there: it means "deliberately no task", the same
+// undefined-vs-null convention readTaskPicker() uses.
+function fillFortressState(next, stored) {
+    return {
+        categories: next.categories || stored.categories,
+        manualSites: next.manualSites || stored.manualSites,
+        task: ("task" in next) ? next.task : stored.task,
+        cooldown: next.cooldown || stored.cooldown
+    };
+}
+
+// Resolves { saved:true, blockedSites, state }.
+function writeFortress(state) {
+    // blockedSites is derived here rather than by the caller, and that is half
+    // the reason this function exists: it is what Background.js reads on every
+    // navigation, and a page that edited the categories but forgot to re-derive
+    // it would leave what is enforced disagreeing with what is shown.
+    const blockedSites = computeBlockedSites(state.categories, state.manualSites);
+
+    return new Promise((resolve) => {
+        chrome.storage.local.set({
+            [CATEGORY_DEFS_KEY]: state.categories,
+            [MANUAL_SITES_KEY]: state.manualSites,
+            blockedSites: blockedSites,
+            unlockTask: state.task,
+            cooldownSettings: normalizeCooldown(state.cooldown)
+        }, () => resolve({ saved: true, blockedSites: blockedSites, state: state }));
+    });
+}
+
+// Commits a fortress edit, charging the seal if the edit takes defences down.
+//
+// Resolves { saved:true, blockedSites, state } or { saved:false, reason }. A
+// refused commit writes nothing at all — callers must leave their working copy
+// exactly as it was, so the user's edits are still on screen to retry or undo.
+function commitFortress(next) {
+    return readFortress().then((before) => {
+        const after = fillFortressState(next, before);
+        const weakenings = describeWeakening(before, after);
+
+        // Strengthening the fortress is free. This is the branch that makes it
+        // true, and it is the common one: blocking a site, adding a category,
+        // lengthening a cooldown.
+        if (!weakenings.length) return writeFortress(after);
+
+        return isSealed().then((sealed) => {
+            if (!sealed) return writeFortress(after);
+
+            return promptForSeal(weakenings).then((granted) => granted
+                ? writeFortress(after)
+                : { saved: false, reason: "refused" });
+        });
+    });
+}
+
+// Placeholder — the prompt itself lands in the next commit. Until then a
+// sealed fortress cannot exist (nothing sets a seal yet), so this is never
+// reached.
+function promptForSeal() {
+    return Promise.resolve(true);
+}

@@ -721,8 +721,12 @@ function renderTaskPanel(task) {
                     ? `Remove your ${getTaskTitle(task.type)} task? The saved code is discarded for good — the copy you wrote down will stop working, and a new task means a new code.`
                     : `Remove your ${getTaskTitle(task.type)} task? Unlocking a blocked site will only require the cooldown after this.`,
                 () => {
-                    chrome.storage.local.set({ unlockTask: null }, () => {
-                        renderTaskPanel(null);
+                    // The one edit on this page that commits the moment it is
+                    // confirmed rather than waiting for SAVE FORTRESS, which is
+                    // how Remove Task has always behaved. It now goes through
+                    // the same chokepoint as everything else.
+                    commitFortress({ task: null }).then((outcome) => {
+                        if (outcome.saved) renderTaskPanel(null);
                     });
                 }
             );
@@ -830,19 +834,18 @@ document.querySelector(".save-btn").addEventListener("click", () => {
         const cooldownToSave = readCooldownBlock("fortress")
             || normalizeCooldown(result.cooldownSettings);
 
-        // blockedSites is derived, not edited: the union of every enabled
-        // category and the popup's manual list. Before 1.8 this page added and
-        // deleted entries directly, which meant unticking a category deleted
-        // its preset sites even when the user had blocked one of them by hand.
-        const blockedSites = computeBlockedSites(categoryState, manualSites);
+        // Everything this page can change goes to storage in one commit, which
+        // is also where the seal is charged: commitFortress() works out whether
+        // this save takes any defence down and asks for the seal if it does.
+        // blockedSites is derived in there rather than here.
+        commitFortress({
+            categories: categoryState,
+            manualSites: manualSites,
+            task: taskToSave,
+            cooldown: cooldownToSave
+        }).then((outcome) => {
+            if (!outcome.saved) return reportSaveRefused();
 
-        chrome.storage.local.set({
-            [CATEGORY_DEFS_KEY]: categoryState,
-            [MANUAL_SITES_KEY]: manualSites,
-            blockedSites: blockedSites,
-            unlockTask: taskToSave,
-            cooldownSettings: cooldownToSave
-        }, () => {
             // Every draft code is now committed to storage, so the pending map
             // is dropped: from here on a Guarded Code is saved, and the pickers
             // must stop showing it.
@@ -876,6 +879,21 @@ document.querySelector(".save-btn").addEventListener("click", () => {
         });
     });
 });
+
+// A save the seal turned down. Nothing was written, and — just as importantly
+// — nothing on the page is reverted: every edit is still in the form, so the
+// user can enter their seal and try again, or undo the part they didn't mean.
+function reportSaveRefused() {
+    const saveBtn = document.querySelector(".save-btn");
+    const original = saveBtn.textContent;
+
+    saveBtn.textContent = "NOT SAVED — SEAL REQUIRED";
+    saveBtn.disabled = true;
+    setTimeout(() => {
+        saveBtn.textContent = original;
+        saveBtn.disabled = false;
+    }, 2000);
+}
 
 // ---- Load -----------------------------------------------------------------
 
