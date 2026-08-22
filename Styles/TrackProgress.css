@@ -169,3 +169,202 @@ h1{
     font-size:1.9rem;
     margin-top:60px;
 }
+
+/* ---- Streak history heatmap ----------------------------------------------
+ *
+ * One square per day, weeks running left to right as columns and weekdays down
+ * the rows — so a glance down a column is one week, and a glance across a row
+ * answers "which weekday do I lose?".
+ *
+ * Colour carries the state, and it is deliberately not symmetrical. HELD days
+ * are gold, the loud brand colour, because holding the line is the thing worth
+ * looking at; SLIPPED days are legible but quiet. A grid that shames the reader
+ * is a grid they stop opening, and an unopened progress page helps nobody. */
+
+.history-block{
+    margin-top:50px;
+}
+
+.history-summary{
+    font-size:1.05rem;
+    color:#B9C2CC;
+    margin:0 0 20px;
+}
+
+.history-summary .summary-value{
+    color:#D4AF37;
+}
+
+/* The grid is wider than a narrow window, so it scrolls inside its own box
+   rather than making the whole page scroll sideways. */
+.history-scroll{
+    overflow-x:auto;
+    padding-bottom:6px;
+}
+
+.history-grid{
+    display:inline-grid;
+    grid-template-areas:
+        ".        months"
+        "weekdays cells";
+    gap:6px;
+    /* inline-grid so the whole block is centred by the page's text-align, while
+       the labels inside it stay left-aligned against their own rows. */
+    text-align:left;
+}
+
+.history-months{
+    grid-area:months;
+    display:grid;
+    grid-auto-flow:column;
+    gap:4px;
+    font-size:0.7rem;
+    letter-spacing:1px;
+    color:#8B95A3;
+    height:14px;
+}
+
+.history-weekdays{
+    grid-area:weekdays;
+    display:grid;
+    grid-template-rows:repeat(7, 14px);
+    gap:4px;
+    font-size:0.7rem;
+    letter-spacing:1px;
+    color:#8B95A3;
+    padding-right:4px;
+    align-items:center;
+}
+
+.history-cells{
+    grid-area:cells;
+    display:grid;
+    grid-auto-flow:column;
+    grid-template-rows:repeat(7, 14px);
+    gap:4px;
+}
+
+.heat-cell{
+    width:14px;
+    height:14px;
+    border-radius:2px;
+    box-sizing:border-box;
+    background:#151515;
+    border:1px solid #262626;
+}
+
+/* A day nothing asked anything of. Present, but not a fight. */
+.heat-cell.heat-untested{
+    background:#151515;
+    border-color:#262626;
+}
+
+/* Clean, but recorded before the day log existed — so we know there was no
+   unlock, and genuinely do not know whether anything tested them. Drawn as an
+   outline rather than a fill so it never gets mistaken for a held day. */
+.heat-cell.heat-inferred{
+    background:transparent;
+    border:1px dashed #6e5a1f;
+}
+
+.heat-cell.heat-held{
+    border-color:transparent;
+}
+
+.heat-cell.heat-held.level-1{ background:#5c4a12; }
+.heat-cell.heat-held.level-2{ background:#9a7a1e; }
+.heat-cell.heat-held.level-3{ background:#D4AF37; }
+
+.heat-cell.heat-slipped{
+    border-color:transparent;
+}
+
+.heat-cell.heat-slipped.level-1{ background:#5e2020; }
+.heat-cell.heat-slipped.level-2{ background:#8f2c2c; }
+.heat-cell.heat-slipped.level-3{ background:#C0392B; }
+
+/* Today, whatever state it is in — the grid should always say where you are. */
+.heat-cell.is-today{
+    box-shadow:0 0 0 1px #0b0b0b, 0 0 0 2px #B9C2CC;
+}
+
+.heat-cell.is-empty{
+    visibility:hidden;
+}
+
+.history-legend{
+    display:flex;
+    flex-wrap:wrap;
+    justify-content:center;
+    align-items:center;
+    gap:18px;
+    margin-top:20px;
+    font-size:0.8rem;
+    letter-spacing:1px;
+    color:#8B95A3;
+}
+
+.legend-item{
+    display:inline-flex;
+    align-items:center;
+    gap:4px;
+}
+
+.legend-item .heat-cell{
+    width:11px;
+    height:11px;
+}
+
+.legend-item .heat-cell:last-of-type{
+    margin-right:4px;
+}
+
+/* One tooltip element, moved to whichever cell is hovered, rather than 180 of
+   them sitting in the DOM. */
+.heat-tip{
+    position:fixed;
+    z-index:5;
+    max-width:250px;
+    background:#0d0d0d;
+    border:1px solid #D4AF37;
+    border-radius:4px;
+    padding:8px 11px;
+    font-size:0.85rem;
+    line-height:1.4;
+    color:#E5E5E5;
+    text-align:left;
+    pointer-events:none;
+    opacity:0;
+    transition:opacity 0.12s ease;
+}
+
+.heat-tip.visible{
+    opacity:1;
+}
+
+.heat-tip .tip-date{
+    display:block;
+    color:#D4AF37;
+    letter-spacing:1px;
+    margin-bottom:2px;
+}
+
+.history-empty{
+    color:#8B95A3;
+    font-size:1rem;
+    margin:0;
+}
+
+@media (prefers-reduced-motion: reduce){
+    .heat-tip{ transition:none; }
+}
+
+/* Days that fall before this fortress has any history. Not a state the day was
+   in — an absence of one — so it is drawn as an empty frame rather than a fill,
+   fainter than an untested day, and counted in nothing. Keeping the full
+   26-week frame rather than shrinking the grid means the layout doesn't shift
+   as history accumulates: the filled part simply grows into it. */
+.heat-cell.heat-before{
+    background:transparent;
+    border-color:#1c1c1c;
+}
