@@ -8,10 +8,10 @@ html, body {
 
 
 body {
-  font-family: 'Playfair Display', serif;
+  font-family: var(--font-display);
   text-align: center;
   background-color: black;
-  border: 3px solid #B8860B;
+  border: 3px solid var(--gold-deep);
   margin: 0;
   min-height: 100vh;
   overflow: auto;
@@ -32,14 +32,14 @@ h1 {
   font-size: 3rem;
   margin-bottom: 0px;
   margin-top: 0px;
-  color: #D4AF37;
+  color: var(--gold);
 }
 
 p.subtitle {
   margin-top: 0px;
   font-size: 1rem;
   margin-bottom: 40px;
-  color: #E5E5E5;
+  color: var(--parchment);
 }
 
 main {
@@ -57,15 +57,15 @@ button {
   cursor: pointer;
   background: linear-gradient(
     to bottom,
-    #D4AF37,
-    #B8860B,
-    #8B6F1A
+    var(--gold),
+    var(--gold-deep),
+    var(--gold-dim)
     );
   border:none;
 }
     
 button:hover{
-  background: #FFD700;
+  background: var(--gold-bright);
 }
     
 img {
@@ -87,7 +87,7 @@ footer {
       
 footer p {
   margin: 0px;
-  color: #B8860B;
+  color: var(--gold-deep);
   padding: 20px;
 }
 
@@ -98,7 +98,7 @@ footer p {
 
 .blocked-list-heading {
   font-size: 0.85rem;
-  color: #B8860B;
+  color: var(--gold-deep);
   letter-spacing: 0.5px;
   margin: 0 0 8px;
   text-align: left;
@@ -110,7 +110,7 @@ footer p {
   padding: 0;
   max-height: 160px;
   overflow-y: auto;
-  border: 1px solid #B8860B;
+  border: 1px solid var(--gold-deep);
 }
 
 /* Category heading inside the blocked list. Sticky so the group a row belongs
@@ -123,11 +123,11 @@ footer p {
   top: 0;
   padding: 6px 12px;
   background: #14120c;
-  border-bottom: 1px solid #3d3210;
+  border-bottom: 1px solid var(--locked-bottom);
   font-size: 0.75rem;
   letter-spacing: 0.5px;
   text-transform: uppercase;
-  color: #D4AF37;
+  color: var(--gold);
 }
 
 .blocked-group-badge {
@@ -139,7 +139,7 @@ footer p {
 .blocked-group-note {
   margin-left: auto;
   font-size: 0.65rem;
-  color: #E63D3D;
+  color: var(--breach);
   letter-spacing: 0.5px;
 }
 
@@ -149,8 +149,8 @@ footer p {
   justify-content: space-between;
   padding: 8px 12px;
   font-size: 0.85rem;
-  color: #E5E5E5;
-  border-bottom: 1px solid #3d3210;
+  color: var(--parchment);
+  border-bottom: 1px solid var(--locked-bottom);
 }
 
 .blocked-item:last-child {
@@ -180,7 +180,7 @@ footer p {
    row, it isn't the point of it. */
 .blocked-item-source {
   font-size: 0.7rem;
-  color: #B8860B;
+  color: var(--gold-deep);
   letter-spacing: 0.3px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -193,12 +193,12 @@ footer p {
   padding: 2px 8px;
   font-size: 0.9rem;
   background: none;
-  color: #E63D3D;
-  border: 1px solid #E63D3D;
+  color: var(--breach);
+  border: 1px solid var(--breach);
 }
 
 .remove-blocked-btn:hover {
-  background: #E63D3D;
+  background: var(--breach);
   color: black;
 }
 
@@ -215,4 +215,35 @@ footer p {
 
 .modal-text {
   font-size: 0.9rem;
+}
+
+/* ---- Standing -----------------------------------------------------------
+ *
+ * Added when the popup stopped being a menu. Two of its three buttons opened
+ * separate documents; those are views in the app now, so the space they used
+ * goes to saying where things stand — which is what a popup is for and what
+ * this one never did. */
+
+.popup-standing{
+    margin:0 0 6px;
+}
+
+.popup-streak{
+    margin:0;
+    font-size:1.6rem;
+    color:var(--gold);
+    line-height:1.2;
+}
+
+.popup-today{
+    margin:2px 0 0;
+    font-size:0.85rem;
+    color:var(--muted);
+}
+
+/* A slip is the one thing here worth colouring. It is not a scolding — the
+   history grid has drawn slipped days in this red since 1.10, and the popup
+   agreeing with it is what makes the two read as one product. */
+.popup-today.is-slipped{
+    color:var(--breach);
 }

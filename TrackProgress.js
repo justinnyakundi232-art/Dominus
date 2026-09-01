@@ -1,15 +1,26 @@
-// TrackProgress.js — populates the Track Your Progress page from the stats
-// data layer (Stats.js, loaded before this script). Read-only: it calls
-// getStats() and paints the victory rate, the 10-square meter, and the streak.
+// TrackProgress.js — populates The Campaign from the stats data layer
+// (Stats.js, loaded before this script). Read-only: it calls getStats() and
+// paints the victory rate, the 10-square meter, the streaks and the history.
 
-document.addEventListener("DOMContentLoaded", () => {
+// Every figure on this view can change while the user is somewhere else in the
+// shell — a stand recorded on the blocked page moves all of them — so it is
+// repainted from storage each time the view is shown rather than only at load.
+// The router looks this name up; see refreshHookFor() in App.js.
+//
+// Safe to call repeatedly: every render below replaces its own content rather
+// than appending to it.
+function refreshCampaign() {
     getStats().then((stats) => {
         renderVictoryRate(stats);
         renderStreak(stats);
     });
 
     renderStreakHistory();
-});
+}
+
+// No DOMContentLoaded handler on purpose: the router calls this the first time
+// the view is shown and on every visit after, so a user who never opens the
+// campaign never pays for building a 26-week grid.
 
 // Victory rate = Stay Focused / (Stay Focused + Unlocks). Fills the percentage
 // text and lights up that share of the 10 squares. With no data yet (ratio

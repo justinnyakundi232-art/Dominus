@@ -1,0 +1,364 @@
+/* App.css — the shell.
+ *
+ * Dominus used to be a popup that launched documents: three buttons, each
+ * opening a separate page with its own scroll, its own stylesheet and no memory
+ * of where you came from. This is the frame that replaces that — one window,
+ * one place, with the views swapping inside it.
+ *
+ * Design note — why the views are hidden rather than destroyed:
+ *
+ * Every view's markup is in the document from the start, and routing only
+ * toggles which one is shown. That is what makes a half-finished fortress edit
+ * survive a trip to the campaign and back: the working copy, the open category
+ * panel, the scroll position and the half-typed site list are all still sitting
+ * in the DOM where the user left them. Rebuilding a view on every visit would
+ * throw all of that away, which is the specific thing that made the old
+ * separate pages feel like documents rather than an app.
+ *
+ * It costs a little more work at load. These are four small views and the
+ * trade is heavily in favour of keeping them alive. */
+
+/* ---- The document ------------------------------------------------------ */
+
+html, body {
+    height: 100%;
+}
+
+body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--parchment);
+    font-family: var(--font-display);
+}
+
+/* The window, not the page: the shell is exactly one viewport tall and the
+ * content pane scrolls inside it. The rail then cannot scroll away, which is
+ * the whole point of a persistent frame — and it is how the Tauri window will
+ * behave, so the two surfaces agree.
+ *
+ * `position: sticky` was the first attempt and is the wrong tool here: a grid
+ * item stretches to its row by default, which leaves a sticky box no room to
+ * move inside its own area, and the rail scrolled off with the content. */
+.app {
+    display: grid;
+    grid-template-columns: 260px minmax(0, 1fr);
+    height: 100vh;
+    overflow: hidden;
+}
+
+/* ---- The rail -----------------------------------------------------------
+ *
+ * The part that never repaints. It carries the mark, where you are, and the
+ * one piece of state worth seeing from anywhere — the streak. */
+
+.rail {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    border-right: 2px solid var(--gold-deep);
+    background: var(--panel);
+    box-sizing: border-box;
+    padding: 28px 0 20px;
+    overflow-y: auto;
+}
+
+.rail-mark {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0 20px 26px;
+    border-bottom: 1px solid rgba(184, 134, 11, 0.35);
+}
+
+.rail-crest {
+    width: 76px;
+    height: auto;
+}
+
+.rail-name {
+    margin: 8px 0 2px;
+    font-size: 1.9rem;
+    letter-spacing: 0.12em;
+    color: var(--gold);
+}
+
+.rail-motto {
+    margin: 0;
+    font-size: 0.8rem;
+    font-style: italic;
+    color: var(--muted);
+}
+
+.rail-nav {
+    display: flex;
+    flex-direction: column;
+    padding: 18px 0;
+    flex: 1 0 auto;
+}
+
+/* A nav item is a button, not a link: the router owns navigation, and an
+   anchor that also changes the hash would fire the route twice. */
+.rail-link {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    width: 100%;
+    padding: 12px 20px 12px 18px;
+    border: none;
+    border-left: 3px solid transparent;
+    background: none;
+    color: var(--parchment);
+    font-family: inherit;
+    font-size: 1.05rem;
+    letter-spacing: 0.06em;
+    text-align: left;
+    cursor: pointer;
+    transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.rail-link:hover {
+    color: var(--gold);
+    background: rgba(212, 175, 55, 0.06);
+}
+
+.rail-link[aria-current="page"] {
+    color: var(--gold);
+    border-left-color: var(--gold);
+    background: rgba(212, 175, 55, 0.09);
+}
+
+.rail-glyph {
+    color: var(--gold-deep);
+    font-size: 0.75rem;
+}
+
+.rail-link[aria-current="page"] .rail-glyph {
+    color: var(--gold);
+}
+
+/* The Order isn't built yet. Saying so plainly beats hiding it: the shape of
+   the product is part of what the product is for. */
+.rail-link[disabled] {
+    color: var(--muted);
+    cursor: default;
+}
+
+.rail-link[disabled]:hover {
+    background: none;
+    color: var(--muted);
+}
+
+.rail-soon {
+    margin-left: auto;
+    font-size: 0.65rem;
+    letter-spacing: 0.14em;
+    color: var(--gold-dim);
+}
+
+/* Standing state, always visible. A discipline streak you have to navigate to
+   is a discipline streak you forget you are carrying. */
+.rail-standing {
+    margin: 0 20px;
+    padding: 14px 0 0;
+    border-top: 1px solid rgba(184, 134, 11, 0.35);
+    text-align: center;
+}
+
+.rail-standing-value {
+    display: block;
+    font-size: 2.1rem;
+    color: var(--gold);
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+}
+
+.rail-standing-label {
+    display: block;
+    font-size: 0.7rem;
+    letter-spacing: 0.16em;
+    color: var(--muted);
+    text-transform: uppercase;
+}
+
+/* ---- The content region ------------------------------------------------ */
+
+.view-region {
+    min-width: 0;
+    height: 100%;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+.view {
+    display: none;
+}
+
+.view.is-active {
+    display: block;
+    animation: view-in 0.18s ease-out;
+}
+
+/* Short and small: the point is that the page did not blink, not that it made
+   an entrance. Anything longer reads as waiting. */
+@keyframes view-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .view.is-active { animation: none; }
+    .rail-link { transition: none; }
+}
+
+/* ---- Inside the shell, a view does not announce itself ------------------
+ *
+ * Every view here was a standalone page a moment ago, and each opened with a
+ * 4rem heading over a large emblem — right for a page you arrived at cold, and
+ * wrong now that the rail has already said where you are. Scrolling past a
+ * hero to reach the controls is the specific thing that made Dominus feel like
+ * a stack of documents.
+ *
+ * So the heroes come down to one scale shared across every view. The artwork
+ * stays: it is a good part of what Dominus is, and shrinking it is not the
+ * same as deleting it.
+ *
+ * These sit here rather than in each view's stylesheet because they are facts
+ * about the shell, not about the view — and they need to beat the view rules,
+ * which load after this file. `.view` supplies exactly that. */
+
+.view .fortress-page h1,
+.view .progress-page h1 {
+    font-size: 3.4rem;
+    margin-top: 40px;
+    margin-bottom: 8px;
+}
+
+.view .fortress-page .tagline,
+.view .progress-page .tagline {
+    font-size: 1.25rem;
+}
+
+.view .fortress-icon {
+    width: 190px;
+    margin: 26px 0 6px;
+}
+
+.view .strategy-map {
+    width: 190px;
+    margin-top: 20px;
+}
+
+/* ---- The fortress's two panels ------------------------------------------
+ *
+ * They are pinned to `width: 500px` under content-box sizing, so each one is
+ * really 546px once its padding and border are counted. Two of those plus the
+ * gap need 1117px, which the standalone page had and the shell does not — the
+ * rail takes 260px of it — so they wrapped into a column and the fortress
+ * became twice as tall as it needs to be.
+ *
+ * Letting them share the row instead of pinning them fixes it at every width
+ * rather than at one: they sit side by side wherever there is room for two and
+ * stack when there isn't. Scoped to .fortress-panels so the seal and the order
+ * views, which use the same .panel class on their own, are left alone. */
+
+.view .fortress-panels .panel {
+    box-sizing: border-box;
+    width: auto;
+    flex: 1 1 440px;
+    max-width: 560px;
+}
+
+/* ---- The campaign's emblems ---------------------------------------------
+ *
+ * The laurel and the cracked shield sit in a `position: fixed` layer that
+ * centres on the viewport and shows above 1340px. That was right when the
+ * campaign WAS the page. Inside the shell the content region starts after the
+ * rail, so the layer has to start there too, or the left emblem slides under
+ * the rail and the pair sit off-centre from the meter they flank.
+ *
+ * They also need more room than before: the rail takes 260px that used to be
+ * gutter. Holding them back to 1900px keeps the original intent — decorative
+ * emblems seated beside the page, never over it — rather than cramming them
+ * into a gutter that is no longer there. */
+
+.view .side-emblem-layer {
+    left: 260px;
+}
+
+@media (max-width: 1899px) {
+    .view .side-emblem-layer {
+        display: none;
+    }
+}
+
+/* ---- Narrow windows -----------------------------------------------------
+ *
+ * The rail becomes a bar across the top rather than collapsing behind a menu.
+ * Five items fit, and a shell whose navigation is hidden is a shell that has
+ * stopped doing its job. */
+
+@media (max-width: 900px) {
+    .app {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-rows: auto minmax(0, 1fr);
+    }
+
+    .rail {
+        height: auto;
+        overflow: visible;
+        flex-direction: row;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+        border-right: none;
+        border-bottom: 2px solid var(--gold-deep);
+        padding: 12px 16px;
+    }
+
+    .rail-mark {
+        flex-direction: row;
+        align-items: center;
+        gap: 10px;
+        padding: 0 16px 0 0;
+        border-bottom: none;
+        border-right: 1px solid rgba(184, 134, 11, 0.35);
+    }
+
+    .rail-crest { width: 32px; }
+    .rail-name { margin: 0; font-size: 1.2rem; }
+    .rail-motto { display: none; }
+
+    .rail-nav {
+        flex-direction: row;
+        flex-wrap: wrap;
+        padding: 0;
+        flex: 1 1 auto;
+    }
+
+    .rail-link {
+        width: auto;
+        padding: 8px 12px;
+        border-left: none;
+        border-bottom: 3px solid transparent;
+        font-size: 0.95rem;
+    }
+
+    .rail-link[aria-current="page"] {
+        border-left-color: transparent;
+        border-bottom-color: var(--gold);
+    }
+
+    .rail-glyph, .rail-soon { display: none; }
+
+    .rail-standing {
+        margin: 0;
+        padding: 0 0 0 16px;
+        border-top: none;
+        border-left: 1px solid rgba(184, 134, 11, 0.35);
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+    }
+
+    .rail-standing-value { font-size: 1.3rem; }
+}

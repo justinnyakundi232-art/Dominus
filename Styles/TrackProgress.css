@@ -1,16 +1,14 @@
-body{
-    background:#0b0b0b;
-    color:white;
-    font-family:'Playfair Display', serif;
-    margin:0;
-}
+/* `body` used to live here, setting a near-black #0b0b0b ground. The shell
+   owns the document now and paints one ground for every view — which is the
+   point of there being a shell. The border below still separates this view
+   from it. */
 
 .progress-page{
     width:90%;
     max-width:1200px;
     margin:30px auto;
     padding:40px 20px 60px;
-    border:3px solid #D4AF37;
+    border:3px solid var(--gold);
     box-sizing:border-box;
     text-align:center;
     /* Positioned so it out-stacks the fixed emblem layer below. The layer's
@@ -22,14 +20,15 @@ body{
     z-index:1;
 }
 
-h1{
-    color:#D4AF37;
+/* Scoped, because both views are in one document now and both set these. */
+.progress-page h1{
+    color:var(--gold);
     font-size:4rem;
     margin-top:20px;
     margin-bottom:10px;
 }
 
-.tagline{
+.progress-page .tagline{
     max-width:850px;
     margin:auto;
     font-size:1.6rem;
@@ -123,14 +122,14 @@ h1{
 .progress-square{
     width:40px;
     height:40px;
-    border:2px solid #D4AF37;
+    border:2px solid var(--gold);
     border-radius:10px;
     background:#252525;
     box-sizing:border-box;
 }
 
 .progress-square.filled{
-    background:#D4AF37;
+    background:var(--gold);
 }
 
 .victory-rate{
@@ -139,7 +138,7 @@ h1{
 }
 
 .victory-value{
-    color:#D4AF37;
+    color:var(--gold);
 }
 
 /* The "(?)" tooltip next to the victory rate lives in Styles/Common.css,
@@ -152,7 +151,7 @@ h1{
 .streak-heading{
     font-size:1.3rem;
     letter-spacing:2px;
-    color:#D4AF37;
+    color:var(--gold);
     margin:0 0 10px;
 }
 
@@ -162,7 +161,7 @@ h1{
 }
 
 .streak-value{
-    color:#D4AF37;
+    color:var(--gold);
 }
 
 .coming-soon{
@@ -192,7 +191,7 @@ h1{
 }
 
 .history-summary .summary-value{
-    color:#D4AF37;
+    color:var(--gold);
 }
 
 /* The grid is wider than a narrow window, so it scrolls inside its own box
@@ -220,7 +219,7 @@ h1{
     gap:4px;
     font-size:0.7rem;
     letter-spacing:1px;
-    color:#8B95A3;
+    color:var(--muted);
     height:14px;
 }
 
@@ -231,7 +230,7 @@ h1{
     gap:4px;
     font-size:0.7rem;
     letter-spacing:1px;
-    color:#8B95A3;
+    color:var(--muted);
     padding-right:4px;
     align-items:center;
 }
@@ -264,7 +263,7 @@ h1{
    outline rather than a fill so it never gets mistaken for a held day. */
 .heat-cell.heat-inferred{
     background:transparent;
-    border:1px dashed #6e5a1f;
+    border:1px dashed var(--locked-top);
 }
 
 .heat-cell.heat-held{
@@ -273,7 +272,7 @@ h1{
 
 .heat-cell.heat-held.level-1{ background:#5c4a12; }
 .heat-cell.heat-held.level-2{ background:#9a7a1e; }
-.heat-cell.heat-held.level-3{ background:#D4AF37; }
+.heat-cell.heat-held.level-3{ background:var(--gold); }
 
 .heat-cell.heat-slipped{
     border-color:transparent;
@@ -301,7 +300,7 @@ h1{
     margin-top:20px;
     font-size:0.8rem;
     letter-spacing:1px;
-    color:#8B95A3;
+    color:var(--muted);
 }
 
 .legend-item{
@@ -325,13 +324,13 @@ h1{
     position:fixed;
     z-index:5;
     max-width:250px;
-    background:#0d0d0d;
-    border:1px solid #D4AF37;
+    background:var(--panel);
+    border:1px solid var(--gold);
     border-radius:4px;
     padding:8px 11px;
     font-size:0.85rem;
     line-height:1.4;
-    color:#E5E5E5;
+    color:var(--parchment);
     text-align:left;
     pointer-events:none;
     opacity:0;
@@ -344,13 +343,13 @@ h1{
 
 .heat-tip .tip-date{
     display:block;
-    color:#D4AF37;
+    color:var(--gold);
     letter-spacing:1px;
     margin-bottom:2px;
 }
 
 .history-empty{
-    color:#8B95A3;
+    color:var(--muted);
     font-size:1rem;
     margin:0;
 }
