@@ -315,7 +315,7 @@ function buildCategoryBlock(category) {
     block.innerHTML = `
         <div class="category-row">
             <label class="category">
-                <input type="checkbox" class="category-enable"${category.enabled ? " checked" : ""}>
+                <input type="checkbox" class="category-enable" id="${scopedId(category.id, "enable")}"${category.enabled ? " checked" : ""}>
                 <span class="category-badge" style="color:${categoryColorValue(category)}">${category.glyph}</span>
                 <span class="category-name">${escapeHtml(category.name)}</span>
             </label>
@@ -327,7 +327,7 @@ function buildCategoryBlock(category) {
 
         <div class="category-options">
             <label title="The blocked page will show no way to unlock this category. The only way to re-enable access is to come back here and uncheck this.">
-                <input type="checkbox" class="category-permanent"${category.permanent ? " checked" : ""}${category.enabled ? "" : " disabled"}>
+                <input type="checkbox" class="category-permanent" id="${scopedId(category.id, "permanent")}"${category.permanent ? " checked" : ""}${category.enabled ? "" : " disabled"}>
                 Permanently Block (disables unlocks)
             </label>
         </div>
@@ -335,12 +335,12 @@ function buildCategoryBlock(category) {
         <div class="category-detail"${expanded ? "" : " hidden"}>
             <label class="category-field">
                 <span>Name</span>
-                <input type="text" class="category-name-input" maxlength="${MAX_CATEGORY_NAME_LENGTH}" value="${escapeHtml(category.name)}">
+                <input type="text" class="category-name-input" id="${scopedId(category.id, "name")}" maxlength="${MAX_CATEGORY_NAME_LENGTH}" value="${escapeHtml(category.name)}">
             </label>
 
             <label class="category-field category-field-block">
                 <span>Sites — one per line</span>
-                <textarea class="category-sites" rows="5" placeholder="youtube.com">${escapeHtml(category.sites.join("\n"))}</textarea>
+                <textarea class="category-sites" id="${scopedId(category.id, "sites")}" rows="5" placeholder="youtube.com">${escapeHtml(category.sites.join("\n"))}</textarea>
             </label>
 
             <div class="category-field category-field-block">
@@ -368,7 +368,7 @@ function buildCategoryBlock(category) {
             </div>
 
             <label class="cooldown-toggle category-standards-toggle">
-                <input type="checkbox" class="category-own-standards"${hasOwnStandards ? " checked" : ""}>
+                <input type="checkbox" class="category-own-standards" id="${scopedId(category.id, "ownStandards")}"${hasOwnStandards ? " checked" : ""}>
                 <span>
                     Give this category its own standards
                     <span class="info-tip" tabindex="0" role="button" aria-label="What are own standards?">(?)<span class="info-tooltip" role="tooltip">Overrides the fortress-wide task and cooldown for these sites only. If a site sits in more than one category, the highest category in this list is the one that governs it.</span></span>
