@@ -3,6 +3,31 @@
 All notable changes to **Dominus** are documented here.
 This project loosely follows [Keep a Changelog](https://keepachangelog.com/) and [Semantic Versioning](https://semver.org/).
 
+## [1.11] — 2026-08-31
+
+### Added
+- **Keep a copy of your fortress.** *The Seal* has an **Export** button that saves everything Dominus knows — your streaks, your history, your categories, your standards and your seal — to a single file, and an **Import** to bring it back. Until now there was no way to get a fortress out of a browser: reinstalling Chrome, moving to another machine, or removing the extension for a moment took the whole record with it, silently and with nothing to restore from. `chrome.storage.local` is never synced and never backed up, so a copy you made yourself is the only thing that survives any of that.
+- **Importing adds; it never takes a defence down.** A backup is treated as another device that has been away for a while, and merged rather than pasted over: the two histories are combined, counters are added rather than replaced, and a category you have blocked since making the file is not removed by restoring it. Importing the same file twice does nothing the second time. The trade, stated on the panel, is that a restore can't be used to roll the fortress *back* — a category you removed on purpose will return if you import a backup older than the removal. Of the two ways this could go wrong, quietly restoring something is the better one.
+- **Dominus is one window now.** *Build Your Fortress* and *Track Your Progress* used to be separate documents you launched from the popup, each with its own scroll and no memory of where you came from. They are now views inside a single app, with a rail down the side that stays put while the content changes — and the streak you are carrying visible in it from wherever you are.
+- **The Keep**, a new opening view, answering the question Dominus has never had a surface for: where do I stand right now. Today's standing, both streaks, your victory rate, what is currently blocked, and the state of your seal.
+- **Gates standing open.** Sites inside a live unlock window are listed on The Keep with the time left on each, counting down. That was previously visible nowhere at all — an unlock you granted yourself and forgot about was invisible until it expired.
+- **The Seal has its own place** rather than sitting at the bottom of the fortress page, and **The Order** is present but honestly marked as not built yet.
+- Your fortress edits now **survive leaving the page**. A half-finished category, an open picker, where you had scrolled to — all still there when you come back, because moving between views no longer throws the page away and rebuilds it.
+
+### Changed
+- **The popup is a glance, not a menu.** It now opens with where you stand — your streak, and whether anything has tested you today — then the one action a popup is good at, blocking the site you are looking at, and a single door into the app. *Currently Blocked* is unchanged below it.
+- **The fortress fits on one screen.** Both panels sit side by side and the save button is reachable without scrolling past the artwork. The headings and emblems on every view came down to one scale: the rail already says where you are, so a view no longer needs to announce itself.
+- Colours and type are defined **once**, in one file, instead of being repeated across five stylesheets. Nothing looks different; it just means the two halves of Dominus can't drift apart as the desktop app arrives.
+
+### Groundwork
+- Dominus is being built into a desktop app, with the extension keeping the gate — it is the only thing that can see a navigation and stop it — and the app holding everything the browser can't reach, starting with limits on applications rather than only sites.
+- This release starts **keeping the record that will let the two agree**: every stand and every slip is now logged with the device that saw it, so that when there are two of them, merging your history can't lose a day or double-count one. Nothing is sent anywhere — there is nothing to send it to yet, and the code that would do it is deliberately switched off.
+- The rules for that merge ship with tests, because they are the part that is expensive to get wrong once two devices are in the wild. Three of them exist purely so a second device can never make friction cheaper: escalating cooldowns will count *you* rather than each browser separately, a wrong-seal wait can't be cleared by syncing, and a seal recovery can't be restarted to stall it.
+
+### Notes
+- Everything is still stored locally in `chrome.storage.local`, and **no data leaves your device**. The only new permission is `alarms`, which is what wakes the extension periodically once there is a desktop app to reconcile with.
+- Fortresses built before this release carry over untouched.
+
 ## [1.10] — 2026-08-22
 
 ### Added

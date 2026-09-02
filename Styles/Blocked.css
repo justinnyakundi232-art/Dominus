@@ -1,8 +1,8 @@
 body {
-      font-family: 'Playfair Display', serif;
+      font-family: var(--font-display);
       text-align: center;
       background-color: black;
-      border: 3px solid #B8860B;
+      border: 3px solid var(--gold-deep);
       margin: 0;
       min-height: 100vh;
       overflow: auto;
@@ -21,14 +21,14 @@ body {
       font-size: 3rem;
       margin-bottom: 0px;
       margin-top: 0px;
-      color: #D4AF37;
+      color: var(--gold);
     }
 
     p.subtitle {
       margin-top: 0px;
       font-size: 1rem;
       margin-bottom: 40px;
-      color: #E5E5E5;
+      color: var(--parchment);
     }
 
     main {
@@ -45,9 +45,9 @@ body {
       cursor: pointer;
       background: linear-gradient(
         to bottom,
-        #D4AF37,
-        #B8860B,
-        #8B6F1A
+        var(--gold),
+        var(--gold-deep),
+        var(--gold-dim)
         );
       border:none;
       margin-bottom: 10px;
@@ -55,7 +55,7 @@ body {
     
     button:hover{
       color: white;
-      background: #FFD700;
+      background: var(--gold-bright);
     }
     
     img {
@@ -74,7 +74,7 @@ body {
       
     footer p {
       margin: 0px;
-      color: #B8860B;
+      color: var(--gold-deep);
       padding: 20px;
     }
 
@@ -85,7 +85,7 @@ body {
   margin: 10px;
 }
 .rank span{
-  color: #E63D3D;
+  color: var(--breach);
 }
 .streak {
   color:#FFFFFF;
@@ -94,7 +94,7 @@ body {
   margin: 10px;
 }
 .streak span{
-  color: #B8860B;
+  color: var(--gold-deep);
   font-size: 1.5rem;
 }
 
@@ -107,7 +107,7 @@ body {
 }
 
 .category-note {
-  color: #B8860B;
+  color: var(--gold-deep);
   font-size: 0.9rem;
   font-style: italic;
   text-align: center;
@@ -125,9 +125,9 @@ body {
   cursor: not-allowed;
   background: linear-gradient(
     to bottom,
-    #6e5a1f,
-    #594a16,
-    #3d3210
+    var(--locked-top),
+    var(--locked-mid),
+    var(--locked-bottom)
     );
 }
 
@@ -135,9 +135,9 @@ body {
   color: initial;
   background: linear-gradient(
     to bottom,
-    #6e5a1f,
-    #594a16,
-    #3d3210
+    var(--locked-top),
+    var(--locked-mid),
+    var(--locked-bottom)
     );
 }
 
@@ -153,7 +153,7 @@ body {
   flex-direction: column;
   align-items: center;
   gap: 10px;
-  border: 1px solid #B8860B;
+  border: 1px solid var(--gold-deep);
   padding: 20px;
   box-sizing: border-box;
 }
@@ -161,13 +161,13 @@ body {
 .task-confirm-box .task-instruction {
   margin: 0;
   font-size: 0.95rem;
-  color: #E5E5E5;
+  color: var(--parchment);
 }
 
 .task-confirm-box .task-target-message {
   margin: 0;
   font-size: 1rem;
-  color: #D4AF37;
+  color: var(--gold);
   font-style: italic;
 }
 
@@ -176,25 +176,25 @@ body {
   min-height: 70px;
   resize: vertical;
   box-sizing: border-box;
-  font-family: 'Playfair Display', serif;
+  font-family: var(--font-display);
   font-size: 0.95rem;
   padding: 10px;
-  background-color: #0d0d0d;
-  color: #E5E5E5;
-  border: 1px solid #B8860B;
+  background-color: var(--panel);
+  color: var(--parchment);
+  border: 1px solid var(--gold-deep);
   border-radius: 2px;
   outline: none;
 }
 
 .task-confirm-box textarea:focus {
-  border-color: #D4AF37;
+  border-color: var(--gold);
   box-shadow: 0 0 4px rgba(212, 175, 55, 0.5);
 }
 
 .task-confirm-box .task-error {
   margin: 0;
   font-size: 0.85rem;
-  color: #E63D3D;
+  color: var(--breach);
   min-height: 1em;
 }
 
@@ -209,7 +209,7 @@ body {
   margin: 0 auto 10px;
   max-width: 420px;
   font-size: 0.9rem;
-  color: #B8860B;
+  color: var(--gold-deep);
   font-style: italic;
 }
 
@@ -222,9 +222,9 @@ body {
   cursor: not-allowed;
   background: linear-gradient(
     to bottom,
-    #6e5a1f,
-    #594a16,
-    #3d3210
+    var(--locked-top),
+    var(--locked-mid),
+    var(--locked-bottom)
     );
 }
 
@@ -232,9 +232,9 @@ body {
   color: initial;
   background: linear-gradient(
     to bottom,
-    #6e5a1f,
-    #594a16,
-    #3d3210
+    var(--locked-top),
+    var(--locked-mid),
+    var(--locked-bottom)
     );
 }
 
@@ -266,7 +266,7 @@ body {
 }
 
 .modal-box p {
-  color: #E5E5E5;
+  color: var(--parchment);
   font-size: 1rem;
   margin: 0 0 20px;
 }

@@ -1,9 +1,5 @@
-body{
-    background:black;
-    color:white;
-    font-family:'Playfair Display', serif;
-    margin:0;
-}
+/* `body` used to live here. The shell (Styles/App.css) owns the document now,
+   so a rule here would fight the campaign view's copy of the same rule. */
 
 .fortress-page{
     width:90%;
@@ -12,14 +8,15 @@ body{
     text-align:center;
 }
 
-h1{
-    color:#D4AF37;
+/* Scoped, because both views are in one document now and both set these. */
+.fortress-page h1{
+    color:var(--gold);
     font-size:4rem;
     margin-top:40px;
     margin-bottom:10px;
 }
 
-.tagline{
+.fortress-page .tagline{
     max-width:700px;
     margin:auto;
     font-size:1.4rem;
@@ -38,7 +35,7 @@ h1{
 }
 
 .panel{
-    border:3px solid #B8860B;
+    border:3px solid var(--gold-deep);
     width:500px;
     padding:20px;
 }
@@ -48,7 +45,7 @@ h1{
     align-items:center;
     justify-content:space-between;
     gap:10px;
-    border:1px solid #B8860B;
+    border:1px solid var(--gold-deep);
     min-height:40px;
     padding:0 10px;
     box-sizing:border-box;
@@ -61,7 +58,7 @@ h1{
 }
 
 .category-empty{
-    color:#B8860B;
+    color:var(--gold-deep);
     font-size:0.9rem;
     font-style:italic;
 }
@@ -93,13 +90,13 @@ h1{
     line-height:1;
     cursor:pointer;
     background:none;
-    border:1px solid #3d3210;
-    font-family:'Playfair Display', serif;
+    border:1px solid var(--locked-bottom);
+    font-family:var(--font-display);
 }
 
 .swatch:hover,
 .glyph-option:hover{
-    border-color:#B8860B;
+    border-color:var(--gold-deep);
     background:none;
 }
 
@@ -107,7 +104,7 @@ h1{
    would hide the very colour it represents. */
 .swatch.selected,
 .glyph-option.selected{
-    border-color:#D4AF37;
+    border-color:var(--gold);
     box-shadow:0 0 4px rgba(212,175,55,0.6);
 }
 
@@ -116,7 +113,7 @@ h1{
 .category-summary{
     margin-left:auto;
     font-size:0.75rem;
-    color:#B8860B;
+    color:var(--gold-deep);
     letter-spacing:0.3px;
     white-space:nowrap;
 }
@@ -127,19 +124,19 @@ h1{
     font-size:0.9rem;
     line-height:1;
     background:none;
-    border:1px solid #B8860B;
-    color:#D4AF37;
+    border:1px solid var(--gold-deep);
+    color:var(--gold);
     cursor:pointer;
     flex-shrink:0;
 }
 
 .category-toggle:hover{
-    background:#B8860B;
+    background:var(--gold-deep);
     color:black;
 }
 
 .category-detail{
-    border:1px solid #3d3210;
+    border:1px solid var(--locked-bottom);
     border-top:none;
     padding:12px;
     display:flex;
@@ -157,7 +154,7 @@ h1{
     display:flex;
     align-items:center;
     gap:8px;
-    color:#B8860B;
+    color:var(--gold-deep);
     font-size:0.9rem;
 }
 
@@ -171,12 +168,12 @@ h1{
 
 .category-field input[type="text"],
 .category-detail textarea{
-    background-color:#0d0d0d;
-    color:#E5E5E5;
-    border:1px solid #B8860B;
+    background-color:var(--panel);
+    color:var(--parchment);
+    border:1px solid var(--gold-deep);
     border-radius:2px;
     padding:6px 8px;
-    font-family:'Playfair Display', serif;
+    font-family:var(--font-display);
     font-size:0.9rem;
     outline:none;
     box-sizing:border-box;
@@ -193,7 +190,7 @@ h1{
 
 .category-field input[type="text"]:focus,
 .category-detail textarea:focus{
-    border-color:#D4AF37;
+    border-color:var(--gold);
     box-shadow:0 0 4px rgba(212,175,55,0.5);
 }
 
@@ -205,7 +202,7 @@ h1{
     display:flex;
     flex-direction:column;
     gap:12px;
-    border-top:1px solid #3d3210;
+    border-top:1px solid var(--locked-bottom);
     padding-top:12px;
 }
 
@@ -224,12 +221,12 @@ h1{
     font-size:0.85rem;
     cursor:pointer;
     background:none;
-    border:1px solid #E63D3D;
-    color:#E63D3D;
+    border:1px solid var(--breach);
+    color:var(--breach);
 }
 
 .category-delete:hover{
-    background:#E63D3D;
+    background:var(--breach);
     color:black;
 }
 
@@ -239,13 +236,13 @@ h1{
     font-size:0.95rem;
     cursor:pointer;
     background:none;
-    border:1px dashed #B8860B;
-    color:#D4AF37;
-    font-family:'Playfair Display', serif;
+    border:1px dashed var(--gold-deep);
+    color:var(--gold);
+    font-family:var(--font-display);
 }
 
 .add-category-btn:hover{
-    background:#B8860B;
+    background:var(--gold-deep);
     color:black;
 }
 
@@ -253,7 +250,7 @@ h1{
    reach, now that a category can opt out of them. */
 .panel-note{
     font-size:0.8rem;
-    color:#B8860B;
+    color:var(--gold-deep);
     font-style:italic;
     margin:-10px 0 20px;
 }
@@ -261,13 +258,13 @@ h1{
   display: flex;
   justify-content: center;
   align-items: center;
-  border:1px solid #B8860B;
+  border:1px solid var(--gold-deep);
   min-height:40px;
   padding:10px;
   box-sizing:border-box;
 }
 .task-row input{
-  border: 1px solid #B8860B;
+  border: 1px solid var(--gold-deep);
   background-color: black;
   color: white;
   height: 20px;
@@ -286,7 +283,7 @@ h1{
 .task-config .task-label{
   margin:0;
   font-size:0.95rem;
-  color:#D4AF37;
+  color:var(--gold);
   letter-spacing:0.5px;
 }
 
@@ -295,12 +292,12 @@ h1{
   min-height:70px;
   resize:vertical;
   box-sizing:border-box;
-  font-family:'Playfair Display', serif;
+  font-family:var(--font-display);
   font-size:0.95rem;
   padding:10px;
-  background-color:#0d0d0d;
-  color:#E5E5E5;
-  border:1px solid #B8860B;
+  background-color:var(--panel);
+  color:var(--parchment);
+  border:1px solid var(--gold-deep);
   border-radius:2px;
   outline:none;
 }
@@ -310,7 +307,7 @@ h1{
 }
 
 .task-config textarea:focus{
-  border-color:#D4AF37;
+  border-color:var(--gold);
   box-shadow:0 0 4px rgba(212,175,55,0.5);
 }
 
@@ -322,19 +319,19 @@ h1{
 }
 
 .task-picker select{
-  font-family:'Playfair Display', serif;
+  font-family:var(--font-display);
   font-size:0.95rem;
   padding:6px 10px;
-  background-color:#0d0d0d;
-  color:#E5E5E5;
-  border:1px solid #B8860B;
+  background-color:var(--panel);
+  color:var(--parchment);
+  border:1px solid var(--gold-deep);
   border-radius:2px;
   outline:none;
   cursor:pointer;
 }
 
 .task-picker select:focus{
-  border-color:#D4AF37;
+  border-color:var(--gold);
 }
 
 #taskTypeConfig{
@@ -352,15 +349,15 @@ h1{
   font-family:'Courier New', monospace;
   font-size:1.6rem;
   letter-spacing:6px;
-  color:#D4AF37;
-  border:1px dashed #B8860B;
+  color:var(--gold);
+  border:1px dashed var(--gold-deep);
   padding:8px 14px;
 }
 
 .guard-code-note{
   margin:0;
   font-size:0.85rem;
-  color:#B8860B;
+  color:var(--gold-deep);
   max-width:90%;
 }
 
@@ -376,25 +373,25 @@ h1{
 .saved-task .task-label{
   margin:0;
   font-size:0.95rem;
-  color:#D4AF37;
+  color:var(--gold);
   letter-spacing:0.5px;
 }
 
 .saved-task .task-message{
   margin:0;
   font-size:0.9rem;
-  color:#E5E5E5;
+  color:var(--parchment);
   font-style:italic;
   max-width:90%;
 }
 
 .task-btn, .save-btn{
-    border: 1px solid #B8860B;
+    border: 1px solid var(--gold-deep);
   background:
     linear-gradient(
       to bottom,
-      #D4AF37,
-      #B8860B
+      var(--gold),
+      var(--gold-deep)
       );
 }
 .save-btn{
@@ -408,14 +405,14 @@ h1{
     appearance:none;
     width:24px;
     height:24px;
-    border:2px solid #B8860B;
+    border:2px solid var(--gold-deep);
     background:black;
     position:relative;
 }
 
 .category input[type="checkbox"]:checked::after{
     content:"✓";
-    color:#D4AF37;
+    color:var(--gold);
     font-size:18px;
 
     position:absolute;
@@ -433,7 +430,7 @@ h1{
 .panel-heading{
     font-size:1.8rem;
     margin-bottom:10px;
-    color:#D4AF37;
+    color:var(--gold);
 }
 .panel-description{
     font-size:1rem;
@@ -448,21 +445,21 @@ h1{
     display: flex;
     align-items: center;
     gap: 5px;
-    color: #B8860B;
+    color: var(--gold-deep);
 }
 
 .category-options input[type="checkbox"]{
     appearance:none;
     width:16px;
     height:16px;
-    border:1px solid #B8860B;
+    border:1px solid var(--gold-deep);
     background:black;
     position:relative;
 }
 
 .category-options input[type="checkbox"]:checked::after{
     content:"✓";
-    color:#D4AF37;
+    color:var(--gold);
     font-size:12px;
 
     position:absolute;
@@ -479,7 +476,7 @@ h1{
 
 .cooldown-block{
     margin-top:20px;
-    border:1px solid #B8860B;
+    border:1px solid var(--gold-deep);
     padding:12px;
     display:flex;
     flex-direction:column;
@@ -489,7 +486,7 @@ h1{
 
 .cooldown-heading{
     margin:0;
-    color:#D4AF37;
+    color:var(--gold);
     font-size:1rem;
     letter-spacing:1px;
 }
@@ -499,31 +496,31 @@ h1{
     display:flex;
     align-items:center;
     gap:8px;
-    color:#B8860B;
+    color:var(--gold-deep);
     font-size:0.95rem;
 }
 
 .cooldown-field input[type="number"]{
     width:70px;
-    background-color:#0d0d0d;
-    color:#E5E5E5;
-    border:1px solid #B8860B;
+    background-color:var(--panel);
+    color:var(--parchment);
+    border:1px solid var(--gold-deep);
     border-radius:2px;
     padding:4px 6px;
-    font-family:'Playfair Display', serif;
+    font-family:var(--font-display);
     font-size:0.95rem;
     outline:none;
 }
 
 .cooldown-field input[type="number"]:focus{
-    border-color:#D4AF37;
+    border-color:var(--gold);
 }
 
 .cooldown-toggle input[type="checkbox"]{
     appearance:none;
     width:16px;
     height:16px;
-    border:1px solid #B8860B;
+    border:1px solid var(--gold-deep);
     background:black;
     position:relative;
     flex-shrink:0;
@@ -531,7 +528,7 @@ h1{
 
 .cooldown-toggle input[type="checkbox"]:checked::after{
     content:"✓";
-    color:#D4AF37;
+    color:var(--gold);
     font-size:12px;
     position:absolute;
     left:5px;
@@ -596,7 +593,7 @@ h1{
     width:100%;
     max-width:460px;
     justify-content:space-between;
-    color:#E5E5E5;
+    color:var(--parchment);
     font-size:0.9rem;
 }
 
@@ -610,26 +607,26 @@ h1{
     min-width:0;
     padding:8px 10px;
     background:#000;
-    border:1px solid #B8860B;
-    color:#E5E5E5;
+    border:1px solid var(--gold-deep);
+    color:var(--parchment);
     font-family:inherit;
     font-size:0.95rem;
 }
 
 .seal-field input:focus{
     outline:none;
-    border-color:#D4AF37;
+    border-color:var(--gold);
 }
 
 .seal-state{
-    color:#D4AF37;
+    color:var(--gold);
     font-size:1rem;
     margin:0;
     text-align:center;
 }
 
 .seal-pending{
-    color:#E63D3D;
+    color:var(--breach);
     font-size:0.85rem;
     font-style:italic;
     margin:0;
@@ -638,7 +635,7 @@ h1{
 }
 
 .seal-panel-error{
-    color:#E63D3D;
+    color:var(--breach);
     font-size:0.85rem;
     margin:0;
     min-height:1.1em;
@@ -657,7 +654,7 @@ h1{
 .seal-honesty{
     margin:20px auto 0;
     max-width:560px;
-    color:#8B95A3;
+    color:var(--muted);
     font-size:0.8rem;
     font-style:italic;
     line-height:1.5;

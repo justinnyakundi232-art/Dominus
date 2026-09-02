@@ -8,6 +8,7 @@
   <!-- Font (optional but recommended early) -->
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&display=swap" rel="stylesheet">
   <link rel="icon" href="Assets/SHIELDICON.png">
+  <link href="Styles/Tokens.css" rel="stylesheet">
   <link href="Styles/Common.css" rel="stylesheet">
   <link href="Styles/Popup.css" rel="stylesheet">
 </head>
@@ -26,9 +27,15 @@
          case" quietly runs out. Filled by renderSealNotice(). -->
     <p id="sealNotice" class="seal-notice" hidden></p>
 
+    <!-- Where you stand, in two lines. A popup is good at a glance and one
+         action; everything that manages the fortress now lives in the app. -->
+    <div class="popup-standing">
+      <p class="popup-streak" id="popupStreak">…</p>
+      <p class="popup-today" id="popupToday">…</p>
+    </div>
+
     <button id="blockBtn">...</button>
-    <button id="buildBtn">BUILD THE FORTRESS</button>
-    <button id="trackBtn">TRACK PROGRESS</button>
+    <button id="openBtn">OPEN DOMINUS</button>
 
     <div id="blockedListSection" class="blocked-list-section" hidden>
       <h2 class="blocked-list-heading">CURRENTLY BLOCKED</h2>
@@ -55,6 +62,7 @@
   <script src="Tasks.js" defer></script>
   <script src="Categories.js" defer></script>
   <script src="Seal.js" defer></script>
+  <script src="Sync.js" defer></script>
   <script src="Popup.js" defer></script>
 </body>
 </html>

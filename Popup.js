@@ -12,6 +12,7 @@ let manualSites = [];
 
 document.addEventListener("DOMContentLoaded", async () => {
     renderBlockedList();
+    renderStanding();
     renderSealNotice(document.getElementById("sealNotice"));
 
     let [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -74,18 +75,73 @@ document.getElementById("blockBtn").addEventListener("click", async () => {
     });
 });
 
-document.getElementById("trackBtn").addEventListener("click", async () => {
-    chrome.tabs.create({
-        url: chrome.runtime.getURL("TrackProgress.html")
-    });
+// One door instead of two. BUILD THE FORTRESS and TRACK PROGRESS used to open
+// two separate documents; both are now views inside the app, so the popup opens
+// the app and lets the rail take it from there.
+//
+// The existing tab is reused when Dominus is already open, rather than stacking
+// a second copy of the same window every time the icon is clicked.
+document.getElementById("openBtn").addEventListener("click", () => {
+    openDominus("keep");
 });
 
-// For creating a new tab with the "Build Fortress" page when the user clicks the "BUILD THE FORTRESS" button
-document.getElementById("buildBtn").addEventListener("click", async () => {
-    chrome.tabs.create({
-        url: chrome.runtime.getURL("BuildFortress.html")
+function openDominus(route) {
+    const url = chrome.runtime.getURL(`App.html#/${route}`);
+
+    chrome.tabs.query({ url: chrome.runtime.getURL("App.html") + "*" }, (tabs) => {
+        if (tabs && tabs.length) {
+            chrome.tabs.update(tabs[0].id, { url: url, active: true });
+            chrome.windows.update(tabs[0].windowId, { focused: true });
+        } else {
+            chrome.tabs.create({ url: url });
+        }
+
+        // The popup is destroyed the moment focus leaves it, so nothing after
+        // this runs. Closing explicitly keeps that from looking like a hang.
+        window.close();
     });
-});
+}
+
+// ---- Standing -------------------------------------------------------------
+//
+// What the popup is actually good at: the state of things, in one line, without
+// opening anything. Everything that manages the fortress lives in the app now —
+// this is the glance.
+
+function renderStanding() {
+    const streakEl = document.getElementById("popupStreak");
+    const todayEl = document.getElementById("popupToday");
+    if (!streakEl || !todayEl) return;
+
+    getStats().then((stats) => {
+        const n = stats.currentStreak;
+        streakEl.textContent = `${n} ${n === 1 ? "day" : "days"} held`;
+    });
+
+    getDayHistory(1).then((history) => {
+        const today = history[history.length - 1];
+        const entry = today && today.entry;
+
+        if (today && today.state === DAY_SLIPPED) {
+            const domains = Object.keys(entry.sites || {});
+            todayEl.textContent = domains.length
+                ? `Today: ${domains[0]} gave way${entry.firstSlip ? ` at ${entry.firstSlip}` : ""}.`
+                : "Today: a gate gave way.";
+            todayEl.classList.add("is-slipped");
+            return;
+        }
+
+        todayEl.classList.remove("is-slipped");
+
+        if (today && today.state === DAY_HELD) {
+            const n = entry.stands;
+            todayEl.textContent = `Today: held ${n} ${n === 1 ? "time" : "times"}.`;
+            return;
+        }
+
+        todayEl.textContent = "Today: untested so far.";
+    });
+}
 
 // Renders the "Currently Blocked" list with per-site remove buttons, each
 // annotated with the category (or categories) it comes from.

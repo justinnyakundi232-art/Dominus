@@ -6,9 +6,8 @@ function getOriginalUrl() {
 
 const TEMP_UNLOCK_DURATION_MS = 60 * 60 * 1000; // 1 hour
 
-// Per-domain, per-day unlock counts that drive cooldown escalation.
-// Shape: { "youtube.com": { date: "YYYY-MM-DD", count: 2 }, ... }
-const ESCALATION_KEY = "escalationState";
+// ESCALATION_KEY lives in Tasks.js — the service worker needs it for sync
+// and cannot load this page script.
 
 const mainHeading = document.getElementById("mainHeading");
 const subtitle = document.getElementById("subtitle");

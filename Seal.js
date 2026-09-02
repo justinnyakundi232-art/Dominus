@@ -657,6 +657,43 @@ function fillFortressState(next, stored) {
     };
 }
 
+// Stamps a commit for the sync layer: raises the fortress revision, stores the
+// machine-readable weakening record if this edit took anything down, and logs
+// the commit as an event.
+//
+// The revision is what settles the handful of fortress fields where neither
+// peer is stricter than the other — a category's name, or two different unlock
+// tasks. The authored record is what lets a *weakening* cross to another
+// device at all: the merge in Sync.js is strengthen-wins, so without a record
+// saying the user deliberately took a defence down, a peer would simply put it
+// back on the next tick.
+//
+// Guarded the same way Stats.js guards its mirror, and for the same reason:
+// this file is loaded on pages that have no need of the sync layer, and a
+// missing Sync.js must cost the stamp, not the save.
+function stampCommit(before, after) {
+    if (typeof enqueueSyncMetaUpdate !== "function") return Promise.resolve();
+
+    const authored = describeAuthoredWeakening(before, after);
+
+    return enqueueSyncMetaUpdate((meta) => {
+        meta.fortressRev += 1;
+        meta.authored = authored
+            ? Object.assign({ rev: meta.fortressRev, at: Date.now() }, authored)
+            : null;
+        return meta;
+    }).then((meta) => {
+        // Awaited, unlike the stats mirror, so the revision and the event that
+        // names it land in the same order they were made. A sync tick that
+        // fires between the two would otherwise send a fortress revision with
+        // no commit behind it.
+        if (typeof recordSyncCommit !== "function") return;
+        return recordSyncCommit(meta.fortressRev);
+    }).catch(() => {
+        // Same rule as the stats mirror: a broken stamp never breaks the save.
+    });
+}
+
 // Resolves { saved:true, blockedSites, state }.
 function writeFortress(state) {
     // blockedSites is derived here rather than by the caller, and that is half
@@ -686,16 +723,22 @@ function commitFortress(next) {
         const after = fillFortressState(next, before);
         const weakenings = describeWeakening(before, after);
 
+        // Every accepted commit is stamped for sync, and only an accepted one:
+        // a refused save writes nothing, so it must not raise the revision
+        // either — a peer would otherwise treat the refusal as the newer edit
+        // and defer to a fortress that was never written.
+        const commit = () => stampCommit(before, after).then(() => writeFortress(after));
+
         // Strengthening the fortress is free. This is the branch that makes it
         // true, and it is the common one: blocking a site, adding a category,
         // lengthening a cooldown.
-        if (!weakenings.length) return writeFortress(after);
+        if (!weakenings.length) return commit();
 
         return isSealed().then((sealed) => {
-            if (!sealed) return writeFortress(after);
+            if (!sealed) return commit();
 
             return promptForSeal(weakenings).then((granted) => granted
-                ? writeFortress(after)
+                ? commit()
                 : { saved: false, reason: "refused" });
         });
     });

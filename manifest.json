@@ -1,9 +1,10 @@
 {
   "manifest_version": 3,
   "name": "Dominus - Stay focused. Build discipline.",
-  "version": "1.10",
+  "version": "1.11",
   "description": "Discipline through digital control.",
   "permissions": [
+    "alarms",
     "storage",
     "tabs",
     "webNavigation"

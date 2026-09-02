@@ -1,0 +1,61 @@
+/* Tokens.css — the one place Dominus's colours and type are defined.
+ *
+ * Load this FIRST, before Common.css and before any page stylesheet. Every
+ * other file references these rather than repeating a hex, so there is a single
+ * answer to "what gold is Dominus" instead of forty-nine copies of one.
+ *
+ * This file exists for the desktop app as much as for the extension. The two
+ * surfaces have to look like one product — a user moving between them should be
+ * moving between windows, not between programs — and the only way that survives
+ * contact with two codebases is if they read the same tokens. The Tauri build
+ * loads this file directly.
+ *
+ * The values are exactly what was already in the stylesheets. Nothing here
+ * changes how anything looks; it only gives the colours names.
+ *
+ * Dominus is deliberately single-theme. Black and gold IS the product — a
+ * fortress at night — so there is no light palette to switch to, and these are
+ * plain values rather than a pair of theme blocks. */
+
+:root {
+    /* ---- Gold -----------------------------------------------------------
+     * The accent, and the only hue in the product. --gold is text and active
+     * borders; --gold-deep is the standing border colour and the bottom of
+     * every button gradient. */
+    --gold: #D4AF37;
+    --gold-deep: #B8860B;
+    --gold-bright: #FFD700;
+    --gold-dim: #8B6F1A;
+
+    /* ---- Ground ---------------------------------------------------------
+     * Near-black rather than a grey scale: anything lighter turns the gold
+     * muddy, which is why there are only two. */
+    --ground: #000000;
+    --panel: #0D0D0D;
+
+    /* ---- Text ----------------------------------------------------------- */
+    --parchment: #E5E5E5;
+
+    /* Slate, for text that must be findable without competing — the "Forgot
+     * your seal?" link is the case this was chosen for. */
+    --muted: #8B95A3;
+
+    /* ---- Breach ---------------------------------------------------------
+     * Everything that says a defence is coming down: the streak-at-stake line
+     * on a friction gate, the seal recovery notice, a slipped day in the
+     * history grid. Semantic, and never used for emphasis. */
+    --breach: #E63D3D;
+
+    /* ---- Locked ---------------------------------------------------------
+     * The three stops of the gradient a disabled button wears. A locked button
+     * has to read as gold that has gone out rather than as grey, or the ten
+     * second gates look broken instead of deliberate. */
+    --locked-top: #6E5A1F;
+    --locked-mid: #594A16;
+    --locked-bottom: #3D3210;
+
+    /* ---- Type -----------------------------------------------------------
+     * One family throughout. The serif is doing the same job as the heraldry:
+     * it is why a blocked page reads as a keep rather than as an error page. */
+    --font-display: 'Playfair Display', Georgia, 'Times New Roman', serif;
+}

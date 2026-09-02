@@ -1,0 +1,315 @@
+/* Keep.css — The Keep (the dashboard) and the two small views beside it.
+ *
+ * This is a surface to be scanned rather than read, so the craft is in the
+ * information design: today's standing before the totals, the live things
+ * (gates standing open) marked so they read at a glance, and nothing decorative
+ * competing with any of it.
+ *
+ * It borrows .panel, .panel-heading and .panel-note from BuildFortress.css,
+ * which are unscoped class rules and were already doing this job. */
+
+.keep-page,
+.seal-page,
+.order-page {
+    width: 90%;
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 0 0 70px;
+    text-align: center;
+}
+
+.keep-page header,
+.seal-page header,
+.order-page header {
+    padding-top: 40px;
+}
+
+.keep-page h1,
+.seal-page h1,
+.order-page h1 {
+    color: var(--gold);
+    font-size: 3.4rem;
+    margin: 0 0 8px;
+    letter-spacing: 0.02em;
+}
+
+.keep-page .tagline,
+.seal-page .tagline,
+.order-page .tagline {
+    max-width: 640px;
+    margin: 0 auto 40px;
+    font-size: 1.25rem;
+    color: var(--parchment);
+}
+
+/* ---- Today --------------------------------------------------------------
+ *
+ * The first thing on the page, and the only band that changes colour: held,
+ * slipped, or neither. Encoding the state in the border as well as the words
+ * is what lets it be read without being read. */
+
+.keep-today {
+    border: 2px solid var(--gold-deep);
+    border-left-width: 6px;
+    background: var(--panel);
+    padding: 22px 26px;
+    margin-bottom: 28px;
+    text-align: left;
+}
+
+.keep-today.is-held {
+    border-color: var(--gold);
+}
+
+.keep-today.is-slipped {
+    border-color: var(--breach);
+}
+
+.keep-today-state {
+    margin: 0 0 6px;
+    font-size: 1.5rem;
+    color: var(--gold);
+}
+
+.keep-today.is-slipped .keep-today-state {
+    color: var(--breach);
+}
+
+.keep-today-detail {
+    margin: 0;
+    font-size: 1rem;
+    color: var(--muted);
+}
+
+/* ---- The three figures --------------------------------------------------- */
+
+.keep-stats {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+    margin-bottom: 28px;
+}
+
+.keep-stat {
+    border: 1px solid var(--gold-deep);
+    background: var(--panel);
+    padding: 20px 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.keep-stat-value {
+    font-size: 2.8rem;
+    line-height: 1.05;
+    color: var(--gold);
+    font-variant-numeric: tabular-nums;
+}
+
+.keep-stat-label {
+    font-size: 0.8rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--parchment);
+}
+
+.keep-stat-note {
+    font-size: 0.8rem;
+    color: var(--muted);
+    min-height: 1.2em;
+}
+
+/* ---- Bands --------------------------------------------------------------- */
+
+.keep-band {
+    border: 1px solid var(--gold-deep);
+    background: var(--panel);
+    padding: 20px 26px;
+    margin-bottom: 16px;
+    text-align: left;
+}
+
+.keep-band-heading {
+    margin: 0 0 10px;
+    font-size: 0.85rem;
+    letter-spacing: 0.18em;
+    color: var(--gold);
+    font-weight: 400;
+}
+
+.keep-band-line {
+    margin: 0 0 12px;
+    font-size: 1.1rem;
+    color: var(--parchment);
+}
+
+/* A text link, not a button. It hands off to another view; it must never
+   compete with SAVE FORTRESS for what a gold slab means. */
+.keep-link {
+    padding: 0;
+    border: none;
+    background: none;
+    color: var(--gold);
+    font-family: inherit;
+    font-size: 0.95rem;
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+.keep-link:hover {
+    color: var(--gold-bright);
+}
+
+/* ---- Gates standing open ------------------------------------------------
+ *
+ * The only live thing on the page. Marked in the breach colour because an open
+ * gate is a defence that is currently down — accurately, and by the user's own
+ * decision, but down. */
+
+.keep-band-open {
+    border-color: var(--breach);
+    background: rgba(230, 61, 61, 0.06);
+}
+
+.keep-band-open .keep-band-heading {
+    color: var(--breach);
+}
+
+.keep-gate-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.keep-gate {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 16px;
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(230, 61, 61, 0.25);
+}
+
+.keep-gate:last-child {
+    border-bottom: none;
+}
+
+.keep-gate-name {
+    font-size: 1.05rem;
+    color: var(--parchment);
+    overflow-wrap: anywhere;
+}
+
+.keep-gate-left {
+    font-size: 0.9rem;
+    color: var(--breach);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+/* ---- The seal and the order views --------------------------------------- */
+
+.seal-page .seal-panel,
+.order-page .order-panel {
+    text-align: center;
+}
+
+.order-panel .panel-note {
+    max-width: 620px;
+    margin: 0 auto 14px;
+}
+
+.order-panel .panel-note:last-child {
+    margin-bottom: 0;
+}
+
+/* ---- Narrow windows ------------------------------------------------------ */
+
+@media (max-width: 720px) {
+    .keep-stats {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .keep-page h1,
+    .seal-page h1,
+    .order-page h1 {
+        font-size: 2.4rem;
+    }
+}
+
+/* ---- Keeping a copy ------------------------------------------------------
+ *
+ * Sits under the seal because both are about a fortress surviving something —
+ * the seal surviving you at 11pm, this surviving a reinstall. */
+
+.backup-actions{
+    display:flex;
+    gap:12px;
+    justify-content:center;
+    margin:18px 0 0;
+}
+
+.backup-btn{
+    width:auto;
+    padding:10px 26px;
+    font-family:inherit;
+    font-size:0.95rem;
+    letter-spacing:0.08em;
+    cursor:pointer;
+    color:black;
+    border:1px solid var(--gold-deep);
+    background:linear-gradient(to bottom, var(--gold), var(--gold-deep));
+}
+
+/* Import is the one that changes things, so it is the quieter of the two —
+   the same relationship CANCEL has to UNSEAL on the friction gates. */
+.backup-btn-secondary{
+    background:none;
+    color:var(--parchment);
+}
+
+.backup-btn-secondary:hover{
+    background:var(--gold-deep);
+    color:black;
+}
+
+.backup-status{
+    margin:14px 0 0;
+    min-height:1.2em;
+    font-size:0.9rem;
+    color:var(--gold);
+}
+
+.backup-status.is-error{
+    color:var(--breach);
+}
+
+.backup-note{
+    margin-top:18px;
+    padding-top:14px;
+    border-top:1px solid rgba(184,134,11,0.35);
+}
+
+/* ---- Panels in the two small views --------------------------------------
+ *
+ * `.panel` is pinned to 500px and `.seal-panel` to a 1025px max — the width of
+ * the two fortress panels plus the gap between them, which is what it was
+ * sized against when the seal lived at the bottom of that page. Neither figure
+ * means anything now that each has its own view, and side by side they made
+ * the seal and its backup panel two different widths.
+ *
+ * Both fill their view instead. */
+
+.seal-page .panel,
+.order-page .panel {
+    width: auto;
+    max-width: none;
+    box-sizing: border-box;
+    margin: 0 0 20px;
+}
+
+.seal-page .panel:last-child,
+.order-page .panel:last-child {
+    margin-bottom: 0;
+}

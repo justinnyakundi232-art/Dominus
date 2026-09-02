@@ -28,6 +28,12 @@ const DEFAULT_STATS = {
     longestStreak: 0,
     lastCleanDate: null,   // "YYYY-MM-DD" local, or null if never set
     lastUnlockDate: null,  // "YYYY-MM-DD" local, set when an unlock is confirmed
+    // Milliseconds since epoch of that same unlock. The date above is what the
+    // streak needs; this is finer, and exists for the resistance streak once
+    // there is more than one device: a stand and a slip on the same date have
+    // to be orderable, or a run of stands recorded in one place can't be ended
+    // by a slip recorded in another. See deriveResistance() in Sync.js.
+    lastUnlockAt: 0,
     stayFocusedCount: 0,
     unlockCount: 0,
     // Resistance streak: consecutive Stay Focused choices with no unlock in
@@ -223,6 +229,33 @@ function historyStartDate(stats, log) {
 
 // ---- Public API -----------------------------------------------------------
 
+// Mirrors a stand or a slip into the sync event log, if Sync.js is loaded.
+//
+// Guarded rather than assumed because Stats.js keeps the same
+// load-in-any-order contract as the rest of the shared files, and is included
+// on pages that have no reason to carry the sync layer. A missing Sync.js
+// costs the record, not the write.
+//
+// Deliberately NOT awaited by the callers below. The event log is a second,
+// redundant view of what the counters and the day log already hold — it exists
+// so a future peer can merge without conflict, and nothing on screen reads it.
+// Making the unlock flow wait on it would put a sync concern in front of the
+// user for no benefit.
+// A broken mirror must never break the thing being mirrored, which means
+// catching both ways it can break: throwing outright, and returning a promise
+// that rejects later. The second one matters more — every path in Sync.js goes
+// through storage, so a rejection there is asynchronous by construction, and
+// without the catch it surfaces as an unhandled rejection in the console of a
+// user who was only trying to close a tab.
+function mirrorToSyncLog(record) {
+    try {
+        const pending = record();
+        if (pending && typeof pending.catch === "function") pending.catch(() => {});
+    } catch (error) {
+        // Nothing to do: the counters and the day log are already authoritative.
+    }
+}
+
 // Call from the unlock-confirm handler, alongside where tempUnlocks is written.
 // Counts the unlock and marks today not-clean. If today had already been counted
 // as a clean day, roll that day back out of the streak (multiple unlocks in one
@@ -232,11 +265,16 @@ function historyStartDate(stats, log) {
 // `domain` is optional and only feeds the day log, which uses it to name what
 // actually gave way. The streak has never cared which site it was.
 function recordUnlock(domain) {
+    mirrorToSyncLog(() => {
+        return typeof recordSyncUnlock === "function" ? recordSyncUnlock(domain) : null;
+    });
+
     const counters = enqueueStatsUpdate((stats) => {
         const today = todayLocal();
 
         stats.unlockCount += 1;
         stats.lastUnlockDate = today;
+        stats.lastUnlockAt = Date.now();
 
         // An unlock is what a resistance run is a run *against*, so it ends
         // here. longestResistance already holds the high-water mark and is
@@ -275,6 +313,10 @@ function recordUnlock(domain) {
 // resistance streak. It still must never touch the DAY streak: choosing Stay
 // Focused can't manufacture a clean day, and can't reset one either.
 function recordStayFocused() {
+    mirrorToSyncLog(() => {
+        return typeof recordSyncStand === "function" ? recordSyncStand() : null;
+    });
+
     const counters = enqueueStatsUpdate((stats) => {
         stats.stayFocusedCount += 1;
 

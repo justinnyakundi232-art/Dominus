@@ -15,6 +15,18 @@
 // *suggested* default that pre-fills the form; once saved, the two are
 // independent.
 
+// ---- Storage keys ---------------------------------------------------------
+
+// Per-domain, per-day unlock counts that drive cooldown escalation.
+// Shape: { "youtube.com": { date: "YYYY-MM-DD", count: 2 }, ... }
+//
+// Declared here rather than in Blocked.js, which is where it was written and
+// where it is still read. Sync.js has to merge it — escalation that counts per
+// device instead of per person is no escalation at all — and Sync.js runs in
+// the service worker, which cannot load a page script.
+
+const ESCALATION_KEY = "escalationState";
+
 // ---- Limits ---------------------------------------------------------------
 
 // Floors the user cannot go below. The whole point of the feature is friction,

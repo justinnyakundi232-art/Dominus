@@ -11,6 +11,7 @@ A free, open-source Chrome extension designed to help users reduce distractions 
 - Per-category unlock tasks and cooldowns
 - A password on anything that weakens your fortress
 - Self accountability
+- Export and import your fortress
 - Easy configuration
 
 ## Installation
@@ -21,8 +22,10 @@ Find projects like this here: [AJ7 developments](https://aj7developments.com)
 
 - [x] Statistics page
 - [x] Password-protected settings
+- [x] Export / import your fortress
 - [ ] Scheduling
 - [ ] Sync across devices
+- [ ] Desktop app (app limits, full dashboard)
 
 ## Screenshots
 
