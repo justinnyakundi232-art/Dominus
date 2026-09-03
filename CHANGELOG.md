@@ -17,6 +17,7 @@ This project loosely follows [Keep a Changelog](https://keepachangelog.com/) and
 ### Changed
 - **The popup is a glance, not a menu.** It now opens with where you stand — your streak, and whether anything has tested you today — then the one action a popup is good at, blocking the site you are looking at, and a single door into the app. *Currently Blocked* is unchanged below it.
 - **The fortress fits on one screen.** Both panels sit side by side and the save button is reachable without scrolling past the artwork. The headings and emblems on every view came down to one scale: the rail already says where you are, so a view no longer needs to announce itself.
+- **Dominus is a tenth of the size it was.** The artwork was being shipped at up to 1536px to be drawn at 150 — nearly eight megabytes of images, every one of them downloaded at install and decoded on every page that showed them. Resized to twice the size they actually appear at, they come to 820 KB, and the whole extension now packages to under a megabyte. Nothing looks different; there was simply never a reason for a 2.3 MB file to paint a 76px crest.
 - Colours and type are defined **once**, in one file, instead of being repeated across five stylesheets. Nothing looks different; it just means the two halves of Dominus can't drift apart as the desktop app arrives.
 
 ### Groundwork
