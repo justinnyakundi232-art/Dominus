@@ -11,3 +11,5 @@ jsconfig.json
 
 # Build artifacts / packaged extension uploads
 *.zip
+# Windows Explorer folder settings
+desktop.ini

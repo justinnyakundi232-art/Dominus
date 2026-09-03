@@ -29,10 +29,22 @@ Find projects like this here: [AJ7 developments](https://aj7developments.com)
 
 ## Screenshots
 
-| Popup | Build Your Fortress |
+Dominus is one window. The rail stays put; the views change.
+
+| The Keep | The Fortress |
 |:---:|:---:|
-| ![Popup](docs/screenshots/Popup.png) | ![Build Your Fortress](docs/screenshots/Build-Fortress.png) |
-| **Blocked page** | **Cooldown** |
+| ![The Keep](docs/screenshots/The-Keep.png) | ![The Fortress](docs/screenshots/The-Fortress.png) |
+| *Where you stand right now* | *What is blocked, and what it costs to unlock* |
+| **The Campaign** | **The Seal** |
+| ![The Campaign](docs/screenshots/The-Campaign.png) | ![The Seal](docs/screenshots/The-Seal.png) |
+| *Streaks, victory rate and a year of history* | *A password on weakening it — and a copy you can keep* |
+
+When you meet a blocked site, and while the cooldown runs:
+
+| Blocked page | Cooldown |
+|:---:|:---:|
 | ![Blocked page](docs/screenshots/Blocked.png) | ![Cooldown](docs/screenshots/Cooldown.png) |
-| **Unlock** | **Track Your Progress** |
-| ![Unlock](docs/screenshots/Unlock.png) | ![Track Your Progress](docs/screenshots/Track-Progress.png) |
+
+The popup blocks whatever you are looking at without leaving the page:
+
+![Popup](docs/screenshots/Popup.png)
