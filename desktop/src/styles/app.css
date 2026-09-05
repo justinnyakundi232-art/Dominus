@@ -1,0 +1,341 @@
+/* app.css — the desktop window.
+ *
+ * Reads its colours and its typeface from styles/tokens.css, which is copied
+ * from Styles/Tokens.css at the repository root. The extension and this app
+ * therefore cannot drift apart on what gold is.
+ *
+ * The class names deliberately match the extension's shell (.rail, .view,
+ * .panel) so the two surfaces read as one product, and so anything learned
+ * about one layout applies to the other. */
+
+@import url("https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&display=swap");
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body { height: 100%; }
+
+body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--parchment);
+    font-family: var(--font-display);
+    /* A desktop window is not a document: nothing here should be selectable
+       by dragging across it, except the pairing code, which is re-enabled
+       below because reading six characters off a screen is easier when you
+       can also copy them. */
+    user-select: none;
+    cursor: default;
+}
+
+/* One viewport tall, with only the content pane scrolling — the rail never
+   moves, which is the whole point of a persistent frame. Same layout as the
+   extension's shell, and the reason that one was built this way. */
+.app {
+    display: grid;
+    grid-template-columns: 260px minmax(0, 1fr);
+    height: 100vh;
+    overflow: hidden;
+}
+
+/* ---- The rail ----------------------------------------------------------- */
+
+.rail {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    border-right: 2px solid var(--gold-deep);
+    background: var(--panel);
+    padding: 28px 0 20px;
+    overflow-y: auto;
+}
+
+.rail-mark {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0 20px 26px;
+    border-bottom: 1px solid rgba(184, 134, 11, 0.35);
+}
+
+.rail-crest { width: 76px; height: auto; }
+
+.rail-name {
+    margin: 8px 0 2px;
+    font-size: 1.9rem;
+    letter-spacing: 0.12em;
+    color: var(--gold);
+}
+
+.rail-motto {
+    margin: 0;
+    font-size: 0.8rem;
+    font-style: italic;
+    color: var(--muted);
+}
+
+.rail-nav {
+    display: flex;
+    flex-direction: column;
+    padding: 18px 0;
+    flex: 1 0 auto;
+}
+
+.rail-link {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    width: 100%;
+    padding: 12px 20px 12px 18px;
+    border: none;
+    border-left: 3px solid transparent;
+    background: none;
+    color: var(--parchment);
+    font-family: inherit;
+    font-size: 1.05rem;
+    letter-spacing: 0.06em;
+    text-align: left;
+    cursor: pointer;
+    transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.rail-link:hover {
+    color: var(--gold);
+    background: rgba(212, 175, 55, 0.06);
+}
+
+.rail-link[aria-current="page"] {
+    color: var(--gold);
+    border-left-color: var(--gold);
+    background: rgba(212, 175, 55, 0.09);
+}
+
+.rail-glyph { color: var(--gold-deep); font-size: 0.75rem; }
+.rail-link[aria-current="page"] .rail-glyph { color: var(--gold); }
+
+.rail-link[disabled] { color: var(--muted); cursor: default; }
+.rail-link[disabled]:hover { background: none; color: var(--muted); }
+
+.rail-soon {
+    margin-left: auto;
+    font-size: 0.65rem;
+    letter-spacing: 0.14em;
+    color: var(--gold-dim);
+}
+
+.rail-standing {
+    margin: 0 20px;
+    padding: 14px 0 0;
+    border-top: 1px solid rgba(184, 134, 11, 0.35);
+    text-align: center;
+}
+
+.rail-standing-value {
+    display: block;
+    font-size: 2.1rem;
+    color: var(--gold);
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+}
+
+.rail-standing-label {
+    display: block;
+    font-size: 0.7rem;
+    letter-spacing: 0.16em;
+    color: var(--muted);
+    text-transform: uppercase;
+}
+
+/* ---- Views -------------------------------------------------------------- */
+
+.view-region {
+    min-width: 0;
+    height: 100%;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+.view { display: none; }
+
+.view.is-active {
+    display: block;
+    animation: view-in 0.18s ease-out;
+}
+
+@keyframes view-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .view.is-active { animation: none; }
+    .rail-link { transition: none; }
+}
+
+.page {
+    width: 90%;
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 0 0 70px;
+    text-align: center;
+}
+
+.page header { padding-top: 40px; }
+
+.page h1 {
+    color: var(--gold);
+    font-size: 3.4rem;
+    margin: 0 0 8px;
+    letter-spacing: 0.02em;
+}
+
+.page .tagline {
+    max-width: 640px;
+    margin: 0 auto 40px;
+    font-size: 1.25rem;
+    color: var(--parchment);
+}
+
+/* ---- Empty states ------------------------------------------------------
+ *
+ * The first thing anyone sees, because nothing here works before pairing.
+ * Worth as much care as the populated version: an app that opens on a wall of
+ * zeroes reads as a fortress with nothing in it, rather than one that simply
+ * hasn't been introduced to its extension yet. */
+
+.empty {
+    border: 1px solid var(--gold-deep);
+    background: var(--panel);
+    padding: 40px 32px;
+    margin-bottom: 24px;
+}
+
+.empty-title {
+    margin: 0 0 12px;
+    font-size: 1.5rem;
+    color: var(--gold);
+}
+
+.empty-body {
+    margin: 0 auto 24px;
+    max-width: 520px;
+    font-size: 1rem;
+    line-height: 1.6;
+    color: var(--muted);
+}
+
+/* ---- Panels ------------------------------------------------------------- */
+
+.panel {
+    border: 1px solid var(--gold-deep);
+    background: var(--panel);
+    padding: 24px 28px;
+    margin-bottom: 20px;
+    text-align: center;
+}
+
+.panel-soon { border-style: dashed; }
+
+.panel-heading {
+    margin: 0 0 6px;
+    font-size: 1.3rem;
+    color: var(--gold);
+    letter-spacing: 0.04em;
+}
+
+.panel-description {
+    margin: 0 0 14px;
+    font-size: 0.8rem;
+    letter-spacing: 0.16em;
+    color: var(--parchment);
+}
+
+.panel-note {
+    margin: 0 auto;
+    max-width: 620px;
+    font-size: 0.95rem;
+    font-style: italic;
+    line-height: 1.6;
+    color: var(--muted);
+}
+
+.panel-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    margin-top: 20px;
+}
+
+/* ---- The pairing code --------------------------------------------------
+ *
+ * The one thing in the window a person has to read off the screen and retype,
+ * so it gets the largest type here and generous letter-spacing. Selectable,
+ * unlike the rest of the window. */
+
+.pair-code {
+    margin: 22px 0 8px;
+    font-size: 3rem;
+    letter-spacing: 0.4em;
+    /* The trailing letter-space would otherwise push the code off-centre. */
+    text-indent: 0.4em;
+    color: var(--gold);
+    font-variant-numeric: tabular-nums;
+    user-select: text;
+    cursor: text;
+}
+
+.pair-code.is-waiting { color: var(--muted-dim, var(--muted)); }
+
+.pair-expiry {
+    margin: 0;
+    font-size: 0.85rem;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+}
+
+/* ---- Devices ------------------------------------------------------------ */
+
+.device-list { list-style: none; margin: 0; padding: 0; }
+
+.device {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 16px;
+    padding: 12px 0;
+    border-bottom: 1px solid rgba(184, 134, 11, 0.25);
+    text-align: left;
+}
+
+.device:last-child { border-bottom: none; }
+.device-name { font-size: 1.05rem; color: var(--parchment); }
+.device-seen { font-size: 0.85rem; color: var(--muted); white-space: nowrap; }
+
+/* ---- Buttons ------------------------------------------------------------ */
+
+.btn {
+    padding: 12px 28px;
+    font-family: inherit;
+    font-size: 0.95rem;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+    color: black;
+    border: 1px solid var(--gold-deep);
+    background: linear-gradient(to bottom, var(--gold), var(--gold-deep));
+}
+
+.btn:hover { background: linear-gradient(to bottom, var(--gold-bright), var(--gold)); }
+
+.btn:disabled {
+    cursor: not-allowed;
+    color: var(--muted);
+    background: linear-gradient(to bottom, var(--locked-top), var(--locked-bottom));
+}
+
+code {
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: 0.9em;
+    color: var(--gold);
+    font-style: normal;
+}
+
+:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }

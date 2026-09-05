@@ -13,3 +13,10 @@ jsconfig.json
 *.zip
 # Windows Explorer folder settings
 desktop.ini
+
+# Desktop app
+desktop/src-tauri/target/
+desktop/node_modules/
+# Copied in from the repo root by desktop/tools/sync-shared.mjs
+desktop/src/styles/tokens.css
+desktop/src/assets/
