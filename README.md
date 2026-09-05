@@ -1,18 +1,38 @@
 # Dominus
 
-A free, open-source Chrome extension designed to help users reduce distractions and build better digital habits. 
+A free, open-source Chrome extension that blocks the sites that pull you away —
+and makes going back to them cost something.
 
+Not a wall. A gate you have to mean to open.
+
+Dominus is built for someone who chose the constraint, not for locking down
+someone fighting to get out. Every gate names what you are giving up and then
+lets you through. The friction exists to make the decision deliberate, not to
+make it impossible.
 
 ## Features
 
-- Website blocking
-- Streak history you can read at a glance
-- Custom categories
-- Per-category unlock tasks and cooldowns
-- A password on anything that weakens your fortress
-- Self accountability
-- Export and import your fortress
-- Easy configuration
+**Blocking**
+- Block a site from the toolbar, or switch on a category and block a dozen
+- Custom categories — rename, re-stock, or invent your own
+- Permanent blocks, for the ones that shouldn't have an unlock at all
+
+**What an unlock costs — decided in advance, while you're thinking clearly**
+- A cooldown you have to sit through
+- A passage you have to type out, or a Guarded Code you have to go and fetch
+- Escalating cooldowns for repeat unlocks, capped so they can't become a lockout
+- Per-category tasks and cooldowns, so gaming can cost more than the news
+
+**One window**
+- *The Keep* — where you stand right now, including gates you've left open
+- *The Fortress* — what's blocked, and what it costs to unlock
+- *The Campaign* — victory rate, both streaks, and a year of history, one square per day
+- *The Seal* — a password on anything that weakens your fortress
+
+**Keeping it**
+- Export your fortress to a file and import it back
+- Importing merges rather than overwrites: it can never take a defence down
+- Everything stays in your browser — no account, no server, nothing sent anywhere
 
 ## Installation
 

@@ -1,0 +1,79 @@
+Dominus blocks the sites that pull you away — and makes going back to them
+cost something.
+
+Not a wall. A gate you have to mean to open.
+
+
+WHAT IT DOES
+
+Block a site from the toolbar, or switch on a category and block a dozen at
+once. Social media, video, gaming — or categories you build yourself, with
+whatever belongs in them.
+
+When you land on something you have blocked, Dominus stops you and shows you
+what you are about to give up: the streak you are carrying, and what this
+unlock will cost the next one. You can stay focused, or you can pay the toll.
+
+
+WHAT AN UNLOCK COSTS
+
+You decide, in advance, while you are thinking clearly.
+
+A cooldown you have to sit through. A passage you have to type out. Or a
+Guarded Code — generated once, shown once, for you to write down and leave in
+another room. Getting past your own gate means getting up and fetching it.
+
+Unlock the same site twice in a day and the wait gets longer. There is a
+ceiling on that, on purpose: friction is the point, being locked out of your
+own machine is not.
+
+
+ONE WINDOW
+
+The Keep opens on where you stand right now — today's standing, your streaks,
+what is blocked, and any gate you have left open with the time still running
+on it.
+
+The Fortress is where you decide what is blocked and what it costs.
+The Campaign is your record: victory rate, both streaks, and a year of history
+one square per day — held, slipped, or untested, because a day nothing asked
+anything of you is not a day you won.
+
+
+THE SEAL
+
+A password on anything that weakens your fortress.
+
+Blocking a site, lengthening a cooldown, raising your standards — always free.
+Taking a defence down asks for the seal first, and names exactly what you are
+about to lose before it does.
+
+Forget it and there is an hour's wait to lift it. There is no master code and
+no back door.
+
+
+KEEP A COPY
+
+Export your whole fortress to a file, and import it back on another machine or
+after a reinstall. Importing merges rather than overwrites: it can never take
+a defence down, and running it twice does nothing the second time.
+
+
+HONESTLY
+
+This is a pause, not a lock. Anyone sitting at your machine can switch Dominus
+off from Chrome's extensions page, and no password inside an extension can
+change that. What it defends against is you at 11pm, reaching for something
+without quite deciding to.
+
+It is built for someone who chose the constraint. Not for locking down someone
+who is fighting to get out.
+
+
+YOUR DATA
+
+Everything stays in your browser. No account, no server, no analytics, nothing
+sent anywhere — which is also why the export exists: a copy you make yourself
+is the only thing that survives a reinstall.
+
+Free and open source: github.com/justinnyakundi232-art/Dominus
