@@ -8,7 +8,8 @@
 // The shared layer, in the same load-in-any-order shape the pages use. None of
 // these touch storage or the DOM at load time, which is what makes them safe to
 // pull into a worker that has no DOM at all.
-importScripts("Tasks.js", "Categories.js", "Stats.js", "Seal.js", "Sync.js");
+importScripts("Tasks.js", "Categories.js", "Stats.js", "Seal.js", "Sync.js",
+              "LocalPeer.js");
 
 // ---- Enforcement ----------------------------------------------------------
 
@@ -64,9 +65,8 @@ chrome.webNavigation.onBeforeNavigate.addListener((details) => {
 // shorter once there is a transport, because a commit pushes immediately rather
 // than waiting for the tick.
 //
-// syncNow() resolves { status: "no-peer" } until the desktop app installs a
-// transport, so today this costs one storage read a minute and does nothing
-// else. The cadence is wired now so that the thing being switched on in Phase 1
+// syncNow() resolves { status: "no-peer" } until this browser has been paired
+// with the desktop app; LocalPeer.js installs the transport that changes that. The cadence is wired now so that the thing being switched on in Phase 1
 // is the transport alone, not the transport and the scheduling together.
 
 const SYNC_ALARM = "dominus-sync";

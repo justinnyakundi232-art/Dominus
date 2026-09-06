@@ -313,3 +313,50 @@
 .order-page .panel:last-child {
     margin-bottom: 0;
 }
+
+/* ---- Pairing with the desktop app ---------------------------------------
+ *
+ * Sits above KEEP A COPY on The Seal: both are about where a fortress reaches,
+ * and a backup is what you fall back on when it reaches nowhere. */
+
+.pair-row{
+    display:flex;
+    gap:12px;
+    justify-content:center;
+    align-items:stretch;
+    margin:18px 0 0;
+}
+
+/* Six characters read off another screen and retyped. Wide-tracked and
+   upper-cased so what is in the box is visibly the same shape as what is in
+   the app's window — a code that merely *is* correct still gets retyped if it
+   does not look correct. */
+.pair-input{
+    width:200px;
+    padding:10px 12px;
+    background:#000;
+    border:1px solid var(--gold-deep);
+    color:var(--gold);
+    font-family:inherit;
+    font-size:1.3rem;
+    letter-spacing:0.3em;
+    text-indent:0.3em;
+    text-align:center;
+    text-transform:uppercase;
+}
+
+.pair-input:focus{
+    outline:none;
+    border-color:var(--gold);
+}
+
+.pair-input::placeholder{
+    color:var(--muted);
+    letter-spacing:0.2em;
+}
+
+.pair-state{
+    margin:18px 0 14px;
+    font-size:0.95rem;
+    color:var(--parchment);
+}
