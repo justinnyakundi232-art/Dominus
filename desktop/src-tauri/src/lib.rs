@@ -12,7 +12,7 @@ use serde::Serialize;
 use serde_json::Value;
 use tauri::{
     menu::{Menu, MenuItem},
-    tray::TrayIconBuilder,
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Manager,
 };
 
@@ -113,6 +113,17 @@ pub fn run() {
     }
 
     builder
+        // Closing the window hides it instead of quitting. Dominus is meant to
+        // be running whether or not you are looking at it — the loopback
+        // service the extension pairs with lives in this process, and Tauri's
+        // default of exiting with the last window took it down with the window.
+        // Quit is the tray's job, where it is a decision rather than a reflex.
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                let _ = window.hide();
+                api.prevent_close();
+            }
+        })
         .manage(shared.clone())
         .invoke_handler(tauri::generate_handler![
             service_status,
@@ -129,9 +140,9 @@ pub fn run() {
             }
 
             // Dominus is meant to be running whether or not its window is, so
-            // the tray is how you get back to it — and closing the window will
-            // eventually hide rather than quit, once there is background work
-            // worth keeping alive.
+            // the tray is how you get back to it once the window is closed —
+            // and the only place Quit lives, because quitting takes the sync
+            // service down and that should be a decision, not a stray click.
             let open = MenuItem::with_id(app, "open", "Open Dominus", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&open, &quit])?;
@@ -140,7 +151,19 @@ pub fn run() {
                 .icon(app.default_window_icon().unwrap().clone())
                 .tooltip("Dominus")
                 .menu(&menu)
+                // Left click raises the window, right click opens the menu —
+                // the habit everything else in the Windows tray has taught.
                 .show_menu_on_left_click(false)
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        show_window(tray.app_handle());
+                    }
+                })
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "open" => show_window(app),
                     "quit" => app.exit(0),

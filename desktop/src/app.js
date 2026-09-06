@@ -9,9 +9,10 @@
 // is an empty state, and the honest job of this file is to make that first run
 // legible rather than to hide it.
 //
-// No Tauri APIs are imported yet. This runs as plain HTML in a browser, which
-// is how it is being built and previewed before the Rust side exists. The one
-// seam to the native layer is `service` below.
+// The window reaches the Rust side through `window.__TAURI__`, which exists
+// because `withGlobalTauri` is on — the frontend is deliberately plain HTML
+// with no bundler, so it cannot import @tauri-apps/api. It still runs in an
+// ordinary browser with no bridge at all, which is how the UI is developed.
 
 const ROUTES = ["keep", "fortress", "campaign", "seal", "order"];
 const DEFAULT_ROUTE = "keep";
@@ -25,26 +26,39 @@ function scroller() {
 
 // ---- The seam to the native side -----------------------------------------
 //
-// Phase 1's Rust half runs the loopback service described in SYNC-PROTOCOL.md.
-// Until it exists, this stub answers as an app whose service has not started —
-// which is also exactly what the window must handle gracefully if the service
-// ever fails to bind a port, so it is not throwaway scaffolding.
+// The Rust half runs the loopback service described in SYNC-PROTOCOL.md.
+
+function hasBridge() {
+    return Boolean(window.__TAURI__ && window.__TAURI__.core);
+}
 
 const service = {
     async status() {
-        if (window.__TAURI__) {
-            const { invoke } = window.__TAURI__.core;
-            return invoke("service_status");
+        // Three different states, and they were worth telling apart. "No
+        // bridge" means this page is running in a plain browser — which is how
+        // the UI is developed, and is also what a broken withGlobalTauri looks
+        // like. "Not running" means the app is real but every port in the range
+        // was taken. Reporting the first as the second sent me looking for a
+        // dead service that was answering perfectly well.
+        if (!hasBridge()) {
+            return { bridge: false, running: false, port: null, paired: false, devices: [] };
         }
-        return { running: false, port: null, paired: false, devices: [] };
+
+        try {
+            const status = await window.__TAURI__.core.invoke("service_status");
+            return Object.assign({ bridge: true }, status);
+        } catch (error) {
+            return { bridge: true, running: false, port: null, paired: false, devices: [], error: String(error) };
+        }
     },
 
     async newPairingCode() {
-        if (window.__TAURI__) {
-            const { invoke } = window.__TAURI__.core;
-            return invoke("new_pairing_code");
+        if (!hasBridge()) return null;
+        try {
+            return await window.__TAURI__.core.invoke("new_pairing_code");
+        } catch (error) {
+            return null;
         }
-        return null;
     }
 };
 
@@ -106,13 +120,11 @@ async function refreshSeal() {
     const status = await service.status();
 
     if (!status.running) {
-        // The service failing to bind is a real state, not just a
-        // not-implemented-yet state: ten ports could all be taken. Say what is
-        // wrong rather than showing dashes forever.
         codeEl.textContent = "– – – – – –";
         codeEl.classList.add("is-waiting");
-        expiryEl.textContent =
-            "This app's local service is not running, so there is nothing to pair with yet.";
+        expiryEl.textContent = status.bridge
+            ? "Every port Dominus uses is taken, so the extension cannot reach this app."
+            : "This window is running outside the app, so there is no service behind it.";
         refreshBtn.disabled = true;
         renderDevices([]);
         return;
