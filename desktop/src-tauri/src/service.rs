@@ -20,6 +20,7 @@
 
 use std::{
     net::{Ipv4Addr, SocketAddr},
+    path::PathBuf,
     sync::{Arc, Mutex},
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -76,6 +77,20 @@ pub struct PairingCode {
     pub expires_at: u64,
 }
 
+/// What survives a restart.
+///
+/// The device list has to: a pairing the app forgets when it closes would mean
+/// re-entering a code on every launch, and the extension quietly losing its
+/// peer in between. The mirrored fortress has to as well, or the window opens
+/// blank and stays that way until the next tick a minute later.
+#[derive(Default, Serialize, Deserialize)]
+struct Persisted {
+    #[serde(default)]
+    devices: Vec<Device>,
+    #[serde(default)]
+    mirrored: Option<Value>,
+}
+
 #[derive(Default)]
 pub struct Inner {
     pub port: Option<u16>,
@@ -84,6 +99,9 @@ pub struct Inner {
     /// it; nothing here writes back yet, so nothing this app does can weaken a
     /// fortress while the merge is still unproven in the field.
     pub mirrored: Option<Value>,
+    /// Where the two above are kept between runs. None before the app has told
+    /// us its data directory, which is only the case in tests.
+    store: Option<PathBuf>,
     code: Option<PairingCode>,
     attempts: Vec<u64>,
 }
@@ -91,6 +109,47 @@ pub struct Inner {
 pub type Shared = Arc<Mutex<Inner>>;
 
 impl Inner {
+    /// Points the state at a file and loads whatever is already there.
+    ///
+    /// A missing or unreadable file is not an error: it is what a first run
+    /// looks like, and it is also the safest reading of a corrupted one — an
+    /// app that starts unpaired asks for a code, which is recoverable, where
+    /// one that starts with half a device list is not.
+    pub fn attach(&mut self, path: PathBuf) {
+        if let Ok(text) = std::fs::read_to_string(&path) {
+            if let Ok(saved) = serde_json::from_str::<Persisted>(&text) {
+                self.devices = saved.devices;
+                self.mirrored = saved.mirrored;
+            }
+        }
+        self.store = Some(path);
+    }
+
+    /// Writes the device list and the mirrored fortress out.
+    ///
+    /// Through a temporary file and a rename, because the alternative is
+    /// truncating the real one and being interrupted — and a half-written
+    /// device list is a fortress that cannot talk to its browser.
+    fn persist(&self) {
+        let Some(path) = &self.store else { return };
+
+        let snapshot = Persisted {
+            devices: self.devices.clone(),
+            mirrored: self.mirrored.clone(),
+        };
+
+        let Ok(text) = serde_json::to_string(&snapshot) else { return };
+
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+
+        let temp = path.with_extension("tmp");
+        if std::fs::write(&temp, text).is_ok() {
+            let _ = std::fs::rename(&temp, path);
+        }
+    }
+
     /// Issues a fresh code, discarding any previous one. Called when the
     /// pairing panel is opened and when the user asks for a new one — a code
     /// that has quietly expired is worse than no code, because the user types
@@ -161,6 +220,7 @@ impl Inner {
 
         self.code = None;
         self.attempts.clear();
+        self.persist();
         Some(token)
     }
 
@@ -236,6 +296,7 @@ async fn sync(
     }
 
     guard.mirrored = Some(body);
+    guard.persist();
 
     // Phase 1 is read-only in the app's favour: it takes what the extension
     // sends and returns nothing to merge. Sending state back waits until the

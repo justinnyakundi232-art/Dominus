@@ -59,6 +59,16 @@ const service = {
         } catch (error) {
             return null;
         }
+    },
+
+    // The fortress as the extension last sent it, or null before any sync.
+    async mirrored() {
+        if (!hasBridge()) return null;
+        try {
+            return await window.__TAURI__.core.invoke("mirrored_state");
+        } catch (error) {
+            return null;
+        }
     }
 };
 
@@ -70,7 +80,9 @@ function routeFromHash() {
 }
 
 function refreshHookFor(route) {
-    return route === "seal" ? refreshSeal : null;
+    if (route === "seal") return refreshSeal;
+    if (route === "keep") return refreshKeep;
+    return null;
 }
 
 function show(route) {
@@ -105,6 +117,177 @@ function navigate(route) {
     if (!ROUTES.includes(route)) route = DEFAULT_ROUTE;
     if (routeFromHash() === route) return show(route);
     location.hash = `#/${route}`;
+}
+
+// ---- The Keep -------------------------------------------------------------
+//
+// Everything here is the extension's, mirrored. The figures and the wording
+// match the extension's own Keep on purpose: one fortress read in two windows
+// should not look like two different fortresses.
+
+const plural = (n, one, many) => (n === 1 ? one : many);
+
+function text(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = value;
+}
+
+async function refreshKeep() {
+    const empty = document.getElementById("keepEmpty");
+    const content = document.getElementById("keepContent");
+    if (!empty || !content) return;
+
+    const state = await service.mirrored();
+
+    // Paired but never synced looks the same as unpaired here, and should: in
+    // both cases this window has nothing of yours to show.
+    if (!state || !state.stats) {
+        empty.hidden = false;
+        content.hidden = true;
+        return;
+    }
+
+    empty.hidden = true;
+    content.hidden = false;
+
+    renderStanding(state);
+    renderToday(state);
+    renderDefences(state);
+    renderGates(state);
+
+    text("keepMirrored", "Mirrored from the extension" + (state.today ? " \u00b7 " + state.today : "") + ".");
+}
+
+function renderStanding(state) {
+    const s = state.stats || {};
+
+    text("keepStreak", s.currentStreak || 0);
+    text("keepStreakNote", s.longestStreak
+        ? "Longest " + s.longestStreak + " " + plural(s.longestStreak, "day", "days") : "");
+
+    text("keepResistance", s.currentResistance || 0);
+    text("keepResistanceNote", s.longestResistance
+        ? "Longest " + s.longestResistance + " " + plural(s.longestResistance, "stand", "stands") : "");
+
+    // The per-device counters are the canonical all-time totals: grow-only per
+    // device, summed across them, which is what survives both merging and the
+    // event log being pruned. The stats copy is this browser's own view, and
+    // the fallback for a peer that predates them.
+    let stands = 0;
+    let unlocks = 0;
+    const counters = state.counters || {};
+    Object.keys(counters).forEach((id) => {
+        stands += Number(counters[id].stands) || 0;
+        unlocks += Number(counters[id].unlocks) || 0;
+    });
+    if (stands + unlocks === 0) {
+        stands = Number(s.stayFocusedCount) || 0;
+        unlocks = Number(s.unlockCount) || 0;
+    }
+
+    const total = stands + unlocks;
+    text("keepVictory", total ? Math.round((stands / total) * 100) + "%" : "\u2014");
+    text("keepVictoryNote", total
+        ? "From " + total + " " + plural(total, "moment", "moments")
+        : "Nothing has tested you yet");
+
+    const rail = document.getElementById("railStreak");
+    const railLabel = document.getElementById("railStreakLabel");
+    if (rail && railLabel) {
+        rail.textContent = s.currentStreak || 0;
+        railLabel.textContent = s.currentStreak === 1 ? "day held" : "days held";
+    }
+}
+
+function renderToday(state) {
+    const band = document.getElementById("keepToday");
+    const entry = (state.dayLog || {})[state.today];
+    if (!band) return;
+
+    band.classList.remove("is-held", "is-slipped");
+
+    // The same three states the history grid uses. A day nothing asked
+    // anything of you is not a day you won, and saying so is the point.
+    if (entry && entry.unlocks > 0) {
+        band.classList.add("is-slipped");
+        const sites = Object.keys(entry.sites || {});
+        text("keepTodayState", "A gate gave way today.");
+        text("keepTodayDetail", sites.length
+            ? sites[0] + (entry.firstSlip ? " at " + entry.firstSlip : "") + "."
+            : "");
+        return;
+    }
+
+    if (entry && entry.stands > 0) {
+        band.classList.add("is-held");
+        text("keepTodayState",
+            "You have held the line " + entry.stands + " " + plural(entry.stands, "time", "times") + " today.");
+        text("keepTodayDetail", "Every one of those was a choice.");
+        return;
+    }
+
+    text("keepTodayState", "Nothing has tested you today.");
+    text("keepTodayDetail", "An untested day keeps your streak \u2014 it just wasn't a fight.");
+}
+
+function renderDefences(state) {
+    const fortress = state.fortress || {};
+    const categories = fortress.categories || [];
+    const manual = fortress.manualSites || [];
+
+    // Derived here rather than read from the payload: blockedSites is a cache
+    // and never travels, precisely so what is shown cannot disagree with what
+    // the extension enforces.
+    const blocked = new Set(manual);
+    categories.forEach((c) => {
+        if (c.enabled) (c.sites || []).forEach((site) => blocked.add(site));
+    });
+
+    const enabled = categories.filter((c) => c.enabled).length;
+
+    if (blocked.size === 0) {
+        text("keepDefences", "Nothing is blocked yet. The fortress has no walls.");
+        return;
+    }
+
+    let line = blocked.size + " " + plural(blocked.size, "site", "sites") + " blocked";
+    if (enabled) line += " across " + enabled + " " + plural(enabled, "category", "categories");
+    if (manual.length) line += ", " + manual.length + " of them by hand";
+    text("keepDefences", line + ".");
+}
+
+function renderGates(state) {
+    const band = document.getElementById("keepGates");
+    const list = document.getElementById("keepGateList");
+    if (!band || !list) return;
+
+    const unlocks = state.tempUnlocks || {};
+    const now = Date.now();
+    const open = Object.keys(unlocks)
+        .map((domain) => ({ domain: domain, expiry: Number(unlocks[domain]) || 0 }))
+        .filter((gate) => gate.expiry > now)
+        .sort((a, b) => a.expiry - b.expiry);
+
+    band.hidden = open.length === 0;
+    list.textContent = "";
+
+    open.forEach((gate) => {
+        const item = document.createElement("li");
+        item.className = "gate";
+
+        const name = document.createElement("span");
+        name.className = "gate-name";
+        // A domain arrives over the wire and is never parsed as markup.
+        name.textContent = gate.domain;
+
+        const left = document.createElement("span");
+        left.className = "gate-left";
+        const mins = Math.ceil((gate.expiry - now) / 60000);
+        left.textContent = mins + " " + plural(mins, "minute", "minutes") + " left";
+
+        item.append(name, left);
+        list.appendChild(item);
+    });
 }
 
 // ---- The Seal: pairing ----------------------------------------------------

@@ -174,8 +174,54 @@ function normalizeSyncMeta(raw) {
         fortressRev: Math.max(0, Math.round(Number(source.fortressRev) || 0)),
         counters: counters,
         authored: normalizeAuthored(source.authored),
-        lastSyncedAt: Math.max(0, Number(source.lastSyncedAt) || 0)
+        lastSyncedAt: Math.max(0, Number(source.lastSyncedAt) || 0),
+        // Whether this device's counter has absorbed the history that predates
+        // counters existing at all. See ensureCountersSeeded().
+        countersSeeded: source.countersSeeded === true
     };
+}
+
+// Folds everything this fortress recorded before 1.11 into this device's
+// counter, once.
+//
+// The counters are meant to be the all-time totals — grow-only per device,
+// summed across them, immune to the event log being pruned. But they were
+// added in 1.11, and a fortress that has been running for months already has
+// its whole history in stats.stayFocusedCount and stats.unlockCount. Without
+// this, `counters` means "since you upgraded" while `stats` means "ever", and
+// anything reading the counters reports a fraction of the truth — which is
+// exactly what the desktop app did on first sync: 100% of five moments, beside
+// the extension's 86% of two hundred and fifty-six.
+//
+// stats is this browser's own all-time record and already includes anything
+// counted since the upgrade, so this assigns rather than adds. Guarded by a
+// flag, so it is safe to call on every path that touches the counters.
+function ensureCountersSeeded() {
+    return enqueueSync(async () => {
+        const meta = await getSyncMetaRaw();
+        if (meta.countersSeeded) return meta;
+
+        const device = await loadDeviceRaw();
+        if (!device) return meta;
+
+        const stats = await getStatsRaw();
+
+        // The higher of the two, not simply the stats figure. In practice
+        // stats is always the larger — every event increments both — so this
+        // is the same answer by a safer route. It matters for the case where
+        // it isn't: a counter restored from a backup can hold a total this
+        // browser's own stats never saw, and assigning would throw it away.
+        const held = meta.counters[device.id] || { stands: 0, unlocks: 0 };
+
+        meta.counters[device.id] = {
+            stands: Math.max(held.stands, Math.max(0, Math.round(Number(stats.stayFocusedCount) || 0))),
+            unlocks: Math.max(held.unlocks, Math.max(0, Math.round(Number(stats.unlockCount) || 0)))
+        };
+        meta.countersSeeded = true;
+
+        await setSyncMetaRaw(meta);
+        return meta;
+    });
 }
 
 function getSyncMetaRaw() {
@@ -268,7 +314,12 @@ function recordSyncEvent(type, payload, now) {
     // a timestamp and an "HH:MM" that disagree.
     const stamp = now || new Date();
 
-    return ensureDevice().then((device) => enqueueSync(async () => {
+    // Before the increment, never after: seeding assigns this device's counter
+    // from stats, so an event counted first would be overwritten by it.
+    return ensureDevice()
+        .then(() => ensureCountersSeeded())
+        .then(() => loadDeviceRaw())
+        .then((device) => enqueueSync(async () => {
         const event = normalizeEvent(Object.assign({
             id: crypto.randomUUID(),
             type: type,
@@ -1070,7 +1121,7 @@ function setSyncTransport(transport) {
 
 // Everything this device would send a peer.
 function readPeerState() {
-    return Promise.all([
+    return ensureCountersSeeded().then(() => Promise.all([
         getEventLogRaw(),
         getSyncMetaRaw(),
         getStatsRaw(),
@@ -1093,7 +1144,7 @@ function readPeerState() {
         sealAttempts: sealAttempts,
         escalation: escalation || {},
         tempUnlocks: tempUnlocks || {}
-    }));
+    })));
 }
 
 function readKey(key) {
@@ -1131,7 +1182,14 @@ function applyMerge(merged) {
                 fortressRev: merged.fortressRev,
                 counters: merged.counters,
                 authored: null,
-                lastSyncedAt: Date.now()
+                lastSyncedAt: Date.now(),
+                // Always true after a merge, and not merely carried over.
+                // Once counters have been merged they hold totals from other
+                // devices too, while stats holds the sum of all of them — so
+                // seeding this device from stats would hand it everyone else's
+                // history as its own. Letting the flag reset here is what made
+                // importing the same backup twice report 428 stands for 214.
+                countersSeeded: true
             }),
             stats: merged.stats,
             [DAY_LOG_KEY]: merged.dayLog,
@@ -1174,6 +1232,7 @@ if (typeof module !== "undefined" && module.exports) {
         normalizeAuthored,
         mergePeerState,
         applyDerivedDays,
+        normalizeSyncMeta,
         EVENT_STAND,
         EVENT_UNLOCK,
         EVENT_COMMIT,

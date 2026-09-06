@@ -131,6 +131,14 @@ pub fn run() {
             mirrored_state
         ])
         .setup(move |app| {
+            // Load the device list and the mirrored fortress before anything
+            // can ask for them, so a restart is invisible to the extension.
+            if let Ok(dir) = app.path().app_data_dir() {
+                if let Ok(mut guard) = shared.lock() {
+                    guard.attach(dir.join("state.json"));
+                }
+            }
+
             if cfg!(debug_assertions) {
                 app.handle().plugin(
                     tauri_plugin_log::Builder::default()

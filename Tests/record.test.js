@@ -192,6 +192,80 @@ async function run() {
         eq(await G.syncNow(), { status: "no-peer" });
     });
 
+    describe("Counters that predate the counters");
+
+    await it("absorbs a fortress's history from before 1.11", async () => {
+        // The bug this exists for, exactly as it appeared: the desktop app
+        // showed 100% of five moments beside the extension's 86% of 256,
+        // because `counters` only started existing at the upgrade while
+        // `stats` had been counting for months.
+        await new Promise((r) => G.chrome.storage.local.set({
+            stats: {
+                currentStreak: 16, longestStreak: 31,
+                lastCleanDate: "2026-09-06", lastUnlockDate: "2026-08-21",
+                lastUnlockAt: 1, stayFocusedCount: 220, unlockCount: 36,
+                currentResistance: 24, longestResistance: 64,
+                dayLogSeeded: true, historyStartedOn: "2026-05-04"
+            },
+            syncMeta: {
+                fortressRev: 3,
+                // What 1.11 had counted on its own: a handful of test events.
+                counters: { [store.syncDevice.id]: { stands: 5, unlocks: 0 } },
+                authored: null, lastSyncedAt: 0, countersSeeded: false
+            }
+        }, r));
+
+        await G.ensureCountersSeeded();
+
+        const meta = store.syncMeta;
+        const mine = meta.counters[store.syncDevice.id];
+
+        // The higher of the two, not the sum: stats is this browser's all-time
+        // record and already includes those five.
+        eq(mine, { stands: 220, unlocks: 36 }, "the counter did not absorb the history");
+        eq(meta.countersSeeded, true, "the seed was not marked done");
+
+        eq(S.sumCounters(meta.counters), { stayFocusedCount: 220, unlockCount: 36 },
+            "the summed total still disagrees with stats");
+    });
+
+    await it("seeding twice changes nothing", async () => {
+        const before = JSON.stringify(store.syncMeta.counters);
+        await G.ensureCountersSeeded();
+        eq(JSON.stringify(store.syncMeta.counters), before,
+            "a second seed moved the counters");
+    });
+
+    await it("an event after seeding adds to the absorbed total", async () => {
+        // The ordering that matters: seeding assigns, so an event counted
+        // before the seed would be erased by it.
+        await G.recordSyncStand();
+        eq(store.syncMeta.counters[store.syncDevice.id],
+            { stands: 221, unlocks: 36 },
+            "the stand was lost, or the seed ran after it");
+    });
+
+    await it("a fresh install seeds to zero and stays correct", async () => {
+        await new Promise((r) => G.chrome.storage.local.set({
+            stats: {
+                currentStreak: 0, longestStreak: 0, lastCleanDate: null,
+                lastUnlockDate: null, lastUnlockAt: 0,
+                stayFocusedCount: 0, unlockCount: 0,
+                currentResistance: 0, longestResistance: 0,
+                dayLogSeeded: false, historyStartedOn: null
+            },
+            syncMeta: { fortressRev: 0, counters: {}, authored: null,
+                        lastSyncedAt: 0, countersSeeded: false }
+        }, r));
+
+        await G.ensureCountersSeeded();
+        eq(store.syncMeta.counters[store.syncDevice.id], { stands: 0, unlocks: 0 });
+
+        await G.recordSyncStand();
+        eq(store.syncMeta.counters[store.syncDevice.id], { stands: 1, unlocks: 0 },
+            "a fresh install lost its first stand");
+    });
+
     process.exit(report("record") ? 1 : 0);
 }
 

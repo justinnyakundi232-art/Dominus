@@ -74,7 +74,46 @@
               <button type="button" class="btn" data-route="seal">PAIR THIS APP</button>
             </div>
 
-            <div id="keepContent" hidden></div>
+            <div id="keepContent" hidden>
+              <!-- Today first. Every other figure here is a longer view of it. -->
+              <section class="today" id="keepToday">
+                <p class="today-state" id="keepTodayState">…</p>
+                <p class="today-detail" id="keepTodayDetail"></p>
+              </section>
+
+              <section class="stats">
+                <div class="stat">
+                  <span class="stat-value" id="keepStreak">—</span>
+                  <span class="stat-label">Discipline streak</span>
+                  <span class="stat-note" id="keepStreakNote"></span>
+                </div>
+                <div class="stat">
+                  <span class="stat-value" id="keepResistance">—</span>
+                  <span class="stat-label">Resistance streak</span>
+                  <span class="stat-note" id="keepResistanceNote"></span>
+                </div>
+                <div class="stat">
+                  <span class="stat-value" id="keepVictory">—</span>
+                  <span class="stat-label">Victory rate</span>
+                  <span class="stat-note" id="keepVictoryNote"></span>
+                </div>
+              </section>
+
+              <section class="band">
+                <h2 class="band-heading">WHAT STANDS</h2>
+                <p class="band-line" id="keepDefences">…</p>
+              </section>
+
+              <!-- Hidden when nothing is unlocked, because that is the normal
+                   state and a permanently empty panel teaches the eye to skip
+                   the place where something important will one day appear. -->
+              <section class="band band-open" id="keepGates" hidden>
+                <h2 class="band-heading">GATES STANDING OPEN</h2>
+                <ul class="gate-list" id="keepGateList"></ul>
+              </section>
+
+              <p class="mirror-note" id="keepMirrored"></p>
+            </div>
           </div>
         </section>
 
