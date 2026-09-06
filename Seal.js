@@ -676,13 +676,25 @@ function stampCommit(before, after) {
 
     const authored = describeAuthoredWeakening(before, after);
 
-    return enqueueSyncMetaUpdate((meta) => {
+    return ensureDevice().then((device) => enqueueSyncMetaUpdate((meta) => {
         meta.fortressRev += 1;
-        meta.authored = authored
-            ? Object.assign({ rev: meta.fortressRev, at: Date.now() }, authored)
-            : null;
+
+        // Appended, never replaced. Two weakenings before one sync tick is an
+        // ordinary thing to do, and replacing meant the first one never
+        // travelled — the category it removed simply came back.
+        if (authored) {
+            meta.authored = normalizeAuthoredList(meta.authored.concat([
+                Object.assign({
+                    id: `${device.id}:${meta.fortressRev}`,
+                    rev: meta.fortressRev,
+                    at: Date.now(),
+                    device: device.id
+                }, authored)
+            ]));
+        }
+
         return meta;
-    }).then((meta) => {
+    })).then((meta) => {
         // Awaited, unlike the stats mirror, so the revision and the event that
         // names it land in the same order they were made. A sync tick that
         // fires between the two would otherwise send a fortress revision with

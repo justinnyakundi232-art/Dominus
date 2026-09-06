@@ -173,7 +173,7 @@ function normalizeSyncMeta(raw) {
     return {
         fortressRev: Math.max(0, Math.round(Number(source.fortressRev) || 0)),
         counters: counters,
-        authored: normalizeAuthored(source.authored),
+        authored: normalizeAuthoredList(source.authored),
         lastSyncedAt: Math.max(0, Number(source.lastSyncedAt) || 0),
         // Whether this device's counter has absorbed the history that predates
         // counters existing at all. See ensureCountersSeeded().
@@ -858,6 +858,11 @@ function isEmptyAuthored(record) {
         && !record.cooldownLowered;
 }
 
+// How many weakening records a peer carries. Each is small, commits are rare,
+// and a peer that has been away for fifty deliberate weakenings has bigger
+// problems than a pruned list.
+const AUTHORED_KEEP = 50;
+
 function normalizeAuthored(raw) {
     if (!raw) return null;
     const source = raw || {};
@@ -872,6 +877,8 @@ function normalizeAuthored(raw) {
     });
 
     return {
+        // Stable across devices, unlike `rev`. See normalizeAuthoredList().
+        id: String(source.id || `${source.device || "?"}:${source.rev || 0}`),
         rev: Math.max(0, Math.round(Number(source.rev) || 0)),
         at: Math.max(0, Number(source.at) || 0),
         device: String(source.device || ""),
@@ -893,7 +900,50 @@ function normalizeAuthored(raw) {
 // this device has committed. A record this device has already seen — or one
 // older than an edit made here since — is ignored, so a stale peer cannot
 // replay an old removal over a defence that has since been put back.
-function mergeFortress(mine, theirs, myRev, theirRev, theirAuthored) {
+// Weakening records travel as a list, not one at a time.
+//
+// They used to be a single record, replaced on each commit, and applied only
+// when `record.rev > myRev`. Both halves of that were wrong.
+//
+// Replacing meant two removals before one sync tick lost the first — an
+// ordinary thing to do, and the earlier category simply came back.
+//
+// Comparing revisions was worse. `fortressRev` counts commits *per device*, so
+// one peer's 1 and another's 2 say nothing about which happened first. Two
+// peers each removing something, then syncing, had both removals ignored:
+// each record looked older than the receiver's own unrelated commit.
+//
+// Accepts the old single-record shape so a fortress upgrading mid-sync does
+// not drop the record it was carrying.
+function normalizeAuthoredList(raw) {
+    const list = Array.isArray(raw) ? raw : (raw ? [raw] : []);
+
+    const seen = new Set();
+    const out = [];
+
+    list.map(normalizeAuthored).filter(Boolean).forEach((record) => {
+        if (seen.has(record.id)) return;
+        seen.add(record.id);
+        out.push(record);
+    });
+
+    // Oldest first, so applying them in order reproduces the order they were
+    // decided in.
+    out.sort((a, b) => (a.at - b.at) || (a.id < b.id ? -1 : 1));
+    return out.slice(-AUTHORED_KEEP);
+}
+
+function mergeAuthoredLists(mine, theirs) {
+    // A peer adopts the records it receives as well as keeping its own. That is
+    // what carries a removal to a third peer that was closed when it happened:
+    // without it, a record reaches whoever was connected at the time and is
+    // then forgotten.
+    return normalizeAuthoredList(
+        normalizeAuthoredList(mine).concat(normalizeAuthoredList(theirs))
+    );
+}
+
+function mergeFortress(mine, theirs, myRev, theirRev, theirAuthored, myAuthored) {
     const merged = {
         categories: mergeCategories(mine.categories, theirs.categories, myRev, theirRev),
         manualSites: unionSites(mine.manualSites, theirs.manualSites),
@@ -901,8 +951,39 @@ function mergeFortress(mine, theirs, myRev, theirRev, theirAuthored) {
         cooldown: mergeCooldown(mine.cooldown, theirs.cooldown)
     };
 
-    const authored = normalizeAuthored(theirAuthored);
-    if (authored && authored.rev > myRev) applyAuthored(merged, authored);
+    // A record says a defence was taken down on purpose. Whether it is still
+    // down is a question for the sender's *current* state, not for the record —
+    // so every removal below is applied only where the sender also lacks the
+    // thing. That one rule replaces the revision comparison and does the work
+    // it was meant to do:
+    //
+    //   - A removal the user reversed before syncing does not travel, because
+    //     the sender has the category back.
+    //   - A record cannot resurrect itself after the category is rebuilt,
+    //     because whoever rebuilt it now has it.
+    //   - Applying the same record twice is a no-op, because the second time
+    //     there is nothing left to remove.
+    //
+    // The record is the reason. The sender's fortress is the fact.
+    // Both sides' records. Mine matter as much as theirs: the union above
+    // re-adds everything either peer has, so without replaying my own removals
+    // a merge hands me back the category I just took down, purely because the
+    // other side had not heard about it yet.
+    //
+    // Each record is checked twice — see applyAuthored() for what and why.
+    const myList = normalizeAuthoredList(myAuthored);
+    const theirList = normalizeAuthoredList(theirAuthored);
+
+    const myIds = new Set(myList.map((r) => r.id));
+    const theirIds = new Set(theirList.map((r) => r.id));
+
+    myList.forEach((record) => {
+        applyAuthored(merged, record, mine, theirs, theirIds);
+    });
+
+    theirList.forEach((record) => {
+        applyAuthored(merged, record, theirs, mine, myIds);
+    });
 
     return merged;
 }
@@ -1008,12 +1089,62 @@ function mergeCooldown(mine, theirs) {
     });
 }
 
-// Subtracts a deliberate weakening from the merged result. Mutates `merged`.
-function applyAuthored(merged, authored) {
-    const removed = new Set(authored.categoriesRemoved);
-    const disabled = new Set(authored.categoriesDisabled);
-    const cleared = new Set(authored.standardsCleared);
-    const manualGone = new Set(authored.manualRemoved);
+// Subtracts one deliberate weakening from the merged result. Mutates `merged`.
+//
+// Two questions decide whether anything comes down, and each exists because
+// getting it wrong broke a real case:
+//
+//   1. Does the peer that authored this record still lack the thing?
+//      If they have put it back, they changed their mind, and a record is only
+//      ever a reason — their current fortress is the fact. This is what stops a
+//      removal that was undone before the next sync from travelling, and what
+//      makes applying the same record twice a no-op.
+//
+//   2. Has the *other* peer acknowledged this record and kept the thing anyway?
+//      A peer holds a record once it has merged it, so a peer that holds the
+//      record and still has the category rebuilt it knowingly, after the
+//      removal. That is a later decision than the record, and it wins. Without
+//      this, a peer's own stale record silently undid a rebuild the moment the
+//      rebuild arrived.
+//
+// `author` is the fortress of whoever holds the record; `other` the peer on the
+// far side, and `otherHolds` the ids that peer is carrying.
+function applyAuthored(merged, authored, author, other, otherHolds) {
+    const theirs = author || {};
+    const far = other || {};
+    const acknowledged = otherHolds ? otherHolds.has(authored.id) : false;
+
+    const theirCategories = new Map((theirs.categories || []).map((c) => [c.id, c]));
+    const theirManual = new Set(theirs.manualSites || []);
+
+    const farCategories = new Map((far.categories || []).map((c) => [c.id, c]));
+    const farManual = new Set(far.manualSites || []);
+
+    // Rebuilt on the far side after that side had already seen this record.
+    const rebuilt = (id) => acknowledged && farCategories.has(id);
+
+    const removed = new Set(
+        authored.categoriesRemoved.filter((id) => !theirCategories.has(id) && !rebuilt(id)));
+
+    const disabled = new Set(
+        authored.categoriesDisabled.filter((id) => {
+            const c = theirCategories.get(id);
+            if (c && c.enabled !== false) return false;
+            const f = farCategories.get(id);
+            return !(acknowledged && f && f.enabled !== false);
+        }));
+
+    const cleared = new Set(
+        authored.standardsCleared.filter((id) => {
+            const c = theirCategories.get(id);
+            if (c && (("task" in c) || ("cooldown" in c))) return false;
+            const f = farCategories.get(id);
+            return !(acknowledged && f && (("task" in f) || ("cooldown" in f)));
+        }));
+
+    const manualGone = new Set(
+        authored.manualRemoved.filter((site) =>
+            !theirManual.has(site) && !(acknowledged && farManual.has(site))));
 
     merged.categories = merged.categories
         .filter((category) => !removed.has(category.id))
@@ -1030,7 +1161,11 @@ function applyAuthored(merged, authored) {
 
             const dropped = authored.sitesRemoved[next.id];
             if (dropped && dropped.length) {
-                const gone = new Set(dropped);
+                const theirCategory = theirCategories.get(next.id);
+                const theirSites = new Set(theirCategory ? theirCategory.sites || [] : []);
+                // Only the sites the sender is also without. A site they put
+                // back is a site they kept.
+                const gone = new Set(dropped.filter((site) => !theirSites.has(site)));
                 next.sites = (next.sites || []).filter((site) => !gone.has(site));
             }
 
@@ -1044,7 +1179,23 @@ function applyAuthored(merged, authored) {
 
     merged.manualSites = merged.manualSites.filter((site) => !manualGone.has(site));
 
-    if (authored.taskCleared) merged.task = null;
+    if (authored.taskCleared && !theirs.task && !(acknowledged && far.task)) {
+        merged.task = null;
+    }
+
+    // mergeCooldown() takes the longer of the two, so a shortened cooldown can
+    // never cross on its own. This is the one path that lets it, and only while
+    // the sender is still running the shorter one.
+    if (authored.cooldownLowered && theirs.cooldown) {
+        const authorCooldown = normalizeCooldown(theirs.cooldown);
+        const current = normalizeCooldown(merged.cooldown);
+        const farRaised = acknowledged && far.cooldown
+            && normalizeCooldown(far.cooldown).seconds > authorCooldown.seconds;
+
+        if (authorCooldown.seconds < current.seconds && !farRaised) {
+            merged.cooldown = authorCooldown;
+        }
+    }
 }
 
 // ---- The whole merge ------------------------------------------------------
@@ -1092,8 +1243,13 @@ function mergePeerState(mine, theirs, now) {
             theirs.fortress || {},
             mine.fortressRev || 0,
             theirs.fortressRev || 0,
-            theirs.authored
+            theirs.authored,
+            mine.authored
         ),
+        // Kept, not cleared. A record used to be dropped the moment one peer
+        // had taken it, so a peer that was closed at the time never learned of
+        // the removal and would push the category back on its return.
+        authored: mergeAuthoredLists(mine.authored, theirs.authored),
         seal: mergeSeal(mine.seal, theirs.seal, mine.fortressRev || 0, theirs.fortressRev || 0),
         sealAttempts: mergeSealAttempts(mine.sealAttempts, theirs.sealAttempts),
         escalation: mergeEscalation(mine.escalation, theirs.escalation, today, events),
@@ -1181,7 +1337,7 @@ function applyMerge(merged) {
             [SYNC_META_KEY]: normalizeSyncMeta({
                 fortressRev: merged.fortressRev,
                 counters: merged.counters,
-                authored: null,
+                authored: merged.authored,
                 lastSyncedAt: Date.now(),
                 // Always true after a merge, and not merely carried over.
                 // Once counters have been merged they hold totals from other
@@ -1230,6 +1386,8 @@ if (typeof module !== "undefined" && module.exports) {
         mergeTask,
         describeAuthoredWeakening,
         normalizeAuthored,
+        normalizeAuthoredList,
+        mergeAuthoredLists,
         mergePeerState,
         applyDerivedDays,
         normalizeSyncMeta,

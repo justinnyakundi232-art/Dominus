@@ -130,7 +130,7 @@ async function run() {
         await G.stampCommit(before, after);
 
         eq(store.syncMeta.fortressRev, 1, "the revision did not advance");
-        eq(store.syncMeta.authored, null,
+        eq(store.syncMeta.authored, [],
             "strengthening the fortress produced a weakening record");
     });
 
@@ -146,18 +146,38 @@ async function run() {
         await G.stampCommit(before, after);
 
         eq(store.syncMeta.fortressRev, 2);
-        ok(store.syncMeta.authored, "a real weakening produced no record");
-        eq(store.syncMeta.authored.rev, 2,
-            "the record was not tied to the revision that made it");
-        eq(store.syncMeta.authored.categoriesRemoved, ["social"]);
-        eq(store.syncMeta.authored.manualRemoved, ["news.com"]);
-        eq(store.syncMeta.authored.taskCleared, true);
+        eq(store.syncMeta.authored.length, 1, "a real weakening produced no record");
+
+        const record = store.syncMeta.authored[0];
+        eq(record.rev, 2, "the record was not tied to the revision that made it");
+        ok(record.id.endsWith(":2"), "the record carried no stable id");
+        eq(record.device, store.syncDevice.id, "the record did not name its author");
+        eq(record.categoriesRemoved, ["social"]);
+        eq(record.manualRemoved, ["news.com"]);
+        eq(record.taskCleared, true);
+    });
+
+    await it("a second weakening is appended, not substituted", async () => {
+        // Two removals before one sync tick is an ordinary thing to do. When
+        // commits replaced the record instead of appending, the first removal
+        // never travelled and the category it took down simply came back.
+        const before = { categories: [category({ id: "news" })], manualSites: [], task: null, cooldown: null };
+        const after = { categories: [], manualSites: [], task: null, cooldown: null };
+
+        await G.stampCommit(before, after);
+
+        eq(store.syncMeta.authored.length, 2, "the earlier record was overwritten");
+        eq(store.syncMeta.authored.map((r) => r.rev), [2, 3], "the records are out of order");
+        eq(store.syncMeta.authored[1].categoriesRemoved, ["news"]);
+
+        // Still the earlier one, untouched.
+        eq(store.syncMeta.authored[0].categoriesRemoved, ["social"]);
     });
 
     await it("a commit is logged as an event", async () => {
         const commits = store.syncEvents.filter((e) => e.type === S.EVENT_COMMIT);
-        eq(commits.length, 2, "commits were not logged");
-        eq(commits.map((e) => e.rev), [1, 2], "commit events lost their revision");
+        eq(commits.length, 3, "commits were not logged");
+        eq(commits.map((e) => e.rev), [1, 2, 3], "commit events lost their revision");
     });
 
     describe("What travels");
@@ -171,7 +191,7 @@ async function run() {
             ok(key in state, `readPeerState omitted ${key}`);
         });
 
-        eq(state.fortressRev, 2, "the revision did not travel");
+        eq(state.fortressRev, 3, "the revision did not travel");
         ok(state.events.length > 0, "the event log did not travel");
     });
 

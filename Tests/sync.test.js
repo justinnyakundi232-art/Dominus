@@ -311,7 +311,7 @@ it("a deliberate removal does cross to the other device", () => {
     // The peer applies it, because it is newer than anything this device did.
     const merged = S.mergeFortress(
         before, after, 1, 2,
-        Object.assign({ rev: 2, at: Date.now() }, authored)
+        [Object.assign({ id: "peer:2", rev: 2, at: Date.now() }, authored)]
     );
 
     eq(merged.categories.map((c) => c.id), ["gaming"], "the removal did not cross");
@@ -319,19 +319,32 @@ it("a deliberate removal does cross to the other device", () => {
     eq(merged.task, null);
 });
 
-it("a stale removal cannot replay over a defence that was put back", () => {
-    // The peer's record is older than this device's own commit, so the user has
-    // since rebuilt what it describes taking down. Replaying it would undo a
-    // deliberate act with a stale one.
-    const before = { categories: [category({ id: "social" })], manualSites: [], task: null, cooldown: null };
-    const after = { categories: [], manualSites: [], task: null, cooldown: null };
+it("a removal yields to a rebuild made after it", () => {
+    // This used to be decided by comparing revisions, which was wrong:
+    // fortressRev counts commits PER DEVICE, so one peer's 2 and another's 9
+    // say nothing about which happened first.
+    //
+    // What settles it is whether the far side has *acknowledged* the record. A
+    // peer holds a record once it has merged it, so a peer holding the record
+    // and still having the category rebuilt it knowingly, after the removal.
+    // That is the later decision and it wins.
+    const withSocial = { categories: [category({ id: "social" })], manualSites: [], task: null, cooldown: null };
+    const without = { categories: [], manualSites: [], task: null, cooldown: null };
 
-    const merged = S.mergeFortress(
-        before, after, 9, 2,
-        Object.assign({ rev: 2, at: 0 }, S.describeAuthoredWeakening(before, after))
-    );
+    const record = Object.assign(
+        { id: "peer:2", rev: 2, at: 10, device: "peer" },
+        S.describeAuthoredWeakening(withSocial, without));
 
-    eq(merged.categories.map((c) => c.id), ["social"], "a stale removal replayed");
+    // The far side has never seen it: this is an ordinary removal and crosses.
+    const fresh = S.mergeFortress(withSocial, without, 9, 2, [record], []);
+    eq(fresh.categories.map((c) => c.id), [], "an unacknowledged removal did not cross");
+
+    // The far side holds it and has the category anyway — it was rebuilt after
+    // the fact, so the record is spent.
+    const rebuilt = S.mergeFortress(
+        withSocial, without, 9, 2, [record], [record]);
+    eq(rebuilt.categories.map((c) => c.id), ["social"],
+        "a spent record undid a rebuild");
 });
 
 it("no weakening produces no record", () => {
@@ -353,7 +366,7 @@ it("permanence cannot outlive being switched off", () => {
 
     const merged = S.mergeFortress(
         before, after, 1, 2,
-        Object.assign({ rev: 2, at: 0 }, S.describeAuthoredWeakening(before, after))
+        [Object.assign({ id: "peer:2", rev: 2, at: 0 }, S.describeAuthoredWeakening(before, after))]
     );
 
     eq(merged.categories[0].enabled, false);
