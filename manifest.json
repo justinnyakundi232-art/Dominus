@@ -4,7 +4,6 @@
   "version": "1.11",
   "description": "Discipline through digital control.",
   "permissions": [
-    "alarms",
     "storage",
     "tabs",
     "webNavigation"

@@ -13,3 +13,10 @@ jsconfig.json
 *.zip
 # Windows Explorer folder settings
 desktop.ini
+
+# Desktop app (the source lives on the release branch; these never ship)
+desktop/src-tauri/target/
+desktop/src-tauri/gen/
+desktop/node_modules/
+desktop/src/styles/tokens.css
+desktop/src/assets/
