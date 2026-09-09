@@ -41,7 +41,8 @@
 //   Channel B — the fortress. Categories, manual sites, the task, the cooldown,
 //   the seal. Merging is strengthen-wins: a merge can raise a defence but never
 //   lower one. Lowering happens only when a peer sends an *authored* record
-//   saying the user deliberately took it down.
+//   saying the user deliberately took it down — a list of them, kept and
+//   replayed rather than consumed. See the note above mergeAuthored().
 //
 // Channel A falls straight out of a decision already made in Stats.js: the
 // streak is derived from dates rather than stored as a running toggle. That was
@@ -152,8 +153,10 @@ function ensureDevice() {
 // the other (a category's name, or two different unlock tasks), and it is what
 // an authored weakening is compared against.
 //
-// `authored` is the last deliberate weakening this device committed, and the
-// only thing that can take a defence down on a peer.
+// `authored` is the list of deliberate weakenings this fortress has committed,
+// on any device — the only thing that can take a defence down on a peer. It is
+// appended to and adopted from peers rather than replaced and consumed; the
+// four rules that govern it are argued above mergeAuthored().
 function normalizeSyncMeta(raw) {
     const source = raw || {};
     const counters = {};
@@ -173,7 +176,7 @@ function normalizeSyncMeta(raw) {
     return {
         fortressRev: Math.max(0, Math.round(Number(source.fortressRev) || 0)),
         counters: counters,
-        authored: normalizeAuthored(source.authored),
+        authored: normalizeAuthoredList(source.authored),
         lastSyncedAt: Math.max(0, Number(source.lastSyncedAt) || 0),
         // Whether this device's counter has absorbed the history that predates
         // counters existing at all. See ensureCountersSeeded().
@@ -806,7 +809,7 @@ function describeAuthoredWeakening(before, after) {
         standardsCleared: [],
         manualRemoved: [],
         taskCleared: false,
-        cooldownLowered: false
+        cooldownLowered: null
     };
 
     const afterById = new Map((after.categories || []).map((c) => [c.id, c]));
@@ -838,11 +841,15 @@ function describeAuthoredWeakening(before, after) {
 
     if (before.task && !after.task) record.taskCleared = true;
 
+    // The value, not a flag. A peer that is only told "this was lowered" has
+    // nothing to lower TO — and it cannot work it out, because the merge it is
+    // undoing already took the longer of the two. This is why a lowered
+    // cooldown never actually crossed before: the flag was written, and the
+    // peer that received it had no way to act on it.
     const wasCooldown = normalizeCooldown(before.cooldown);
     const nowCooldown = normalizeCooldown(after.cooldown);
-    if (nowCooldown.seconds < wasCooldown.seconds
-        || (wasCooldown.escalate && !nowCooldown.escalate)) {
-        record.cooldownLowered = true;
+    if (weakerCooldown(nowCooldown, wasCooldown)) {
+        record.cooldownLowered = nowCooldown;
     }
 
     return isEmptyAuthored(record) ? null : record;
@@ -858,6 +865,20 @@ function isEmptyAuthored(record) {
         && !record.cooldownLowered;
 }
 
+// A record's id has to be the same string on every device that holds it, or the
+// union below would keep re-adding the same weakening under a new name and the
+// holder check would never find anyone. `device:rev` is that string: a device
+// only ever raises its own revision, so the pair is unique to one commit.
+//
+// Records written before 1.12 carried no device at all — they were a single
+// slot rather than a list, so nothing ever needed to name them. Those fall back
+// to the revision and the timestamp together, which two peers would have to
+// collide on within the same millisecond to confuse.
+function authoredId(record) {
+    if (record.device) return record.device + ":" + record.rev;
+    return "legacy:" + record.rev + ":" + record.at;
+}
+
 function normalizeAuthored(raw) {
     if (!raw) return null;
     const source = raw || {};
@@ -871,7 +892,7 @@ function normalizeAuthored(raw) {
         if (Array.isArray(rawSites[id])) sitesRemoved[id] = rawSites[id].map(String);
     });
 
-    return {
+    const record = {
         rev: Math.max(0, Math.round(Number(source.rev) || 0)),
         at: Math.max(0, Number(source.at) || 0),
         device: String(source.device || ""),
@@ -881,19 +902,111 @@ function normalizeAuthored(raw) {
         standardsCleared: Array.isArray(source.standardsCleared) ? source.standardsCleared.map(String) : [],
         manualRemoved: Array.isArray(source.manualRemoved) ? source.manualRemoved.map(String) : [],
         taskCleared: source.taskCleared === true,
-        cooldownLowered: source.cooldownLowered === true
+        // `true` is the pre-1.12 shape, which named no value to lower to. It
+        // normalizes away rather than being guessed at: a record that cannot
+        // say what the user chose has no business choosing for them.
+        cooldownLowered: (source.cooldownLowered && typeof source.cooldownLowered === "object")
+            ? normalizeCooldown(source.cooldownLowered)
+            : null
     };
+
+    record.id = String(source.id || authoredId(record));
+    return record;
 }
 
-// Merges two fortresses. `theirAuthored` is the weakening record the peer sent
-// alongside its state, or null.
+// Accepts either shape, because 1.11 stored one record and 1.12 stores a list.
+// A fortress upgrading brings its last weakening with it rather than dropping
+// it on the floor mid-sync.
+function normalizeAuthoredList(raw) {
+    if (!raw) return [];
+
+    const list = Array.isArray(raw) ? raw : [raw];
+    const seen = new Set();
+    const out = [];
+
+    list.forEach((entry) => {
+        const record = normalizeAuthored(entry);
+        if (!record || isEmptyAuthored(record)) return;
+        if (seen.has(record.id)) return;
+        seen.add(record.id);
+        out.push(record);
+    });
+
+    return sortAuthored(out).slice(-AUTHORED_RETENTION);
+}
+
+// Oldest first, so replaying the list applies decisions in the order they were
+// made — which only matters for the cooldown, where two records can both land
+// and the later one is the one the user is living with.
+function sortAuthored(records) {
+    return records.slice().sort((a, b) => (a.at - b.at) || (a.rev - b.rev)
+        || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+}
+
+// ---------------------------------------------------------------------------
+// How a weakening travels — the four rules
 //
-// Order matters: union first, then subtract only what the peer says was
-// deliberately taken down, and only when that record is newer than anything
-// this device has committed. A record this device has already seen — or one
-// older than an edit made here since — is ignored, so a stale peer cannot
-// replay an old removal over a defence that has since been put back.
-function mergeFortress(mine, theirs, myRev, theirRev, theirAuthored) {
+// The first design was one record, replaced on each commit, applied when
+// `record.rev > myRev`. Six of the thirteen scenarios in Tests/authored.test.js
+// fail against it, because revisions count commits PER DEVICE: one peer's 1 and
+// another's 2 say nothing about which happened first, so two peers each
+// removing something had BOTH removals silently ignored.
+//
+// What replaced it, and the scenario each rule exists for:
+//
+//   1. Records are a LIST, appended rather than replaced. Two removals before
+//      one sync tick is an ordinary thing to do, and the single slot lost the
+//      first — the category came back and nobody was told.
+//
+//   2. The list is KEPT on merge, and a peer adopts what it receives. A record
+//      that was cleared on merge reached whoever was connected at the time and
+//      was then forgotten, so a second browser that happened to be closed
+//      pushed the category back on its return.
+//
+//   3. A removal lands only where every peer HOLDING the record is also WITHOUT
+//      the thing. The record is the reason; that peer's fortress is the fact.
+//      Without this, a removal the user reversed before syncing still travelled
+//      — and applying a record twice needed bookkeeping instead of being
+//      naturally a no-op.
+//
+//   4. Which is also rule 4 seen from the other side: a record YIELDS to a
+//      decision made after it. If the far peer holds the record and still has
+//      the thing, it was rebuilt knowingly. Replaying one's own records is
+//      necessary — the union re-adds whatever either peer has — and without
+//      this it silently undid that rebuild the moment it arrived.
+//
+// A peer that does NOT hold the record has simply never seen it, and its having
+// the thing is not evidence of anything. That is the case a third peer makes
+// ordinary: mobile, arriving in Phase 5, is a peer that was away.
+
+// Fifty is far more than the handful a live fortress carries. A record is inert
+// once every peer has both seen and agreed with it, so the list only grows when
+// weakenings outpace syncing.
+const AUTHORED_RETENTION = 50;
+
+function mergeAuthored(mine, theirs) {
+    const byId = new Map();
+    normalizeAuthoredList(mine).forEach((record) => byId.set(record.id, record));
+    normalizeAuthoredList(theirs).forEach((record) => {
+        if (!byId.has(record.id)) byId.set(record.id, record);
+    });
+
+    return sortAuthored([...byId.values()]).slice(-AUTHORED_RETENTION);
+}
+
+function holdsAuthored(records, id) {
+    return normalizeAuthoredList(records).some((record) => record.id === id);
+}
+
+// Merges two fortresses. Union first, then subtract what the records say was
+// deliberately taken down.
+//
+// BOTH sides' records are replayed, every time, and each one is checked against
+// whoever is holding it — see the four rules above mergeAuthored(). Replaying
+// one's own is not redundant: the union has just re-added whatever the peer
+// still has, so a removal this device made has to be re-stated on every merge
+// until the peer has adopted it too.
+function mergeFortress(mine, theirs, myRev, theirRev, myAuthored, theirAuthored) {
     const merged = {
         categories: mergeCategories(mine.categories, theirs.categories, myRev, theirRev),
         manualSites: unionSites(mine.manualSites, theirs.manualSites),
@@ -901,8 +1014,14 @@ function mergeFortress(mine, theirs, myRev, theirRev, theirAuthored) {
         cooldown: mergeCooldown(mine.cooldown, theirs.cooldown)
     };
 
-    const authored = normalizeAuthored(theirAuthored);
-    if (authored && authored.rev > myRev) applyAuthored(merged, authored);
+    mergeAuthored(myAuthored, theirAuthored).forEach((record) => {
+        // The fortresses of the peers that hold this record. A peer that does
+        // not hold it has never seen it, and what it has is not evidence.
+        const holders = [];
+        if (holdsAuthored(myAuthored, record.id)) holders.push(mine);
+        if (holdsAuthored(theirAuthored, record.id)) holders.push(theirs);
+        applyAuthored(merged, record, holders);
+    });
 
     return merged;
 }
@@ -1008,12 +1127,37 @@ function mergeCooldown(mine, theirs) {
     });
 }
 
-// Subtracts a deliberate weakening from the merged result. Mutates `merged`.
-function applyAuthored(merged, authored) {
-    const removed = new Set(authored.categoriesRemoved);
-    const disabled = new Set(authored.categoriesDisabled);
-    const cleared = new Set(authored.standardsCleared);
-    const manualGone = new Set(authored.manualRemoved);
+// Subtracts one deliberate weakening from the merged result. Mutates `merged`.
+//
+// `holders` are the fortresses of the peers that hold this record. Every item
+// is gated on all of them being WITHOUT it: the record is the reason a defence
+// came down, and a holder that still has the thing rebuilt it knowingly after
+// writing the record. Gating item by item rather than record by record matters
+// because one commit can take three things down and the user can put one of
+// them back — the other two should still travel.
+function applyAuthored(merged, authored, holders) {
+    const peers = holders || [];
+    const without = (predicate) => peers.every((peer) => !predicate(peer));
+
+    const removed = new Set(authored.categoriesRemoved
+        .filter((id) => without((peer) => findCategory(peer, id))));
+
+    // A holder that no longer has the category at all counts as without it —
+    // it cannot be holding an enabled one.
+    const disabled = new Set(authored.categoriesDisabled
+        .filter((id) => without((peer) => {
+            const category = findCategory(peer, id);
+            return category && category.enabled;
+        })));
+
+    const cleared = new Set(authored.standardsCleared
+        .filter((id) => without((peer) => {
+            const category = findCategory(peer, id);
+            return category && ("task" in category || "cooldown" in category);
+        })));
+
+    const manualGone = new Set(authored.manualRemoved
+        .filter((site) => without((peer) => (peer.manualSites || []).includes(site))));
 
     merged.categories = merged.categories
         .filter((category) => !removed.has(category.id))
@@ -1028,8 +1172,12 @@ function applyAuthored(merged, authored) {
                 next.permanent = false;
             }
 
-            const dropped = authored.sitesRemoved[next.id];
-            if (dropped && dropped.length) {
+            const dropped = (authored.sitesRemoved[next.id] || []).filter((site) => without((peer) => {
+                const category = findCategory(peer, next.id);
+                return category && (category.sites || []).includes(site);
+            }));
+
+            if (dropped.length) {
                 const gone = new Set(dropped);
                 next.sites = (next.sites || []).filter((site) => !gone.has(site));
             }
@@ -1044,7 +1192,28 @@ function applyAuthored(merged, authored) {
 
     merged.manualSites = merged.manualSites.filter((site) => !manualGone.has(site));
 
-    if (authored.taskCleared) merged.task = null;
+    if (authored.taskCleared && without((peer) => peer.task)) merged.task = null;
+
+    // A holder whose cooldown is still stronger than the recorded one raised it
+    // again after the record was written, which is a later decision and wins.
+    if (authored.cooldownLowered
+        && without((peer) => weakerCooldown(authored.cooldownLowered, peer.cooldown))) {
+        merged.cooldown = normalizeCooldown(authored.cooldownLowered);
+    }
+}
+
+function findCategory(fortress, id) {
+    return (fortress.categories || []).find((category) => category.id === id) || null;
+}
+
+// Is `a` a weaker standard than `b`? The same three fields mergeCooldown()
+// resolves toward stricter, read in the other direction.
+function weakerCooldown(a, b) {
+    const one = normalizeCooldown(a);
+    const two = normalizeCooldown(b);
+    return one.seconds < two.seconds
+        || (two.escalate && !one.escalate)
+        || (one.escalate && two.escalate && one.factor < two.factor);
 }
 
 // ---- The whole merge ------------------------------------------------------
@@ -1092,8 +1261,13 @@ function mergePeerState(mine, theirs, now) {
             theirs.fortress || {},
             mine.fortressRev || 0,
             theirs.fortressRev || 0,
+            mine.authored,
             theirs.authored
         ),
+        // Kept, not consumed. A record that was cleared on merge reached only
+        // whoever was connected at the time, and a peer that was closed pushed
+        // the defence back on its return.
+        authored: mergeAuthored(mine.authored, theirs.authored),
         seal: mergeSeal(mine.seal, theirs.seal, mine.fortressRev || 0, theirs.fortressRev || 0),
         sealAttempts: mergeSealAttempts(mine.sealAttempts, theirs.sealAttempts),
         escalation: mergeEscalation(mine.escalation, theirs.escalation, today, events),
@@ -1181,7 +1355,7 @@ function applyMerge(merged) {
             [SYNC_META_KEY]: normalizeSyncMeta({
                 fortressRev: merged.fortressRev,
                 counters: merged.counters,
-                authored: null,
+                authored: merged.authored,
                 lastSyncedAt: Date.now(),
                 // Always true after a merge, and not merely carried over.
                 // Once counters have been merged they hold totals from other
@@ -1230,6 +1404,10 @@ if (typeof module !== "undefined" && module.exports) {
         mergeTask,
         describeAuthoredWeakening,
         normalizeAuthored,
+        normalizeAuthoredList,
+        mergeAuthored,
+        authoredId,
+        weakerCooldown,
         mergePeerState,
         applyDerivedDays,
         normalizeSyncMeta,

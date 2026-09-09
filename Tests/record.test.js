@@ -130,7 +130,7 @@ async function run() {
         await G.stampCommit(before, after);
 
         eq(store.syncMeta.fortressRev, 1, "the revision did not advance");
-        eq(store.syncMeta.authored, null,
+        eq(store.syncMeta.authored, [],
             "strengthening the fortress produced a weakening record");
     });
 
@@ -146,18 +146,36 @@ async function run() {
         await G.stampCommit(before, after);
 
         eq(store.syncMeta.fortressRev, 2);
-        ok(store.syncMeta.authored, "a real weakening produced no record");
-        eq(store.syncMeta.authored.rev, 2,
-            "the record was not tied to the revision that made it");
-        eq(store.syncMeta.authored.categoriesRemoved, ["social"]);
-        eq(store.syncMeta.authored.manualRemoved, ["news.com"]);
-        eq(store.syncMeta.authored.taskCleared, true);
+        eq(store.syncMeta.authored.length, 1, "a real weakening produced no record");
+
+        const record = store.syncMeta.authored[0];
+        eq(record.rev, 2, "the record was not tied to the revision that made it");
+        eq(record.categoriesRemoved, ["social"]);
+        eq(record.manualRemoved, ["news.com"]);
+        eq(record.taskCleared, true);
+        ok(record.device, "the record cannot be named without the device that wrote it");
+        eq(record.id, record.device + ":2", "the record's id is not device:rev");
+    });
+
+    await it("a second weakening before a sync tick does not lose the first", async () => {
+        // The failure the single slot had. Taking two things down in a row is
+        // ordinary, and the first record used to be overwritten by the second —
+        // so the first category came back on the next merge, silently.
+        const before = { categories: [category({ id: "news" })], manualSites: [], task: null, cooldown: null };
+        const after = { categories: [], manualSites: [], task: null, cooldown: null };
+
+        await G.stampCommit(before, after);
+
+        eq(store.syncMeta.fortressRev, 3);
+        eq(store.syncMeta.authored.length, 2, "the earlier weakening was overwritten");
+        eq(store.syncMeta.authored.map((r) => r.rev), [2, 3], "records are not in the order they were made");
+        eq(store.syncMeta.authored[1].categoriesRemoved, ["news"]);
     });
 
     await it("a commit is logged as an event", async () => {
         const commits = store.syncEvents.filter((e) => e.type === S.EVENT_COMMIT);
-        eq(commits.length, 2, "commits were not logged");
-        eq(commits.map((e) => e.rev), [1, 2], "commit events lost their revision");
+        eq(commits.length, 3, "commits were not logged");
+        eq(commits.map((e) => e.rev), [1, 2, 3], "commit events lost their revision");
     });
 
     describe("What travels");
@@ -171,7 +189,8 @@ async function run() {
             ok(key in state, `readPeerState omitted ${key}`);
         });
 
-        eq(state.fortressRev, 2, "the revision did not travel");
+        eq(state.fortressRev, 3, "the revision did not travel");
+        eq(state.authored.length, 2, "the weakening records did not travel");
         ok(state.events.length > 0, "the event log did not travel");
     });
 

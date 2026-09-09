@@ -657,7 +657,7 @@ function fillFortressState(next, stored) {
     };
 }
 
-// Stamps a commit for the sync layer: raises the fortress revision, stores the
+// Stamps a commit for the sync layer: raises the fortress revision, appends the
 // machine-readable weakening record if this edit took anything down, and logs
 // the commit as an event.
 //
@@ -668,6 +668,11 @@ function fillFortressState(next, stored) {
 // saying the user deliberately took a defence down, a peer would simply put it
 // back on the next tick.
 //
+// APPENDED, not replaced. Taking two things down before one sync tick is an
+// ordinary thing to do, and a single slot lost the first of them — the category
+// came back on the next merge and nobody was told. The list is pruned in
+// normalizeAuthoredList(); see the four rules above mergeAuthored().
+//
 // Guarded the same way Stats.js guards its mirror, and for the same reason:
 // this file is loaded on pages that have no need of the sync layer, and a
 // missing Sync.js must cost the stamp, not the save.
@@ -676,13 +681,23 @@ function stampCommit(before, after) {
 
     const authored = describeAuthoredWeakening(before, after);
 
-    return enqueueSyncMetaUpdate((meta) => {
+    return ensureDevice().then((device) => enqueueSyncMetaUpdate((meta) => {
         meta.fortressRev += 1;
-        meta.authored = authored
-            ? Object.assign({ rev: meta.fortressRev, at: Date.now() }, authored)
-            : null;
+
+        if (authored) {
+            // The device is what makes the id unique across peers: a device
+            // only ever raises its own revision, so device:rev names exactly
+            // one commit and both peers agree on the name.
+            meta.authored = normalizeAuthoredList(meta.authored.concat([
+                Object.assign(
+                    { rev: meta.fortressRev, at: Date.now(), device: device.id },
+                    authored
+                )
+            ]));
+        }
+
         return meta;
-    }).then((meta) => {
+    })).then((meta) => {
         // Awaited, unlike the stats mirror, so the revision and the event that
         // names it land in the same order they were made. A sync tick that
         // fires between the two would otherwise send a fortress revision with
