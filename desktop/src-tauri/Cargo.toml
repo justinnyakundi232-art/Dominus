@@ -41,3 +41,14 @@ http-body-util = "0.1"
 [target."cfg(not(any(target_os = \"android\", target_os = \"ios\")))".dependencies]
 tauri-plugin-single-instance = "2"
 tauri-plugin-autostart = "2"
+
+# Seeing which program is in the foreground, and minimizing it. See
+# ../APP-LIMITS.md. windows-sys rather than the `windows` crate because this
+# needs five raw calls and none of the COM machinery, and because it is already
+# in the tree — the watcher costs no new dependency at all.
+[target."cfg(windows)".dependencies]
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_System_Threading",
+    "Win32_UI_WindowsAndMessaging",
+] }

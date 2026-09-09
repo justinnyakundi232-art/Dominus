@@ -59,19 +59,12 @@ function normalizeStats(raw) {
 }
 
 // ---- Local-date helpers (never mix UTC and local) -------------------------
-
-// "YYYY-MM-DD" for a Date in the user's LOCAL timezone.
-function localDateString(date) {
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, "0");
-    const d = String(date.getDate()).padStart(2, "0");
-    return `${y}-${m}-${d}`;
-}
-
-// Today's local date as "YYYY-MM-DD".
-function todayLocal() {
-    return localDateString(new Date());
-}
+//
+// localDateString(), todayLocal() and localTimeString() moved to Tasks.js.
+// They are not stats — they are this project's answer to "what day is it
+// here", which Stats.js, Sync.js and the desktop app's gate all have to agree
+// on. Tasks.js is the file every surface already loads, including the desktop
+// window, which does not load this one.
 
 // Shift a local "YYYY-MM-DD" by `delta` days and return the new local date.
 // Built from local midnight so DST shifts don't move us across a day boundary.
@@ -428,14 +421,6 @@ function normalizeDayEntry(raw) {
         firstSlip: source.firstSlip || null,
         inferred: source.inferred === true
     };
-}
-
-// "HH:MM" local. Deliberately minute-resolution: the point is "late at night",
-// not forensics.
-function localTimeString(date) {
-    const hours = String(date.getHours()).padStart(2, "0");
-    const minutes = String(date.getMinutes()).padStart(2, "0");
-    return `${hours}:${minutes}`;
 }
 
 // Which of the three states a day is in. A missing entry is untested, which is

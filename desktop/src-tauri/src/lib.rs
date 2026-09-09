@@ -11,6 +11,7 @@
 // being enforced.
 
 mod service;
+mod watcher;
 
 use std::sync::{Arc, Mutex};
 
@@ -19,10 +20,11 @@ use serde_json::Value;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Manager,
+    Emitter, Manager, WebviewUrl, WebviewWindowBuilder,
 };
 
 use service::{PairingCode, Shared};
+use watcher::{Enforced, PendingGate, Watch, WatchInner, POLL_INTERVAL_MS};
 
 #[derive(Serialize)]
 struct DeviceView {
@@ -135,6 +137,54 @@ fn put_state(
     Ok(guard.put_state(next))
 }
 
+/// What the window tells this side to enforce.
+///
+/// Called on every state change: after a sync, after an edit here, and after an
+/// unlock. It is a list of executables and a map of expiries — see
+/// `watcher::Enforced`, and ../APP-LIMITS.md for why it is that and nothing more.
+#[tauri::command]
+fn set_enforced(watch: tauri::State<Watch>, enforced: Enforced) {
+    if let Ok(mut guard) = watch.lock() {
+        guard.set_enforced(enforced);
+    }
+}
+
+/// What the gate is currently standing in front of, if anything.
+///
+/// The gate window asks for this on load rather than being handed it, because a
+/// window that has just been shown may have been shown before and may still be
+/// holding the last thing it was told.
+#[tauri::command]
+fn pending_gate(watch: tauri::State<Watch>) -> Option<PendingGate> {
+    watch.lock().ok().and_then(|guard| guard.pending.clone())
+}
+
+/// The user has answered, whichever way. Rust is not told which — recording is
+/// the window's job, and this side has no business knowing whether a stand or
+/// an unlock just happened.
+#[tauri::command]
+fn close_gate(app: tauri::AppHandle, watch: tauri::State<Watch>) {
+    if let Ok(mut guard) = watch.lock() {
+        guard.close_gate();
+    }
+    if let Some(gate) = app.get_webview_window("gate") {
+        let _ = gate.hide();
+    }
+}
+
+fn raise_gate(app: &tauri::AppHandle, pending: &PendingGate) {
+    let Some(gate) = app.get_webview_window("gate") else {
+        return;
+    };
+
+    // The event first, so the window has the answer before it is looked at.
+    // It also asks for itself on load, which covers the first raise, when the
+    // webview may not have a listener attached yet.
+    let _ = app.emit("gate-raised", pending.clone());
+    let _ = gate.show();
+    let _ = gate.set_focus();
+}
+
 fn show_window(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
@@ -146,6 +196,7 @@ fn show_window(app: &tauri::AppHandle) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let shared: Shared = Arc::new(Mutex::new(service::Inner::default()));
+    let watch: Watch = Arc::new(Mutex::new(WatchInner::default()));
 
     let mut builder = tauri::Builder::default();
 
@@ -177,9 +228,13 @@ pub fn run() {
             }
         })
         .manage(shared.clone())
+        .manage(watch.clone())
         .invoke_handler(tauri::generate_handler![
             service_status,
             new_pairing_code,
+            set_enforced,
+            pending_gate,
+            close_gate,
             peer_state,
             put_state
         ])
@@ -189,6 +244,13 @@ pub fn run() {
             if let Ok(dir) = app.path().app_data_dir() {
                 if let Ok(mut guard) = shared.lock() {
                     guard.attach(dir.join("state.json"));
+                }
+                // Its own file, not a corner of state.json. What to enforce is
+                // a cache of what the window last said; the state is the
+                // fortress itself. Keeping them apart is what stops this side
+                // being tempted to derive one from the other.
+                if let Ok(mut guard) = watch.lock() {
+                    guard.attach(dir.join("enforced.json"));
                 }
             }
 
@@ -231,6 +293,81 @@ pub fn run() {
                     _ => {}
                 })
                 .build(app)?;
+
+            // Built once, hidden, and shown when something needs stopping.
+            // Creating it on demand would put the cost of a webview start
+            // between clicking a blocked program and being told — which is the
+            // moment the gate has to be immediate to mean anything.
+            let gate = WebviewWindowBuilder::new(app, "gate", WebviewUrl::App("gate.html".into()))
+                .title("Dominus")
+                // Sized so the tallest ordinary state — a twelve-word passage
+                // over three lines, with its box and its buttons — fits without
+                // scrolling. A reflection message can be any length the user
+                // typed, and that one does scroll.
+                .inner_size(560.0, 680.0)
+                .resizable(false)
+                .center()
+                .always_on_top(true)
+                // Not in the taskbar and not decorated: this is an
+                // interruption, not a document. It is still ordinary enough to
+                // alt-tab away from, which is deliberate — the program stays
+                // minimized because nothing un-minimized it, and Dominus has
+                // never trapped anyone anywhere.
+                .skip_taskbar(true)
+                .decorations(false)
+                .visible(false)
+                .build()?;
+
+            // Closing the gate is answering it: the same as walking away, and
+            // the window records the stand before it asks for this.
+            let closing = app.handle().clone();
+            gate.on_window_event(move |event| {
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    if let Some(window) = closing.get_webview_window("gate") {
+                        let _ = window.hide();
+                    }
+                }
+            });
+
+            // The watch itself. A thread rather than an async task because it
+            // is a blocking Win32 call on a fixed cadence with nothing to await
+            // — and because it must keep its rhythm whatever the async runtime
+            // is doing about the HTTP service.
+            let ticking = watch.clone();
+            let handle = app.handle().clone();
+            std::thread::spawn(move || loop {
+                std::thread::sleep(std::time::Duration::from_millis(POLL_INTERVAL_MS));
+
+                let seen = watcher::foreground();
+                let now = service::now_ms();
+
+                let raised = match ticking.lock() {
+                    Ok(mut guard) => {
+                        let exe = seen.as_ref().map(|(name, _)| name.as_str());
+                        if guard.observe(exe, now) {
+                            guard.pending.clone()
+                        } else {
+                            None
+                        }
+                    }
+                    // A poisoned lock means another thread panicked while
+                    // holding it. Enforcing nothing is the safe reading: the
+                    // alternative is a gate raised against a list nobody can
+                    // vouch for.
+                    Err(_) => None,
+                };
+
+                if let Some(pending) = raised {
+                    // Minimize first. The gate appearing over a program that is
+                    // still there reads as a suggestion; the program going away
+                    // is what makes it a decision.
+                    if let Some((_, hwnd)) = seen {
+                        watcher::minimize(hwnd);
+                    }
+                    raise_gate(&handle, &pending);
+                }
+            });
 
             let state = shared.clone();
             tauri::async_runtime::spawn(async move {

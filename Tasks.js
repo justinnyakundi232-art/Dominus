@@ -137,6 +137,38 @@ function effectiveCooldownSeconds(cooldown, priorUnlocks) {
 // ---- Formatting -----------------------------------------------------------
 
 // "M:SS" for the live countdown.
+// ---- Local dates and times ------------------------------------------------
+//
+// Here rather than in Stats.js, which is where they lived until applications
+// arrived. They are not stats: they are the single answer to "what day is it
+// here", and Stats.js, Sync.js and the desktop app's gate all have to give the
+// same one. A slip recorded against the wrong day is a square in the wrong
+// place on the history grid and a streak broken for no reason.
+//
+// Local throughout, never UTC. Everything the user sees is local-date based on
+// purpose, so an unlock at 1am belongs to the day it felt like.
+
+// "YYYY-MM-DD" for a Date in the user's LOCAL timezone.
+function localDateString(date) {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, "0");
+    const d = String(date.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+}
+
+// Today's local date as "YYYY-MM-DD".
+function todayLocal() {
+    return localDateString(new Date());
+}
+
+// "HH:MM" local. Deliberately minute-resolution: the point is "late at night",
+// not forensics.
+function localTimeString(date) {
+    const hours = String(date.getHours()).padStart(2, "0");
+    const minutes = String(date.getMinutes()).padStart(2, "0");
+    return `${hours}:${minutes}`;
+}
+
 function formatClock(totalSeconds) {
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
