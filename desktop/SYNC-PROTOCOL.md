@@ -6,8 +6,10 @@ are talking to the right peer, and exchange a fortress.
 Written before either side implements it, because the security decisions here
 are the kind that are hard to change once two versions are in the wild.
 
-Status: **specification**. Phase 1 implements `hello`, `pair` and a read-only
-`sync`; Phase 2 makes `sync` bidirectional.
+Status: **protocol 2, implemented on both sides.** Protocol 1 was Phase 1's
+read-only mirror: the extension posted its fortress and the app answered
+`{ accepted: true }`. Protocol 2 makes the exchange bidirectional, and changes
+what `/sync` answers with — which is a change of meaning, so the number moved.
 
 ---
 
@@ -103,7 +105,7 @@ All under `/dominus/v1/`. All request and response bodies are JSON.
 Unauthenticated. The only endpoint that is.
 
 ```json
-{ "app": "dominus", "protocol": 1, "version": "0.1.0", "paired": true }
+{ "app": "dominus", "protocol": 2, "version": "0.1.0", "paired": true }
 ```
 
 `app: "dominus"` is the signature the port probe matches on. `paired` tells the
@@ -132,20 +134,19 @@ it cannot be guessed at speed.
 ### `POST /sync`
 
 Requires `X-Dominus-Token`. The body is exactly the shape `readPeerState()`
-already returns in `Sync.js`:
+returns in `Sync.js`:
 
 ```
 { today, events, counters, fortressRev, authored,
   stats, dayLog, fortress, seal, sealAttempts, escalation, tempUnlocks }
 ```
 
-→ `200` with the same shape, from the app's side.
+→ `200` `{ "protocol": 2, "stateRev": 7, "state": { …the same shape… } }`
 
-Both peers then run `mergePeerState(mine, theirs)` — the function that already
-exists and is already tested — and write the result. **Phase 1 sends the
-extension's state and ignores what comes back**, so the app can mirror without
-anything being able to flow the wrong way while the merge is still unproven in
-the field.
+`state` is `null` on an app that has never held one — a first pairing, or a
+fresh install. `stateRev` is not `fortressRev`: it counts writes to the app's
+copy, and exists only so the commit below can tell whether that copy moved
+underneath the merge.
 
 `blockedSites` is absent from that shape on purpose. It is a cache of the
 categories and the manual list, and a peer that took it at face value could
@@ -153,6 +154,76 @@ enforce a list its own categories disagree with. Each side re-derives it.
 
 → `401` `{ "error": "unpaired" }` — token unknown or revoked. The extension
 clears its token and stops sending until the user pairs again.
+
+### `POST /commit`
+
+Requires `X-Dominus-Token`.
+
+```json
+{ "stateRev": 7, "state": { "…": "the merged result" } }
+```
+
+→ `200` `{ "stateRev": 8 }`
+→ `409` `{ "error": "stale", "stateRev": 9 }` — the app's copy moved while the
+merge was being computed. Nothing is written. The extension does not retry
+inside the tick; the next one reads the newer state and merges against that.
+
+---
+
+## Where the merge runs, and why only in one place
+
+`mergePeerState()` is around six hundred lines of rules that took thirteen
+scenarios to get right. The obvious design — each peer merges its own copy —
+means writing all of it a second time in Rust and keeping the two in step by
+hand, forever. That is the exact failure `Styles/Tokens.css` is copied at build
+time to avoid, on a file where the cost of drift is a wrong colour rather than a
+defence that quietly stopped being enforced.
+
+So the merge runs **once, in the extension**, and the app is handed the result:
+
+```
+POST /sync    { mine }              -> { stateRev: 7, state: theirs }
+              merged = mergePeerState(mine, theirs)
+              applyMerge(merged)                    (the extension writes)
+POST /commit  { stateRev: 7, merged } -> { stateRev: 8 }   (the app writes)
+```
+
+Both peers land on the same state because it is the same object, not because
+two implementations agreed. The Rust side holds JSON and a counter and has no
+merge logic at all.
+
+The compare-and-set is what makes this safe against the app editing its own
+fortress in between: if `stateRev` moved, the commit is refused and nothing is
+written. The extension loses a tick, which is a minute.
+
+### What the app is trusting the extension with
+
+That the thing it is handed is really the merge of what it sent. A paired
+extension could commit anything.
+
+This is a smaller grant than it looks. `mergePeerState()` is strengthen-wins:
+the only thing in a committed state that can take a defence down is an authored
+record, and an authored record is written on the far side of the seal. An
+extension that wanted to weaken a fortress does not need this endpoint — it is
+the extension, it holds the enforceable copy, and the user can remove it in two
+clicks. The protocol is not trying to be stronger than the product.
+
+What the app does **not** do is accept a commit as an instruction it then acts
+on independently. It stores it. Phase 3, where the app starts enforcing limits
+on applications rather than mirroring the browser, is where that stops being
+free — and is where this section will need arguing again.
+
+### Authoring, on the app's side
+
+Editing a category in the app is not a merge; it is a commit, and it happens
+with the window open. So it runs in the window, in JavaScript, against a copy of
+`Sync.js` that `tools/sync-shared.mjs` brings in at build time — the same
+mechanism, and the same argument, as `Tokens.css`. The window works out the
+authored record with `describeAuthoredWeakening()`, raises `fortressRev`, and
+hands Rust the whole new state through the `put_state` command.
+
+The app therefore has no merge rules and no authoring rules of its own. Every
+rule in the system is written once, in `Sync.js`.
 
 ---
 
@@ -169,7 +240,12 @@ unreachable must never make the gate weaker.
 
 ## Versioning
 
-`protocol: 1` in `hello`. A peer that sees a protocol number it does not
+`protocol: 2` in `hello`. A peer that sees a protocol number it does not
 understand refuses to sync and says so, rather than guessing at a payload
 shape. Adding optional fields does not bump it; changing the meaning of an
 existing one does.
+
+Protocol 1 answered `/sync` with `{ accepted: true }` and had no `/commit`. An
+extension still speaking 1 is refused at pairing with a message naming which
+side is behind, which is the whole reason the number is in `hello` rather than
+discovered halfway through an exchange.

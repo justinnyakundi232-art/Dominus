@@ -1251,6 +1251,9 @@ function mergePeerState(mine, theirs, now) {
     });
 
     return {
+        // Carried through so a committed state is self-describing: the app
+        // renders "as of" from it, and a later merge can fall back to it.
+        today: today,
         events: events,
         counters: counters,
         fortressRev: fortressRev,
@@ -1277,15 +1280,19 @@ function mergePeerState(mine, theirs, now) {
 
 // ---- Transport ------------------------------------------------------------
 //
-// There is no peer yet. This is the seam the desktop app arrives at in Phase 1,
-// and it is left as a no-op on purpose: the merge rules above are the part that
-// is expensive to get wrong once two peers are in the wild, so they ship and
-// get exercised first, against a transport that cannot lose anything because it
-// cannot send anything.
+// LocalPeer.js installs the transport; everything above this line is unaware
+// there is one. A transport is handed this device's state and resolves either
+// null — no peer, for any reason at all — or:
 //
-// When the desktop app lands, setSyncTransport() takes a function that posts
-// this device's state to http://127.0.0.1:PORT and resolves with the peer's.
-// Nothing above this line changes.
+//     { state, commit }
+//
+// `state` is the peer's own, or null on a peer that has never held one. `commit`
+// takes the merged result and resolves true if the peer accepted it.
+//
+// The two steps are the protocol, not an implementation detail. The merge runs
+// once, here, and the peer is handed the answer — rather than both sides
+// running their own copy of six hundred lines of merge rules and being trusted
+// to agree. The argument is in desktop/SYNC-PROTOCOL.md.
 
 let syncTransport = null;
 
@@ -1327,16 +1334,37 @@ function readKey(key) {
     });
 }
 
-// Resolves { status } — "no-peer" until a transport is installed. Called after
-// every local write and on the alarm tick in Background.js, both of which are
-// wired now so the cadence is real by the time there is something to send.
+// Resolves { status } — "no-peer" until a transport is installed and a peer
+// answers. Called after every local write and on the alarm tick in
+// Background.js.
+//
+// Nothing here is allowed to throw. The gate is enforced from
+// chrome.storage.local by Background.js and never waits on any of this; a peer
+// that is closed, crashed, or answering with nonsense must cost nothing.
 function syncNow() {
     if (!syncTransport) return Promise.resolve({ status: "no-peer" });
 
     return readPeerState()
-        .then((mine) => syncTransport(mine).then((theirs) => {
-            if (!theirs) return { status: "no-peer" };
-            return applyMerge(mergePeerState(mine, theirs, Date.now()));
+        .then((mine) => Promise.resolve(syncTransport(mine)).then((peer) => {
+            if (!peer) return { status: "no-peer" };
+
+            // A peer holding nothing — a first pairing, or an app whose store
+            // was reset. There is nothing to merge, so this device's state is
+            // handed over rather than written back over itself.
+            if (!peer.state) {
+                return peer.commit(mine).then((committed) => ({
+                    status: committed ? "sent" : "stale"
+                }));
+            }
+
+            const merged = mergePeerState(mine, peer.state, Date.now());
+
+            // This device writes first and unconditionally. A commit the peer
+            // refuses costs a tick; a merge this device declined to apply
+            // because the peer was busy would leave the browser enforcing a
+            // fortress it has already agreed is out of date.
+            return applyMerge(merged).then((outcome) => peer.commit(merged)
+                .then((committed) => Object.assign(outcome, { committed: committed })));
         }))
         .catch((error) => ({ status: "failed", error: String(error) }));
 }

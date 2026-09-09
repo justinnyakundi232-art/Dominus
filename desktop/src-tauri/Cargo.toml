@@ -32,6 +32,12 @@ tokio = { version = "1", features = ["rt-multi-thread", "net", "macros", "sync"]
 tower-http = { version = "0.6", features = ["cors"] }
 rand = "0.9"
 
+# The loopback service is tested through its own router with oneshot, so what
+# is exercised is the thing that is served rather than a model of it.
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+
 [target."cfg(not(any(target_os = \"android\", target_os = \"ios\")))".dependencies]
 tauri-plugin-single-instance = "2"
 tauri-plugin-autostart = "2"

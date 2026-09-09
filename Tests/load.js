@@ -16,7 +16,16 @@ const vm = require("vm");
 // carries a minimal `document`.
 const FILES = ["Tasks.js", "Categories.js", "Stats.js", "Seal.js", "Sync.js", "Backup.js"];
 
-function loadSharedLayer() {
+// LocalPeer.js is loaded only when a test asks for it. It installs itself as
+// the sync transport at load time, and most suites want syncNow() to resolve
+// "no-peer" the way it does on a page that never reaches for the app.
+const PEER_FILE = "LocalPeer.js";
+
+// `options.fetch` brings LocalPeer.js in and hands it a stand-in for the
+// network. It is the only impure thing that file touches, so replacing it is
+// enough to exercise the whole transport without a desktop app anywhere near.
+function loadSharedLayer(options) {
+    const settings = options || {};
     const root = path.join(__dirname, "..");
 
     // An in-memory chrome.storage.local, faithful to the callback API the
@@ -54,6 +63,8 @@ function loadSharedLayer() {
         },
         crypto: { randomUUID: () => `uuid-${++ids}` },
         setTimeout: setTimeout,
+        clearTimeout: clearTimeout,
+        AbortController: AbortController,
         console: console,
         module: { exports: {} },
 
@@ -69,9 +80,13 @@ function loadSharedLayer() {
         }
     };
 
+    if (settings.fetch) context.fetch = settings.fetch;
+
     vm.createContext(context);
 
-    FILES.forEach((file) => {
+    const files = settings.fetch ? FILES.concat([PEER_FILE]) : FILES;
+
+    files.forEach((file) => {
         vm.runInContext(
             fs.readFileSync(path.join(root, file), "utf8"),
             context,
