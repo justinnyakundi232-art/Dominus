@@ -5,9 +5,13 @@ navigation and stop it — and this holds everything the browser cannot reach:
 limits on applications rather than sites, schedules, the full record, and later
 the community servers.
 
-**Status: Phase 1, in progress.** The window and its shell exist; the Rust side
-does not yet. See `SYNC-PROTOCOL.md` for how the two halves will find each
-other and what they exchange.
+**Status: Phase 2.** The window, the tray, the loopback service and pairing all
+work, and syncing is bidirectional — The Fortress here edits categories, and the
+edit reaches the browser on its next tick. See `SYNC-PROTOCOL.md` for how the
+two halves find each other and what they exchange.
+
+Not built yet: limits on applications rather than sites, which is Phase 3 and
+the actual reason to install this.
 
 ---
 
@@ -18,9 +22,11 @@ defined, and both surfaces have to read it. In a separate repository that file
 would be copied by hand, and the copies would drift — which is the exact thing
 the token file was created to prevent.
 
-The merge rules in `Sync.js` have the same property: this app has to apply them
-identically, and keeping the two adjacent makes any divergence visible in a
-diff rather than discoverable in the field.
+The merge rules in `Sync.js` have the same property, and the answer went one
+step further than adjacency: this app does not have its own copy of them at all.
+`tools/sync-shared.mjs` copies `Sync.js` itself into `src/shared/` at build time,
+the window loads it, and the merge runs in exactly one implementation. The
+argument is in `SYNC-PROTOCOL.md` under *Where the merge runs*.
 
 The extension's package is unaffected. `build.py` decides what ships by
 following references out of `manifest.json`, and nothing in the extension
@@ -35,20 +41,27 @@ desktop/
   SYNC-PROTOCOL.md      how the two halves talk — read this first
   src/                  the window: plain HTML, CSS and JS, no build step
     index.html
-    app.js              shell, routing, pairing
+    app.js              shell, routing, pairing, the fortress editor
     styles/
       app.css
       tokens.css        GENERATED — do not edit
+    shared/             GENERATED — do not edit
+      sync.js           the merge and authoring rules, verbatim
+      categories.js
+      tasks.js
     assets/
       crest.png         GENERATED — do not edit
   tools/
-    sync-shared.mjs     copies the tokens and the crest in from the root
-  src-tauri/            the Rust side (not created yet)
+    sync-shared.mjs     copies all of the above in from the repo root
+  src-tauri/            the Rust side — window, tray, and the loopback service
+    src/
+      lib.rs            commands, tray, lifecycle
+      service.rs        the HTTP service, and its tests
 ```
 
-`tokens.css` and `crest.png` are copies, generated and gitignored. Tauri bundles
-only what is under the frontend directory, so `../../Styles/Tokens.css` would
-resolve in a dev server and then vanish from the packaged app.
+Everything marked GENERATED is a copy, gitignored, with a banner saying so.
+Tauri bundles only what is under the frontend directory, so `../../Sync.js`
+would resolve in a dev server and then vanish from the packaged app.
 
 ---
 
@@ -67,6 +80,14 @@ Then open `http://localhost:8130/desktop/src/index.html`.
 With no Tauri behind it, `service.status()` reports the local service as not
 running, and every view shows its unpaired empty state. That is the same path
 the real app takes if it cannot bind a port, so it is worth being able to see.
+
+To drive the Fortress editor without a browser extension and a paired app, stub
+the bridge before the page loads — `window.__TAURI__.core.invoke` answering
+`peer_state` with a fortress and `put_state` by keeping what it is handed. That
+is how the editor was checked: the categories render, a typed site is normalised
+and added, a removal is authored under `device:rev`, a sealed fortress refuses
+every weakening and still accepts a new site, and an edit whose revision has
+moved writes nothing.
 
 ---
 
@@ -104,6 +125,31 @@ The config is deliberately generated rather than hand-written: Tauri 2's schema
 is specific, and a hand-rolled `tauri.conf.json` that has never been compiled is
 a bad trade against thirty seconds of `init`.
 
-Then, for Phase 1: the tray, autostart and single-instance plugins, and the
-loopback service from `SYNC-PROTOCOL.md` behind the two commands the window
-already calls — `service_status` and `new_pairing_code`.
+---
+
+## Tests
+
+```bash
+cargo test --lib service
+```
+
+Drives the real router through `oneshot`, so what is exercised is the thing that
+is served: the round trip, the compare-and-set refusal, an unpaired request, and
+a `text/plain` body that must never reach a handler.
+
+The extension's own suites are dependency-free and run with plain `node` from
+the repository root — `Tests/wire.test.js` is the one that covers this app,
+running the real `LocalPeer.js` against a stand-in for the service here.
+
+---
+
+## Still loose
+
+**Autostart is half-built.** The plugin is registered and never enabled, and
+there is no toggle, so the app does not start with the machine. It wants a
+control on The Seal rather than being switched on silently.
+
+**The window fetches a webfont from Google.** `src/styles/app.css` imports
+Playfair Display over the network, which is a request leaving the machine on
+every launch of an app whose Seal panel says your record is "on this machine,
+and nowhere else". The font should be bundled or dropped.
