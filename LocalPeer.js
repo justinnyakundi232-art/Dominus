@@ -20,10 +20,10 @@
 // with, carry on. The extension holds its own enforceable copy of every rule
 // and blocks without consulting anyone.
 //
-// Phase 1 is one-directional on purpose. This posts the fortress and resolves
-// null, and a null tells syncNow() there is nothing to merge — so nothing the
-// app says can change what the browser enforces until the merge rules have
-// been exercised against a real second peer.
+// That rule is what makes the second half of the exchange safe. The merge runs
+// here — see the section on where the merge runs in SYNC-PROTOCOL.md — and the
+// result is committed back to the app afterwards. A commit the app refuses, or
+// never arrives at, costs a tick. It never costs the gate.
 
 // Where we last found the app, and what it gave us to prove who we are.
 // Shape: { port, token, protocol, pairedAt }
@@ -33,7 +33,7 @@ const LOCAL_PEER_KEY = "localPeer";
 // — an extension cannot read a file — so we walk it once and remember.
 const PEER_PORTS = [47823, 47824, 47825, 47826, 47827, 47828, 47829, 47830, 47831, 47832];
 
-const PEER_PROTOCOL = 1;
+const PEER_PROTOCOL = 2;
 
 // Loopback should answer immediately or not at all. A long timeout here would
 // stall the alarm tick behind a port that is open but silent.
@@ -193,39 +193,47 @@ function localPeerStatus() {
 
 // ---- The transport --------------------------------------------------------
 
-// Handed to setSyncTransport(). Receives this fortress, posts it, and resolves
-// what the peer sent back — or null, which tells syncNow() there is nothing to
-// merge.
-//
-// Phase 1 always resolves null: the app mirrors, and nothing flows back.
+// Everything that carries the device token, which is every request but hello.
+function peerPost(port, path, token, body) {
+    return peerFetch(port, path, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            // The custom header is load-bearing: it forces a CORS preflight for
+            // anything that is not this extension, which is what keeps web
+            // pages away from a service that can be written to.
+            "X-Dominus-Token": token
+        },
+        body: JSON.stringify(body)
+    });
+}
+
+// Handed to setSyncTransport(). Posts this fortress, and resolves either null —
+// nothing to sync with — or { state, commit } for syncNow() to merge and hand
+// the answer back to.
 function localPeerTransport(mine) {
     return loadLocalPeer().then((peer) => {
         if (!peer.token) return null;
 
-        const send = (port) => peerFetch(port, "sync", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                // The custom header is load-bearing: it forces a CORS preflight
-                // for anything that is not this extension, which is what keeps
-                // web pages away from a service that can be written to.
-                "X-Dominus-Token": peer.token
-            },
-            body: JSON.stringify(mine)
-        });
+        // Tracks the port the exchange actually reached, so the commit goes to
+        // the same app rather than to whatever the stored port happens to be by
+        // the time the merge is done.
+        let port = peer.port;
 
-        return send(peer.port).then((result) => {
+        const send = (at) => peerPost(at, "sync", peer.token, mine);
+
+        return send(port).then((result) => {
             // The app moved ports (restarted while another program held the old
-            // one). Find it again, once, rather than going quiet until the
-            // user notices.
-            if (!result) {
-                return findLocalPeer().then((found) => {
-                    if (!found || found.port === peer.port) return null;
-                    return saveLocalPeer(Object.assign({}, peer, { port: found.port }))
-                        .then(() => send(found.port));
-                });
-            }
-            return result;
+            // one). Find it again, once, rather than going quiet until the user
+            // notices.
+            if (result) return result;
+
+            return findLocalPeer().then((found) => {
+                if (!found || found.port === port) return null;
+                port = found.port;
+                return saveLocalPeer(Object.assign({}, peer, { port: port }))
+                    .then(() => send(port));
+            });
         }).then((result) => {
             if (!result) return null;
 
@@ -236,11 +244,38 @@ function localPeerTransport(mine) {
                 return unpairLocalPeer().then(() => null);
             }
 
-            // Phase 1: nothing to merge. Phase 2 returns result.body here and
-            // the merge rules in Sync.js take over.
-            return null;
+            const body = (result.status === 200 && result.body) ? result.body : null;
+            if (!body) return null;
+
+            // A protocol this extension does not speak is refused rather than
+            // guessed at. Pairing checks the same number, but an app can be
+            // updated underneath a pairing that already exists — and merging
+            // against a payload shape neither side agreed on is how two peers
+            // corrupt each other.
+            if (Number(body.protocol) !== PEER_PROTOCOL) return null;
+
+            return {
+                // null on an app that has never held a state. syncNow() reads
+                // that as nothing to merge and simply hands ours over.
+                state: body.state || null,
+                commit: (merged) => commitToLocalPeer(port, peer.token, body.stateRev, merged)
+            };
         });
     });
+}
+
+// Hands the merged result back. Resolves true if the app took it.
+//
+// A refusal is not an error and is not retried inside the tick: 409 means the
+// user edited something in the app's own window while this merge was being
+// computed, so the merge did not see it. The next tick reads the newer state
+// and merges against that, which is a minute — where retrying against a state
+// that may move again is a loop rather than a fix.
+function commitToLocalPeer(port, token, stateRev, merged) {
+    return peerPost(port, "commit", token, {
+        stateRev: Number(stateRev) || 0,
+        state: merged
+    }).then((result) => Boolean(result) && result.status === 200);
 }
 
 // Installed at load. syncNow() then finds a transport instead of resolving

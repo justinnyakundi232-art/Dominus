@@ -3,6 +3,27 @@
 All notable changes to **Dominus** are documented here.
 This project loosely follows [Keep a Changelog](https://keepachangelog.com/) and [Semantic Versioning](https://semver.org/).
 
+## [Unreleased] — 1.12
+
+The release Dominus stops being only a browser extension. It is not cut until
+the desktop app is worth installing — pairing alone is too thin to spend a
+version number on.
+
+### Added
+- **Dominus for the desktop, and it holds your fortress rather than watching it.** Pair the app with the extension once, with a six-character code, and the two keep each other up to date from then on. The browser still keeps the gate — it is the only thing that can see a navigation and stop it — but the app is now somewhere your fortress genuinely lives rather than a window showing you a copy of it.
+- **Edit your fortress from the app.** *The Fortress* lists your categories, and each one can be switched on or off, have a site added or taken off, or be removed. The change reaches the browser within a minute. Until now the extension was the only place anything could be changed.
+- **The seal still means something in the app.** Strengthening your fortress from the desktop is free, the way it always was. Taking a defence down asks for your password — and because that prompt lives in the extension, the app says so and sends you there rather than letting you around it. Installing a second thing is not allowed to make the seal cheaper to get past.
+- **A hand-blocked list on the app**, shown but not editable, matching *The Fortress* in the extension. The popup is still the only place a site blocked by hand comes off, on either surface.
+
+### Changed
+- **Two devices can now each take something down without either removal getting lost.** Deliberate removals travel between your devices as records the merge applies, rather than being inferred from which device edited last — a thing that could never work, because each device counts its own edits and one device's "second edit" says nothing about whether it happened before or after another's. Two removals made before a sync, a removal you changed your mind about, a category you rebuilt on purpose, and a browser that was closed while everything happened all now come out the way you would expect.
+- **A cooldown you shortened now actually stays shortened.** It was being recorded as "this was made weaker" with no note of what you had made it, and the other device — which resolves a disagreement about cooldowns by taking the longer one — had nothing to act on. It carries the value now.
+- **The periodic reconcile returns, and with it the `alarms` permission**, which 1.11 was right to ship without: there was nothing to reconcile with, so it would have woken the extension sixty times an hour to do nothing.
+
+### Notes
+- **Still no data leaves your device.** The two halves talk over `127.0.0.1` — the loopback address, which nothing on your network and nothing on the internet can reach. There is no account and no server.
+- The app is not yet the reason to install it. Limits on **applications** rather than sites — the thing an extension can never do — come next, and they arrive after syncing rather than before, because an app limit that disagrees with your fortress is worse than no app limit at all.
+
 ## [1.11] — 2026-08-31
 
 ### Added

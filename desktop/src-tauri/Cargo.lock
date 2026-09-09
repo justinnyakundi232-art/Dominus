@@ -925,6 +925,7 @@ name = "dominus"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "http-body-util",
  "log",
  "rand",
  "serde",
@@ -935,6 +936,7 @@ dependencies = [
  "tauri-plugin-log",
  "tauri-plugin-single-instance",
  "tokio",
+ "tower",
  "tower-http",
 ]
 

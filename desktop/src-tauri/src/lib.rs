@@ -1,8 +1,14 @@
 // lib.rs — the app.
 //
-// Phase 1: a window, a tray, one instance, and the loopback service the
-// extension pairs with. Everything the window can show, it shows because the
-// extension told it — see ../SYNC-PROTOCOL.md.
+// A window, a tray, one instance, and the loopback service the extension pairs
+// with — see ../SYNC-PROTOCOL.md.
+//
+// There are no merge rules here and no authoring rules here. Both live in
+// Sync.js, which the window loads a build-time copy of, and this side holds the
+// state as opaque JSON behind a revision counter. The argument for that is in
+// the protocol document; the short version is that six hundred lines of merge
+// rules written twice and kept in step by hand is how a defence quietly stops
+// being enforced.
 
 mod service;
 
@@ -76,11 +82,57 @@ fn new_pairing_code(state: tauri::State<Shared>) -> Option<PairingCode> {
     state.lock().ok().map(|mut guard| guard.issue_code())
 }
 
-/// The fortress as the extension last sent it, for the views to render.
+/// This app's copy of the fortress, for the views to render and edit.
 /// `None` until something has been synced.
+#[derive(Serialize)]
+struct PeerState {
+    #[serde(rename = "stateRev")]
+    state_rev: u64,
+    state: Option<Value>,
+    /// This app's own device id. The window needs it to name the weakening
+    /// records it writes — see the note on `Inner::device_id`.
+    device: String,
+}
+
 #[tauri::command]
-fn mirrored_state(state: tauri::State<Shared>) -> Option<Value> {
-    state.lock().ok().and_then(|guard| guard.mirrored.clone())
+fn peer_state(state: tauri::State<Shared>) -> PeerState {
+    match state.lock() {
+        Ok(mut guard) => PeerState {
+            state_rev: guard.state_rev,
+            state: guard.state.clone(),
+            device: guard.device_id(),
+        },
+        Err(_) => PeerState { state_rev: 0, state: None, device: String::new() },
+    }
+}
+
+/// Writes an edit made in this window.
+///
+/// The window has already worked out what the edit gave up and stamped the
+/// record for it, using the same Sync.js the extension runs — so what arrives
+/// here is a finished state and this function's whole job is to store it and
+/// raise the revision. Raising it is what makes a merge that was computed
+/// against the previous copy fail its compare-and-set on /commit rather than
+/// silently undoing what the user just did.
+///
+/// `expectedRev` is the revision the window read before editing. A mismatch
+/// means a sync landed underneath the edit, and the window is told to re-read
+/// rather than write over it.
+#[tauri::command]
+fn put_state(
+    state: tauri::State<Shared>,
+    expected_rev: Option<u64>,
+    next: Value,
+) -> Result<u64, String> {
+    let mut guard = state.lock().map_err(|_| "busy".to_string())?;
+
+    if let Some(expected) = expected_rev {
+        if expected != guard.state_rev {
+            return Err("stale".to_string());
+        }
+    }
+
+    Ok(guard.put_state(next))
 }
 
 fn show_window(app: &tauri::AppHandle) {
@@ -128,11 +180,12 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             service_status,
             new_pairing_code,
-            mirrored_state
+            peer_state,
+            put_state
         ])
         .setup(move |app| {
-            // Load the device list and the mirrored fortress before anything
-            // can ask for them, so a restart is invisible to the extension.
+            // Load the device list and the fortress before anything can ask
+            // for them, so a restart is invisible to the extension.
             if let Ok(dir) = app.path().app_data_dir() {
                 if let Ok(mut guard) = shared.lock() {
                     guard.attach(dir.join("state.json"));

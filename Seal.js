@@ -657,7 +657,7 @@ function fillFortressState(next, stored) {
     };
 }
 
-// Stamps a commit for the sync layer: raises the fortress revision, stores the
+// Stamps a commit for the sync layer: raises the fortress revision, appends the
 // machine-readable weakening record if this edit took anything down, and logs
 // the commit as an event.
 //
@@ -667,6 +667,11 @@ function fillFortressState(next, stored) {
 // device at all: the merge in Sync.js is strengthen-wins, so without a record
 // saying the user deliberately took a defence down, a peer would simply put it
 // back on the next tick.
+//
+// APPENDED, not replaced. Taking two things down before one sync tick is an
+// ordinary thing to do, and a single slot lost the first of them — the category
+// came back on the next merge and nobody was told. The list is pruned in
+// normalizeAuthoredList(); see the four rules above mergeAuthored().
 //
 // Guarded the same way Stats.js guards its mirror, and for the same reason:
 // this file is loaded on pages that have no need of the sync layer, and a
@@ -679,17 +684,15 @@ function stampCommit(before, after) {
     return ensureDevice().then((device) => enqueueSyncMetaUpdate((meta) => {
         meta.fortressRev += 1;
 
-        // Appended, never replaced. Two weakenings before one sync tick is an
-        // ordinary thing to do, and replacing meant the first one never
-        // travelled — the category it removed simply came back.
         if (authored) {
+            // The device is what makes the id unique across peers: a device
+            // only ever raises its own revision, so device:rev names exactly
+            // one commit and both peers agree on the name.
             meta.authored = normalizeAuthoredList(meta.authored.concat([
-                Object.assign({
-                    id: `${device.id}:${meta.fortressRev}`,
-                    rev: meta.fortressRev,
-                    at: Date.now(),
-                    device: device.id
-                }, authored)
+                Object.assign(
+                    { rev: meta.fortressRev, at: Date.now(), device: device.id },
+                    authored
+                )
             ]));
         }
 

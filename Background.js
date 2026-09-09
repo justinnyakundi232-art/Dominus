@@ -5,16 +5,15 @@
 // the desktop app can own the rules, but only the browser can see a navigation
 // and stop it.
 //
-// 1.11 shipped without the alarm and without these imports, because the
-// transport that gives the tick something to do lives in LocalPeer.js and had
-// not been built: an alarm that wakes the worker sixty times an hour to call a
-// function returning immediately is a permission asked for and not used. Both
-// come back here, where there is a peer to reconcile with.
+// 1.11 shipped with neither the tick nor the `alarms` permission, because there
+// was nothing to reconcile with: the alarm would have woken this worker sixty
+// times an hour to call a function that returned immediately, and a permission
+// that does nothing is not one worth asking a user for. Both come back here, in
+// the release that has a peer to reconcile with.
 
 // The shared layer, in the same load-in-any-order shape the pages use. None of
 // these touch storage or the DOM at load time, which is what makes them safe to
-// pull into a worker that has no DOM at all. LocalPeer.js must come after
-// Sync.js: it calls setSyncTransport() as it loads.
+// pull into a worker that has no DOM at all.
 importScripts("Tasks.js", "Categories.js", "Stats.js", "Seal.js", "Sync.js",
               "LocalPeer.js");
 
@@ -73,9 +72,10 @@ chrome.webNavigation.onBeforeNavigate.addListener((details) => {
 // than waiting for the tick.
 //
 // syncNow() resolves { status: "no-peer" } until this browser has been paired
-// with the desktop app — LocalPeer.js installs the transport, and every failure
-// in it resolves to "no peer" rather than throwing. The app being closed,
-// crashed or unreachable must never make the gate weaker.
+// with the desktop app. LocalPeer.js installs the transport that changes that,
+// and every failure inside it resolves to "no-peer" rather than throwing — an
+// app that is closed, crashed or answering with nonsense must cost this worker
+// nothing, because the enforcement above never waits on any of it.
 
 const SYNC_ALARM = "dominus-sync";
 const SYNC_PERIOD_MINUTES = 1;

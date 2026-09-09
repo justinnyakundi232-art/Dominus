@@ -156,7 +156,12 @@ function normalizeBackup(raw) {
 
         // A backup never carries a weakening. It is a record of what a fortress
         // held, not an instruction to take anything down — see the design note.
-        authored: null,
+        //
+        // This device's OWN records still replay against it, which is what stops
+        // a restore resurrecting a category the user deliberately deleted: the
+        // union puts it back, and the record that took it down puts it away
+        // again because this device holds that record and is still without it.
+        authored: [],
         escalation: {},
         tempUnlocks: {}
     };
