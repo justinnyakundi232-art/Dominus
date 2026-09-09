@@ -89,16 +89,20 @@ struct PeerState {
     #[serde(rename = "stateRev")]
     state_rev: u64,
     state: Option<Value>,
+    /// This app's own device id. The window needs it to name the weakening
+    /// records it writes — see the note on `Inner::device_id`.
+    device: String,
 }
 
 #[tauri::command]
 fn peer_state(state: tauri::State<Shared>) -> PeerState {
     match state.lock() {
-        Ok(guard) => PeerState {
+        Ok(mut guard) => PeerState {
             state_rev: guard.state_rev,
             state: guard.state.clone(),
+            device: guard.device_id(),
         },
-        Err(_) => PeerState { state_rev: 0, state: None },
+        Err(_) => PeerState { state_rev: 0, state: None, device: String::new() },
     }
 }
 

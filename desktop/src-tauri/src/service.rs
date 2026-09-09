@@ -31,7 +31,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use rand::Rng;
+use rand::{Rng, RngCore};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tower_http::cors::{AllowOrigin, CorsLayer};
@@ -95,6 +95,8 @@ struct Persisted {
     state: Option<Value>,
     #[serde(default)]
     state_rev: u64,
+    #[serde(default)]
+    device: Option<String>,
     /// Protocol 1's name for the same field. Read so a fortress that paired
     /// under Phase 1 keeps what it mirrored; never written.
     #[serde(default, skip_serializing)]
@@ -120,7 +122,15 @@ pub struct Inner {
     /// Not `fortressRev`, which counts the user's own commits and is inside
     /// the state. This counts the slot.
     pub state_rev: u64,
-    /// Where the three above are kept between runs. None before the app has
+    /// This app's own device identity, in the same shape the extension's
+    /// `ensureDevice()` mints: a UUID, stable for the life of the install.
+    ///
+    /// It has to be stable and it has to be persisted, because it names the
+    /// weakening records this app writes — `device:rev` — and a device that
+    /// changed its id would have every record it ever wrote counted as somebody
+    /// else's, so no peer would ever find a holder for one.
+    device: Option<String>,
+    /// Where the four above are kept between runs. None before the app has
     /// told us its data directory, which is only the case in tests.
     store: Option<PathBuf>,
     code: Option<PairingCode>,
@@ -145,6 +155,7 @@ impl Inner {
                 // blank and waiting a minute for the first tick.
                 self.state = saved.state.or(saved.mirrored);
                 self.state_rev = saved.state_rev;
+                self.device = saved.device;
             }
         }
         self.store = Some(path);
@@ -162,6 +173,7 @@ impl Inner {
             devices: self.devices.clone(),
             state: self.state.clone(),
             state_rev: self.state_rev,
+            device: self.device.clone(),
             mirrored: None,
         };
 
@@ -253,6 +265,32 @@ impl Inner {
 
     fn device_for_token(&mut self, token: &str) -> Option<&mut Device> {
         self.devices.iter_mut().find(|d| d.token == token)
+    }
+
+    /// This app's device id, minted on first use.
+    pub fn device_id(&mut self) -> String {
+        if let Some(id) = &self.device {
+            return id.clone();
+        }
+
+        // A v4 UUID, laid out by hand rather than pulling a crate in for one
+        // string. The extension's ensureDevice() uses crypto.randomUUID(); the
+        // only thing that matters here is that the two never collide, and 122
+        // random bits sees to that.
+        let mut bytes = [0u8; 16];
+        rand::rng().fill_bytes(&mut bytes);
+        bytes[6] = (bytes[6] & 0x0f) | 0x40;
+        bytes[8] = (bytes[8] & 0x3f) | 0x80;
+
+        let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+        let id = format!(
+            "{}-{}-{}-{}-{}",
+            &hex[0..8], &hex[8..12], &hex[12..16], &hex[16..20], &hex[20..32]
+        );
+
+        self.device = Some(id.clone());
+        self.persist();
+        id
     }
 
     /// Replaces this app's copy and raises its revision. The only way `state`

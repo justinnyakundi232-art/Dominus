@@ -129,10 +129,49 @@
               <p class="empty-title">Nothing to show until this app is paired.</p>
               <p class="empty-body">
                 Sites are enforced by the extension — it is the only thing that can
-                see a navigation and stop it. This app will show what it is
-                enforcing, and later will let you edit it from here.
+                see a navigation and stop it. Pair this app and you can edit what
+                it enforces from here.
               </p>
               <button type="button" class="btn" data-route="seal">PAIR THIS APP</button>
+            </div>
+
+            <div id="fortressContent" hidden>
+
+              <!-- Said once, plainly, because it is the thing that most needs
+                   saying: nothing edited here takes effect in the browser until
+                   the two have reconciled. -->
+              <p class="page-note" id="fortressCrossing">
+                Edits here reach the browser on its next tick, within a minute.
+              </p>
+
+              <!-- Only ever shown on a sealed fortress. Weakening one asks for
+                   the password, and the password prompt lives in the extension —
+                   an app that let you around it would make the seal cheaper to
+                   get past by installing a second thing, which is the one test
+                   every rule here has to pass. -->
+              <p class="page-warn" id="fortressSealed" hidden>
+                This fortress is sealed. You can strengthen it from here, but
+                taking a defence down asks for your password — and that prompt
+                lives in the extension. Open Dominus in Chrome to do it.
+              </p>
+
+              <section class="panel">
+                <h2 class="panel-heading">CATEGORIES</h2>
+                <p class="panel-note" id="categoriesEmpty" hidden>
+                  No categories yet. The fortress has no walls.
+                </p>
+                <ul class="category-list" id="categoryList"></ul>
+              </section>
+
+              <section class="panel">
+                <h2 class="panel-heading">BLOCKED BY HAND</h2>
+                <p class="panel-note" id="manualNote">
+                  Sites blocked one at a time from the extension's popup.
+                </p>
+                <ul class="chip-list" id="manualList"></ul>
+              </section>
+
+              <p class="page-status" id="fortressStatus" role="status" aria-live="polite"></p>
             </div>
 
             <!-- Applications are the reason the desktop app exists: the browser
@@ -234,6 +273,14 @@
 
       </div>
     </div>
+
+    <!-- GENERATED — copied in from the repository root by
+         tools/sync-shared.mjs, so this window and the extension run the same
+         merge rules rather than two implementations of them. Classic scripts,
+         so they are evaluated before the deferred module below. -->
+    <script src="shared/tasks.js"></script>
+    <script src="shared/categories.js"></script>
+    <script src="shared/sync.js"></script>
 
     <script type="module" src="app.js"></script>
   </body>

@@ -4,10 +4,15 @@
 // hidden rather than rebuilt, a refresh hook per view. The two surfaces should
 // behave the same way, not merely look alike.
 //
-// Phase 1 scope: the frame, and pairing. Everything this window can show, it
-// shows because the extension told it — so until the two are paired, every view
-// is an empty state, and the honest job of this file is to make that first run
-// legible rather than to hide it.
+// Until the two are paired, every view is an empty state, and the honest job of
+// this file is to make that first run legible rather than to hide it.
+//
+// The Fortress is the first view here that WRITES. It authors an edit the same
+// way Seal.js does in the extension — work out what the edit gave up, stamp a
+// record for it, raise the revision — by running the very Sync.js the extension
+// runs, copied in by tools/sync-shared.mjs and loaded as a classic script
+// before this module. There is no second implementation of the merge rules
+// anywhere, which is the whole design; see SYNC-PROTOCOL.md.
 //
 // The window reaches the Rust side through `window.__TAURI__`, which exists
 // because `withGlobalTauri` is on — the frontend is deliberately plain HTML
@@ -61,11 +66,27 @@ const service = {
         }
     },
 
-    // The fortress as the extension last sent it, or null before any sync.
-    async mirrored() {
+    // This app's copy of the fortress, with the revision it is at and this
+    // app's own device id. `state` is null before anything has been synced.
+    async peerState() {
+        if (!hasBridge()) return { stateRev: 0, state: null, device: "" };
+        try {
+            return await window.__TAURI__.core.invoke("peer_state");
+        } catch (error) {
+            return { stateRev: 0, state: null, device: "" };
+        }
+    },
+
+    // Writes an edit made here. Resolves the new revision, or null if a sync
+    // landed underneath it — in which case nothing was written and the window
+    // re-reads rather than arguing.
+    async putState(expectedRev, next) {
         if (!hasBridge()) return null;
         try {
-            return await window.__TAURI__.core.invoke("mirrored_state");
+            return await window.__TAURI__.core.invoke("put_state", {
+                expectedRev: expectedRev,
+                next: next
+            });
         } catch (error) {
             return null;
         }
@@ -82,6 +103,7 @@ function routeFromHash() {
 function refreshHookFor(route) {
     if (route === "seal") return refreshSeal;
     if (route === "keep") return refreshKeep;
+    if (route === "fortress") return refreshFortress;
     return null;
 }
 
@@ -137,7 +159,7 @@ async function refreshKeep() {
     const content = document.getElementById("keepContent");
     if (!empty || !content) return;
 
-    const state = await service.mirrored();
+    const { state } = await service.peerState();
 
     // Paired but never synced looks the same as unpaired here, and should: in
     // both cases this window has nothing of yours to show.
@@ -288,6 +310,333 @@ function renderGates(state) {
         item.append(name, left);
         list.appendChild(item);
     });
+}
+
+// ---- The Fortress ---------------------------------------------------------
+//
+// The first view here that writes. It edits this app's copy; the extension
+// picks it up on its next tick and merges it into what it enforces.
+//
+// Authoring an edit is the same two steps commitFortress() takes in the
+// extension, run against the same code: work out what the edit gave up with
+// describeAuthoredWeakening(), raise the revision, and append the record if
+// anything came down. Without that record the merge — which is strengthen-wins
+// — would simply put the defence back on the next tick, and nobody would be
+// told why.
+
+// The state this view is editing, and the revision it was read at. The revision
+// is what put_state checks: if a sync landed underneath the edit, nothing is
+// written and the view re-reads rather than arguing.
+let fortressState = null;
+let fortressRev = 0;
+let fortressDevice = "";
+
+// A weakening on a sealed fortress is refused here rather than prompted for.
+// The seal's password prompt lives in the extension, and an app that let you
+// around it would make the seal cheaper to get past by installing a second
+// thing — which is the one test every rule in this design has to pass.
+function fortressIsSealed() {
+    return Boolean(fortressState && fortressState.seal && fortressState.seal.enabled);
+}
+
+function fortressSays(message, refused) {
+    const el = document.getElementById("fortressStatus");
+    if (!el) return;
+    el.textContent = message || "";
+    el.classList.toggle("is-refused", Boolean(refused));
+}
+
+async function refreshFortress() {
+    const empty = document.getElementById("fortressEmpty");
+    const content = document.getElementById("fortressContent");
+    if (!empty || !content) return;
+
+    const peer = await service.peerState();
+
+    fortressState = peer.state;
+    fortressRev = peer.stateRev;
+    fortressDevice = peer.device;
+
+    if (!fortressState || !fortressState.fortress) {
+        empty.hidden = false;
+        content.hidden = true;
+        return;
+    }
+
+    empty.hidden = true;
+    content.hidden = false;
+
+    const sealed = document.getElementById("fortressSealed");
+    if (sealed) sealed.hidden = !fortressIsSealed();
+
+    renderCategories(fortressState.fortress.categories || []);
+    renderManualSites(fortressState.fortress.manualSites || []);
+}
+
+function renderCategories(categories) {
+    const list = document.getElementById("categoryList");
+    const empty = document.getElementById("categoriesEmpty");
+    if (!list || !empty) return;
+
+    list.textContent = "";
+    empty.hidden = categories.length > 0;
+
+    const sealed = fortressIsSealed();
+
+    categories.forEach((category) => {
+        const item = document.createElement("li");
+        item.className = "category" + (category.enabled ? "" : " is-down");
+
+        const head = document.createElement("div");
+        head.className = "category-head";
+
+        const glyph = document.createElement("span");
+        glyph.className = "category-glyph";
+        glyph.setAttribute("aria-hidden", "true");
+        glyph.textContent = category.glyph || "\u25a0";
+
+        const name = document.createElement("span");
+        name.className = "category-name";
+        // A category is named by the user and arrives over the wire. It has no
+        // business being parsed as markup.
+        name.textContent = category.name || category.id;
+
+        const count = document.createElement("span");
+        count.className = "category-count";
+        const sites = category.sites || [];
+        count.textContent = category.enabled
+            ? sites.length + " " + plural(sites.length, "site", "sites")
+            : "stood down";
+
+        head.append(glyph, name, count);
+        item.appendChild(head);
+
+        item.appendChild(renderSites(category, sealed));
+        item.appendChild(renderAddSite(category));
+        item.appendChild(renderCategoryActions(category, sealed));
+
+        list.appendChild(item);
+    });
+}
+
+function renderSites(category, sealed) {
+    const sites = document.createElement("ul");
+    sites.className = "site-list";
+
+    (category.sites || []).forEach((site) => {
+        const chip = document.createElement("li");
+        chip.className = "chip";
+
+        const label = document.createElement("span");
+        label.textContent = site;
+
+        const drop = document.createElement("button");
+        drop.type = "button";
+        drop.className = "chip-drop";
+        drop.textContent = "\u00d7";
+        drop.title = sealed
+            ? "Sealed \u2014 remove this from the extension"
+            : "Stop blocking " + site;
+        drop.setAttribute("aria-label", "Stop blocking " + site);
+        drop.disabled = sealed;
+        drop.addEventListener("click", () => removeSite(category.id, site));
+
+        chip.append(label, drop);
+        sites.appendChild(chip);
+    });
+
+    return sites;
+}
+
+function renderAddSite(category) {
+    const row = document.createElement("div");
+    row.className = "site-add";
+
+    const input = document.createElement("input");
+    input.type = "text";
+    input.placeholder = "example.com";
+    input.setAttribute("aria-label", "Add a site to " + (category.name || category.id));
+
+    const add = document.createElement("button");
+    add.type = "button";
+    add.className = "btn-quiet";
+    add.textContent = "BLOCK";
+
+    // Adding a site is strengthening, so it is free on a sealed fortress too —
+    // the seal is a toll on giving ground, never on taking it.
+    const submit = () => {
+        const typed = input.value;
+        input.value = "";
+        addSite(category.id, typed);
+    };
+
+    add.addEventListener("click", submit);
+    input.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") submit();
+    });
+
+    row.append(input, add);
+    return row;
+}
+
+function renderCategoryActions(category, sealed) {
+    const actions = document.createElement("div");
+    actions.className = "category-actions";
+
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "btn-quiet";
+    toggle.textContent = category.enabled ? "STAND DOWN" : "TAKE UP";
+    // Switching a category back on is strengthening. Switching it off is not.
+    toggle.disabled = sealed && category.enabled;
+    toggle.addEventListener("click", () => toggleCategory(category.id));
+    actions.appendChild(toggle);
+
+    // A permanent category cannot be removed at all — that is what permanent
+    // means, and it means the same thing in both windows.
+    if (!category.permanent) {
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.className = "btn-quiet is-breach";
+        remove.textContent = "REMOVE";
+        remove.disabled = sealed;
+        remove.addEventListener("click", () => removeCategory(category.id));
+        actions.appendChild(remove);
+    }
+
+    return actions;
+}
+
+function renderManualSites(manual) {
+    const list = document.getElementById("manualList");
+    const note = document.getElementById("manualNote");
+    if (!list || !note) return;
+
+    list.textContent = "";
+
+    if (!manual.length) {
+        note.textContent = "Nothing blocked by hand.";
+        return;
+    }
+
+    // Shown but not editable here, matching The Fortress in the extension. The
+    // popup's Currently Blocked list is still the only place a hand-blocked site
+    // comes off, on either surface.
+    note.textContent = "Blocked one at a time from the extension's popup, which"
+        + " is still the only place they come off.";
+
+    manual.forEach((site) => {
+        const chip = document.createElement("li");
+        chip.className = "chip";
+        chip.textContent = site;
+        list.appendChild(chip);
+    });
+}
+
+// ---- Editing --------------------------------------------------------------
+
+function categoriesWith(id, change) {
+    return (fortressState.fortress.categories || []).map((category) => (
+        category.id === id ? change(category) : category
+    ));
+}
+
+function toggleCategory(id) {
+    commitEdit(categoriesWith(id, (category) => Object.assign({}, category, {
+        enabled: !category.enabled,
+        // Permanence cannot outlive being switched off — the same rule
+        // normalizeCategoryList() enforces and applyAuthored() re-applies.
+        permanent: category.enabled ? false : category.permanent
+    })));
+}
+
+function addSite(id, typed) {
+    const site = normalizeDomain(typed);
+    if (!site) return fortressSays("That is not a site.", true);
+
+    const category = (fortressState.fortress.categories || []).find((c) => c.id === id);
+    if (category && (category.sites || []).includes(site)) {
+        return fortressSays(site + " is already blocked there.");
+    }
+
+    commitEdit(categoriesWith(id, (c) => Object.assign({}, c, {
+        sites: (c.sites || []).concat([site])
+    })));
+}
+
+function removeSite(id, site) {
+    commitEdit(categoriesWith(id, (category) => Object.assign({}, category, {
+        sites: (category.sites || []).filter((held) => held !== site)
+    })));
+}
+
+function removeCategory(id) {
+    commitEdit((fortressState.fortress.categories || []).filter((c) => c.id !== id));
+}
+
+// Stamps and writes an edit. `categories` is the whole list, after.
+//
+// Nothing else in this file writes: every edit above builds a list and arrives
+// here, for the same reason every edit in the extension goes through
+// commitFortress() — a rule that lives in one place is a rule that exists.
+async function commitEdit(categories) {
+    const before = fortressState.fortress;
+    const after = Object.assign({}, before, { categories: categories });
+
+    const authored = describeAuthoredWeakening(before, after);
+
+    if (authored && fortressIsSealed()) {
+        // Should be unreachable — every control that could weaken is disabled
+        // on a sealed fortress. Checked anyway, because "the button was greyed
+        // out" is not an enforcement boundary.
+        return fortressSays(
+            "This fortress is sealed. That asks for your password, and the"
+            + " prompt for it lives in the extension.",
+            true
+        );
+    }
+
+    const rev = (fortressState.fortressRev || 0) + 1;
+
+    const next = Object.assign({}, fortressState, {
+        fortress: after,
+        fortressRev: rev,
+        authored: authored
+            ? normalizeAuthoredList((fortressState.authored || []).concat([
+                Object.assign({ rev: rev, at: Date.now(), device: fortressDevice }, authored)
+            ]))
+            : (fortressState.authored || [])
+    });
+
+    const written = await service.putState(fortressRev, next);
+
+    if (written === null) {
+        // A sync landed underneath the edit, so it was refused and nothing was
+        // written. Re-read and say so, rather than pushing over what arrived.
+        await refreshFortress();
+        return fortressSays("The extension synced while you were editing. Try that again.", true);
+    }
+
+    fortressState = next;
+    fortressRev = written;
+
+    renderCategories(after.categories || []);
+    fortressSays(describeEdit(authored) + " The extension picks it up within a minute.");
+}
+
+// What just happened, in the words the seal prompt would have used. An edit
+// that gave something up is worth naming even where nothing was charged for it.
+function describeEdit(authored) {
+    if (!authored) return "Saved \u2014 the fortress is stronger.";
+
+    const given = [];
+    if (authored.categoriesRemoved.length) given.push("a category removed");
+    if (authored.categoriesDisabled.length) given.push("a category stood down");
+    if (Object.keys(authored.sitesRemoved).length) given.push("a site unblocked");
+
+    return given.length
+        ? "Saved \u2014 " + given.join(", ") + "."
+        : "Saved.";
 }
 
 // ---- The Seal: pairing ----------------------------------------------------
