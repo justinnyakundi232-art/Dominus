@@ -58,10 +58,15 @@ try {
 // which is the same contract that lets the service worker pull them in with
 // importScripts() — so a <script> tag in index.html is all this takes.
 //
-// Only the three the window actually uses. Stats.js and Seal.js are the
+// Only the four the window actually uses. Stats.js and Seal.js are the
 // extension's own storage and its seal prompt, and neither has any business
 // running in here.
-const SHARED = ["Tasks.js", "Categories.js", "Sync.js"];
+//
+// Applications.js is here because Sync.js calls into it — the merge normalises
+// an application list before touching it — and because this window is the only
+// surface that can author an application edit at all. The browser cannot see a
+// process.
+const SHARED = ["Tasks.js", "Categories.js", "Applications.js", "Sync.js"];
 
 SHARED.forEach((file) => {
     const from = join(here, "..", "..", file);

@@ -10,11 +10,11 @@ const fs = require("fs");
 const path = require("path");
 const vm = require("vm");
 
-// The shared layer, plus Backup.js. The first five are the worker-safe set
+// The shared layer, plus Backup.js. The first six are the worker-safe set
 // Background.js pulls in with importScripts; Backup.js is a page script and
 // registers a DOMContentLoaded listener at load, which is why the context below
 // carries a minimal `document`.
-const FILES = ["Tasks.js", "Categories.js", "Stats.js", "Seal.js", "Sync.js", "Backup.js"];
+const FILES = ["Tasks.js", "Categories.js", "Applications.js", "Stats.js", "Seal.js", "Sync.js", "Backup.js"];
 
 // LocalPeer.js is loaded only when a test asks for it. It installs itself as
 // the sync transport at load time, and most suites want syncNow() to resolve

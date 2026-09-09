@@ -808,6 +808,8 @@ function describeAuthoredWeakening(before, after) {
         sitesRemoved: {},
         standardsCleared: [],
         manualRemoved: [],
+        applicationsRemoved: [],
+        applicationsDisabled: [],
         taskCleared: false,
         cooldownLowered: null
     };
@@ -839,6 +841,21 @@ function describeAuthoredWeakening(before, after) {
     record.manualRemoved = (before.manualSites || [])
         .filter((site) => !keptManual.has(site));
 
+    // Applications, by the same two questions asked of a category: is it gone,
+    // and if it is still here, has it been switched off. There is no third
+    // question because an application has no sites and no standards of its own.
+    const applicationsAfter = new Map(
+        normalizeApplicationList(after.applications).map((a) => [a.id, a]));
+
+    normalizeApplicationList(before.applications).forEach((was) => {
+        const now = applicationsAfter.get(was.id);
+        if (!now) {
+            record.applicationsRemoved.push(was.id);
+            return;
+        }
+        if (was.enabled && !now.enabled) record.applicationsDisabled.push(was.id);
+    });
+
     if (before.task && !after.task) record.taskCleared = true;
 
     // The value, not a flag. A peer that is only told "this was lowered" has
@@ -861,6 +878,8 @@ function isEmptyAuthored(record) {
         && !Object.keys(record.sitesRemoved).length
         && !record.standardsCleared.length
         && !record.manualRemoved.length
+        && !record.applicationsRemoved.length
+        && !record.applicationsDisabled.length
         && !record.taskCleared
         && !record.cooldownLowered;
 }
@@ -901,6 +920,12 @@ function normalizeAuthored(raw) {
         sitesRemoved: sitesRemoved,
         standardsCleared: Array.isArray(source.standardsCleared) ? source.standardsCleared.map(String) : [],
         manualRemoved: Array.isArray(source.manualRemoved) ? source.manualRemoved.map(String) : [],
+        // Absent on every record written before Phase 3, which is the ordinary
+        // case for a fortress that has just upgraded. An empty list is the
+        // right reading: that record described no application coming down,
+        // because there were no applications to bring down.
+        applicationsRemoved: Array.isArray(source.applicationsRemoved) ? source.applicationsRemoved.map(String) : [],
+        applicationsDisabled: Array.isArray(source.applicationsDisabled) ? source.applicationsDisabled.map(String) : [],
         taskCleared: source.taskCleared === true,
         // `true` is the pre-1.12 shape, which named no value to lower to. It
         // normalizes away rather than being guessed at: a record that cannot
@@ -1010,6 +1035,7 @@ function mergeFortress(mine, theirs, myRev, theirRev, myAuthored, theirAuthored)
     const merged = {
         categories: mergeCategories(mine.categories, theirs.categories, myRev, theirRev),
         manualSites: unionSites(mine.manualSites, theirs.manualSites),
+        applications: mergeApplications(mine.applications, theirs.applications, myRev, theirRev),
         task: mergeTask(mine.task, theirs.task, myRev, theirRev),
         cooldown: mergeCooldown(mine.cooldown, theirs.cooldown)
     };
@@ -1028,6 +1054,67 @@ function mergeFortress(mine, theirs, myRev, theirRev, myAuthored, theirAuthored)
 
 function unionSites(mine, theirs) {
     return [...new Set([...(mine || []), ...(theirs || [])])];
+}
+
+// Applications merge like a flat list of things blocked by hand, not like
+// categories: there is no grouping, no per-application standards, and no
+// ordering question, because a running process matches exactly one entry. See
+// desktop/APP-LIMITS.md under "Why applications are not a category".
+//
+// The union is safe in a way the category union is not, and the reason is the
+// derived id: two devices that each blocked Steam with no chance to coordinate
+// produce the same id, so the union recognises them as one entry instead of
+// handing the user two Steams.
+function mergeApplications(mine, theirs, myRev, theirRev) {
+    const ours = normalizeApplicationList(mine);
+    const yours = normalizeApplicationList(theirs);
+
+    const mineById = new Map(ours.map((a) => [a.id, a]));
+    const theirsById = new Map(yours.map((a) => [a.id, a]));
+
+    // Order follows the newer commit for the same reason it does in
+    // mergeCategories(), though nothing here depends on it — it is what a user
+    // who just reordered the list expects to see, and neither order is stronger.
+    const leading = theirRev > myRev ? yours : ours;
+    const trailing = theirRev > myRev ? ours : yours;
+
+    const merged = [];
+    const seen = new Set();
+
+    leading.concat(trailing).forEach((application) => {
+        if (seen.has(application.id)) return;
+        seen.add(application.id);
+
+        merged.push(mergeApplication(
+            mineById.get(application.id),
+            theirsById.get(application.id),
+            myRev,
+            theirRev
+        ));
+    });
+
+    return merged;
+}
+
+function mergeApplication(mine, theirs, myRev, theirRev) {
+    if (!mine) return theirs;
+    if (!theirs) return mine;
+
+    // The name is cosmetic and has no stronger direction, so it follows the
+    // newer commit. Both booleans resolve toward stricter, which is what makes
+    // this idempotent: OR-ing a settled value with itself changes nothing, and
+    // the tick runs forever.
+    const newer = theirRev > myRev ? theirs : mine;
+
+    return {
+        id: mine.id,
+        // Identical by construction — the id is derived from it — so this is a
+        // restatement rather than a choice.
+        exe: mine.exe,
+        name: newer.name,
+        enabled: mine.enabled || theirs.enabled,
+        permanent: mine.permanent || theirs.permanent
+    };
 }
 
 function mergeCategories(mine, theirs, myRev, theirRev) {
@@ -1159,6 +1246,20 @@ function applyAuthored(merged, authored, holders) {
     const manualGone = new Set(authored.manualRemoved
         .filter((site) => without((peer) => (peer.manualSites || []).includes(site))));
 
+    // The same rule 3, on applications: a removal lands only where every peer
+    // HOLDING the record is also without the thing. A holder that still has it
+    // put it back after the record was written, which is the later decision.
+    const applicationsGone = new Set(authored.applicationsRemoved
+        .filter((id) => without((peer) => findApplicationById(peer, id))));
+
+    // A holder that no longer has the application at all counts as without an
+    // enabled one, exactly as it does for a category.
+    const applicationsOff = new Set(authored.applicationsDisabled
+        .filter((id) => without((peer) => {
+            const application = findApplicationById(peer, id);
+            return application && application.enabled;
+        })));
+
     merged.categories = merged.categories
         .filter((category) => !removed.has(category.id))
         .map((category) => {
@@ -1192,6 +1293,16 @@ function applyAuthored(merged, authored, holders) {
 
     merged.manualSites = merged.manualSites.filter((site) => !manualGone.has(site));
 
+    merged.applications = (merged.applications || [])
+        .filter((application) => !applicationsGone.has(application.id))
+        .map((application) => {
+            if (!applicationsOff.has(application.id)) return application;
+            // Permanence cannot outlive being switched off — the same rule
+            // normalizeApplicationList() enforces, restated here so a merge
+            // cannot leave a stale flag to re-apply on the next tick.
+            return Object.assign({}, application, { enabled: false, permanent: false });
+        });
+
     if (authored.taskCleared && without((peer) => peer.task)) merged.task = null;
 
     // A holder whose cooldown is still stronger than the recorded one raised it
@@ -1204,6 +1315,18 @@ function applyAuthored(merged, authored, holders) {
 
 function findCategory(fortress, id) {
     return (fortress.categories || []).find((category) => category.id === id) || null;
+}
+
+// By id, not by executable. Applications.js has findApplication(), which takes
+// an executable and derives the id from it — feeding that an id it has already
+// derived produces "app:app:steam.exe", which matches nothing, and a holder
+// check that matches nothing silently answers "nobody has this". Every
+// application weakening would then land unconditionally, which is rules 3 and 4
+// switched off. Kept as a separate function rather than making the other one
+// accept both, because a lookup that guesses which key it was given is how this
+// happens a second time.
+function findApplicationById(fortress, id) {
+    return (fortress.applications || []).find((application) => application.id === id) || null;
 }
 
 // Is `a` a weaker standard than `b`? The same three fields mergeCooldown()
@@ -1397,6 +1520,10 @@ function applyMerge(merged) {
             [DAY_LOG_KEY]: merged.dayLog,
             [CATEGORY_DEFS_KEY]: merged.fortress.categories,
             [MANUAL_SITES_KEY]: merged.fortress.manualSites,
+            // Written by this browser and enforced by neither of its own
+            // pages. The desktop app reads it back on the next tick, which is
+            // the only place it means anything.
+            [APPLICATIONS_KEY]: normalizeApplicationList(merged.fortress.applications),
             blockedSites: blockedSites,
             unlockTask: merged.fortress.task,
             cooldownSettings: normalizeCooldown(merged.fortress.cooldown),
@@ -1412,7 +1539,9 @@ function applyMerge(merged) {
 // above. Guarded so the browser, which has no `module`, ignores it entirely —
 // the same dependency-free classic-script contract the rest of the file keeps.
 if (typeof module !== "undefined" && module.exports) {
-    module.exports = {
+    // Additive, not a replacement. Applications.js exports the same way, and
+    // whichever file happens to load second must not erase the first.
+    Object.assign(module.exports, {
         mergeEventLogs,
         mergeCounters,
         sumCounters,
@@ -1428,6 +1557,8 @@ if (typeof module !== "undefined" && module.exports) {
         mergeTempUnlocks,
         mergeSeal,
         mergeFortress,
+        mergeApplications,
+        mergeApplication,
         mergeCooldown,
         mergeTask,
         describeAuthoredWeakening,
@@ -1443,5 +1574,5 @@ if (typeof module !== "undefined" && module.exports) {
         EVENT_UNLOCK,
         EVENT_COMMIT,
         EVENT_RETENTION_DAYS
-    };
+    });
 }

@@ -14,7 +14,7 @@
 // The shared layer, in the same load-in-any-order shape the pages use. None of
 // these touch storage or the DOM at load time, which is what makes them safe to
 // pull into a worker that has no DOM at all.
-importScripts("Tasks.js", "Categories.js", "Stats.js", "Seal.js", "Sync.js",
+importScripts("Tasks.js", "Categories.js", "Applications.js", "Stats.js", "Seal.js", "Sync.js",
               "LocalPeer.js");
 
 // ---- Enforcement ----------------------------------------------------------
