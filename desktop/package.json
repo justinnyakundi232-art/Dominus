@@ -1,0 +1,14 @@
+{
+  "name": "dominus-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Dominus for the desktop \u2014 the keep.",
+  "scripts": {
+    "shared": "node tools/sync-shared.mjs",
+    "dev": "tauri dev",
+    "build": "tauri build"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.11.4"
+  }
+}

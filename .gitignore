@@ -18,5 +18,8 @@ desktop.ini
 desktop/src-tauri/target/
 desktop/src-tauri/gen/
 desktop/node_modules/
+# Copied in from the repo root by desktop/tools/sync-shared.mjs
 desktop/src/styles/tokens.css
+desktop/src/styles/fonts/
 desktop/src/assets/
+desktop/src/shared/

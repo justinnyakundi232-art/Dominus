@@ -4,8 +4,8 @@
     {
       "name": "pages",
       "runtimeExecutable": "python",
-      "runtimeArgs": [".claude/devserver.py", "8123"],
-      "port": 8123
+      "runtimeArgs": [".claude/devserver.py", "8130"],
+      "port": 8130
     }
   ]
 }

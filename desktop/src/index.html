@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dominus</title>
+
+    <!-- tokens.css is generated from Styles/Tokens.css at the repo root, so the
+         app and the extension can only ever be the same black and the same
+         gold. See desktop/tools/sync-tokens.mjs. -->
+    <link rel="stylesheet" href="styles/tokens.css" />
+    <link rel="stylesheet" href="styles/app.css" />
+  </head>
+
+  <body>
+    <div class="app">
+
+      <aside class="rail">
+        <div class="rail-mark">
+          <img src="assets/crest.png" class="rail-crest" alt="" onerror="this.remove()">
+          <p class="rail-name">DOMINUS</p>
+          <p class="rail-motto">"You are the ruler here."</p>
+        </div>
+
+        <!-- The same five sections as the extension, in the same order. Moving
+             between the two surfaces should read as moving between windows,
+             not between products. -->
+        <nav class="rail-nav" aria-label="Dominus">
+          <button type="button" class="rail-link" data-route="keep">
+            <span class="rail-glyph" aria-hidden="true">&#9670;</span>The Keep
+          </button>
+          <button type="button" class="rail-link" data-route="fortress">
+            <span class="rail-glyph" aria-hidden="true">&#9632;</span>The Fortress
+          </button>
+          <button type="button" class="rail-link" data-route="campaign">
+            <span class="rail-glyph" aria-hidden="true">&#9650;</span>The Campaign
+          </button>
+          <button type="button" class="rail-link" data-route="seal">
+            <span class="rail-glyph" aria-hidden="true">&#10010;</span>The Seal
+          </button>
+          <button type="button" class="rail-link" data-route="order" disabled>
+            <span class="rail-glyph" aria-hidden="true">&#10022;</span>The Order
+            <span class="rail-soon">SOON</span>
+          </button>
+        </nav>
+
+        <p class="rail-standing">
+          <span class="rail-standing-value" id="railStreak">—</span>
+          <span class="rail-standing-label" id="railStreakLabel">not paired</span>
+        </p>
+      </aside>
+
+      <div class="view-region">
+
+        <!-- ---- The Keep ------------------------------------------------ -->
+        <section class="view" id="view-keep" data-view="keep" aria-label="The Keep">
+          <div class="page">
+            <header>
+              <h1>THE KEEP</h1>
+              <p class="tagline">Where the fortress is held from.</p>
+            </header>
+
+            <!-- Everything the app knows, it knows because the extension told
+                 it. Until they are paired there is genuinely nothing to show,
+                 and saying so plainly beats an empty dashboard of zeroes that
+                 looks like a fortress with nothing in it. -->
+            <div class="empty" id="keepEmpty">
+              <p class="empty-title">Not paired yet.</p>
+              <p class="empty-body">
+                Dominus keeps your record in the browser extension. Pair this app
+                with it and everything you have built appears here — your streaks,
+                your history, what is blocked and what it costs to unlock.
+              </p>
+              <button type="button" class="btn" data-route="seal">PAIR THIS APP</button>
+            </div>
+
+            <div id="keepContent" hidden>
+              <!-- Today first. Every other figure here is a longer view of it. -->
+              <section class="today" id="keepToday">
+                <p class="today-state" id="keepTodayState">…</p>
+                <p class="today-detail" id="keepTodayDetail"></p>
+              </section>
+
+              <section class="stats">
+                <div class="stat">
+                  <span class="stat-value" id="keepStreak">—</span>
+                  <span class="stat-label">Discipline streak</span>
+                  <span class="stat-note" id="keepStreakNote"></span>
+                </div>
+                <div class="stat">
+                  <span class="stat-value" id="keepResistance">—</span>
+                  <span class="stat-label">Resistance streak</span>
+                  <span class="stat-note" id="keepResistanceNote"></span>
+                </div>
+                <div class="stat">
+                  <span class="stat-value" id="keepVictory">—</span>
+                  <span class="stat-label">Victory rate</span>
+                  <span class="stat-note" id="keepVictoryNote"></span>
+                </div>
+              </section>
+
+              <section class="band">
+                <h2 class="band-heading">WHAT STANDS</h2>
+                <p class="band-line" id="keepDefences">…</p>
+              </section>
+
+              <!-- Hidden when nothing is unlocked, because that is the normal
+                   state and a permanently empty panel teaches the eye to skip
+                   the place where something important will one day appear. -->
+              <section class="band band-open" id="keepGates" hidden>
+                <h2 class="band-heading">GATES STANDING OPEN</h2>
+                <ul class="gate-list" id="keepGateList"></ul>
+              </section>
+
+              <p class="mirror-note" id="keepMirrored"></p>
+            </div>
+          </div>
+        </section>
+
+        <!-- ---- The Fortress -------------------------------------------- -->
+        <section class="view" id="view-fortress" data-view="fortress" aria-label="The Fortress">
+          <div class="page">
+            <header>
+              <h1>THE FORTRESS</h1>
+              <p class="tagline">What is blocked, and what it costs to unlock.</p>
+            </header>
+
+            <div class="empty" id="fortressEmpty">
+              <p class="empty-title">Nothing to show until this app is paired.</p>
+              <p class="empty-body">
+                Sites are enforced by the extension — it is the only thing that can
+                see a navigation and stop it. Pair this app and you can edit what
+                it enforces from here.
+              </p>
+              <button type="button" class="btn" data-route="seal">PAIR THIS APP</button>
+            </div>
+
+            <div id="fortressContent" hidden>
+
+              <!-- Said once, plainly, because it is the thing that most needs
+                   saying: nothing edited here takes effect in the browser until
+                   the two have reconciled. -->
+              <p class="page-note" id="fortressCrossing">
+                Edits here reach the browser on its next tick, within a minute.
+              </p>
+
+              <!-- Only ever shown on a sealed fortress. Weakening one asks for
+                   the password, and the password prompt lives in the extension —
+                   an app that let you around it would make the seal cheaper to
+                   get past by installing a second thing, which is the one test
+                   every rule here has to pass. -->
+              <p class="page-warn" id="fortressSealed" hidden>
+                This fortress is sealed. You can strengthen it from here, but
+                taking a defence down asks for your password — and that prompt
+                lives in the extension. Open Dominus in Chrome to do it.
+              </p>
+
+              <section class="panel">
+                <h2 class="panel-heading">CATEGORIES</h2>
+                <p class="panel-note" id="categoriesEmpty" hidden>
+                  No categories yet. The fortress has no walls.
+                </p>
+                <ul class="category-list" id="categoryList"></ul>
+              </section>
+
+              <section class="panel">
+                <h2 class="panel-heading">BLOCKED BY HAND</h2>
+                <p class="panel-note" id="manualNote">
+                  Sites blocked one at a time from the extension's popup.
+                </p>
+                <ul class="chip-list" id="manualList"></ul>
+              </section>
+
+              <p class="page-status" id="fortressStatus" role="status" aria-live="polite"></p>
+            </div>
+
+            <!-- Applications are the reason the desktop app exists: the browser
+                 cannot see them at all. Named now, honestly marked, so the
+                 shape of the product is legible from the first run. -->
+            <section class="panel panel-soon">
+              <h2 class="panel-heading">APPLICATIONS</h2>
+              <p class="panel-note">
+                Limits on programs rather than sites — the thing an extension can
+                never do. Not built yet. It arrives once syncing is proven, because
+                an app limit that disagrees with your fortress is worse than no app
+                limit at all.
+              </p>
+            </section>
+          </div>
+        </section>
+
+        <!-- ---- The Campaign -------------------------------------------- -->
+        <section class="view" id="view-campaign" data-view="campaign" aria-label="The Campaign">
+          <div class="page">
+            <header>
+              <h1>THE CAMPAIGN</h1>
+              <p class="tagline">A wise commander studies the battlefield before the next advance.</p>
+            </header>
+
+            <div class="empty" id="campaignEmpty">
+              <p class="empty-title">No record yet.</p>
+              <p class="empty-body">
+                Your streaks and your history live in the extension. Pair this app
+                and they appear here, with the room to show more than a popup ever
+                could.
+              </p>
+              <button type="button" class="btn" data-route="seal">PAIR THIS APP</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- ---- The Seal ------------------------------------------------ -->
+        <section class="view" id="view-seal" data-view="seal" aria-label="The Seal">
+          <div class="page">
+            <header>
+              <h1>THE SEAL</h1>
+              <p class="tagline">Paired devices, and the password on weakening your fortress.</p>
+            </header>
+
+            <section class="panel">
+              <h2 class="panel-heading">PAIR WITH THE EXTENSION</h2>
+              <p class="panel-description">SIX CHARACTERS, TYPED ONCE</p>
+              <p class="panel-note">
+                Open Dominus in Chrome, go to <em>The Seal</em>, and enter this code.
+                It is how the extension knows it is talking to this app and not to
+                something else listening on the same machine.
+              </p>
+
+              <p class="pair-code" id="pairCode" aria-live="polite">– – – – – –</p>
+              <p class="pair-expiry" id="pairExpiry">Waiting for the app's local service…</p>
+
+              <div class="panel-actions">
+                <button type="button" class="btn" id="pairRefresh" disabled>NEW CODE</button>
+              </div>
+            </section>
+
+            <section class="panel">
+              <h2 class="panel-heading">PAIRED DEVICES</h2>
+              <p class="panel-note" id="devicesEmpty">
+                No devices yet. Nothing has been shared with this app.
+              </p>
+              <ul class="device-list" id="deviceList" hidden></ul>
+            </section>
+
+            <section class="panel">
+              <h2 class="panel-heading">WHERE YOUR RECORD LIVES</h2>
+              <p class="panel-note">
+                On this machine, and nowhere else. Pairing exchanges data over
+                <code>127.0.0.1</code> — the loopback address, which nothing on your
+                network and nothing on the internet can reach. There is no account
+                and no server.
+              </p>
+            </section>
+          </div>
+        </section>
+
+        <!-- ---- The Order ----------------------------------------------- -->
+        <section class="view" id="view-order" data-view="order" aria-label="The Order">
+          <div class="page">
+            <header>
+              <h1>THE ORDER</h1>
+              <p class="tagline">Others holding the same line.</p>
+            </header>
+            <section class="panel panel-soon">
+              <p class="panel-note">
+                Community servers are not built yet. They arrive last, because they
+                are the only part of Dominus that needs anyone else's data — and
+                that deserves a privacy story written before the feature, not after.
+              </p>
+            </section>
+          </div>
+        </section>
+
+      </div>
+    </div>
+
+    <!-- GENERATED — copied in from the repository root by
+         tools/sync-shared.mjs, so this window and the extension run the same
+         merge rules rather than two implementations of them. Classic scripts,
+         so they are evaluated before the deferred module below. -->
+    <script src="shared/tasks.js"></script>
+    <script src="shared/categories.js"></script>
+    <script src="shared/sync.js"></script>
+
+    <script type="module" src="app.js"></script>
+  </body>
+</html>

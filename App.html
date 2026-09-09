@@ -5,10 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Dominus</title>
 
-    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&display=swap" rel="stylesheet">
     <link rel="icon" href="Assets/SHIELDICON.png">
 
-    <!-- Tokens first: every stylesheet below reads its colours from it. -->
+    <!-- Tokens first: every stylesheet below reads its colours from it, and
+         it carries the typeface too, from files that ship with Dominus.
+         There is no request to a font host here, and no request anywhere. -->
     <link rel="stylesheet" href="Styles/Tokens.css" />
     <link rel="stylesheet" href="Styles/Common.css" />
     <link rel="stylesheet" href="Styles/App.css" />
@@ -330,6 +331,33 @@
               </p>
             </section>
 
+            <section class="panel pair-panel">
+              <h2 class="panel-heading">DOMINUS FOR THE DESKTOP</h2>
+              <p class="panel-description">PAIR THIS BROWSER WITH THE APP</p>
+              <p class="panel-note">
+                The app holds what a browser cannot reach — limits on programs
+                rather than sites, and room for the whole record. Pairing lets it
+                see this fortress. Nothing leaves this machine: the two talk over
+                <code>127.0.0.1</code>, which nothing on your network can reach.
+              </p>
+
+              <div id="pairUnpaired">
+                <div class="pair-row">
+                  <input type="text" id="pairCodeInput" class="pair-input"
+                         maxlength="6" autocomplete="off" spellcheck="false"
+                         placeholder="CODE" aria-label="Pairing code from the desktop app">
+                  <button type="button" class="backup-btn" id="pairSubmit">PAIR</button>
+                </div>
+              </div>
+
+              <div id="pairPaired" hidden>
+                <p class="pair-state" id="pairState"></p>
+                <button type="button" class="backup-btn backup-btn-secondary" id="pairForget">FORGET THE APP</button>
+              </div>
+
+              <p class="backup-status" id="pairStatus" role="status"></p>
+            </section>
+
             <!-- Everything Dominus knows lives in chrome.storage.local, which
                  Chrome never syncs and never backs up. This is the only way a
                  fortress survives a reinstall, a new machine, or the extension
@@ -396,10 +424,12 @@
     <script src="Categories.js"></script>
     <script src="Seal.js"></script>
     <script src="Sync.js"></script>
+    <script src="LocalPeer.js"></script>
     <script src="BuildFortress.js"></script>
     <script src="TrackProgress.js"></script>
     <script src="Keep.js"></script>
     <script src="Backup.js"></script>
+    <script src="Pairing.js"></script>
     <script src="App.js"></script>
   </body>
 </html>
