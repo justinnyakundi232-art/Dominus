@@ -4,6 +4,12 @@
 // The first is the only thing in Dominus that cannot be done anywhere else —
 // the desktop app can own the rules, but only the browser can see a navigation
 // and stop it.
+//
+// 1.11 shipped with neither the tick nor the `alarms` permission, because there
+// was nothing to reconcile with: the alarm would have woken this worker sixty
+// times an hour to call a function that returned immediately, and a permission
+// that does nothing is not one worth asking a user for. Both come back here, in
+// the release that has a peer to reconcile with.
 
 // The shared layer, in the same load-in-any-order shape the pages use. None of
 // these touch storage or the DOM at load time, which is what makes them safe to
@@ -66,8 +72,10 @@ chrome.webNavigation.onBeforeNavigate.addListener((details) => {
 // than waiting for the tick.
 //
 // syncNow() resolves { status: "no-peer" } until this browser has been paired
-// with the desktop app; LocalPeer.js installs the transport that changes that. The cadence is wired now so that the thing being switched on in Phase 1
-// is the transport alone, not the transport and the scheduling together.
+// with the desktop app. LocalPeer.js installs the transport that changes that,
+// and every failure inside it resolves to "no-peer" rather than throwing — an
+// app that is closed, crashed or answering with nonsense must cost this worker
+// nothing, because the enforcement above never waits on any of it.
 
 const SYNC_ALARM = "dominus-sync";
 const SYNC_PERIOD_MINUTES = 1;
