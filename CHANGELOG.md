@@ -18,10 +18,11 @@ version number on.
 ### Changed
 - **Two devices can now each take something down without either removal getting lost.** Deliberate removals travel between your devices as records the merge applies, rather than being inferred from which device edited last — a thing that could never work, because each device counts its own edits and one device's "second edit" says nothing about whether it happened before or after another's. Two removals made before a sync, a removal you changed your mind about, a category you rebuilt on purpose, and a browser that was closed while everything happened all now come out the way you would expect.
 - **A cooldown you shortened now actually stays shortened.** It was being recorded as "this was made weaker" with no note of what you had made it, and the other device — which resolves a disagreement about cooldowns by taking the longer one — had nothing to act on. It carries the value now.
+- **Dominus no longer asks Google for its own typeface.** Every page carried a `<link>` to `fonts.googleapis.com`, so opening the popup — or being stopped by a blocked page — sent a request to Google, from a product that says on its own Seal panel that your record is on this machine and nowhere else. The font ships with Dominus now. Nothing looks different; the difference is that nothing leaves.
 - **The periodic reconcile returns, and with it the `alarms` permission**, which 1.11 was right to ship without: there was nothing to reconcile with, so it would have woken the extension sixty times an hour to do nothing.
 
 ### Notes
-- **Still no data leaves your device.** The two halves talk over `127.0.0.1` — the loopback address, which nothing on your network and nothing on the internet can reach. There is no account and no server.
+- **Still no data leaves your device** — and now genuinely nothing does, in either half. The two halves talk over `127.0.0.1`, the loopback address, which nothing on your network and nothing on the internet can reach. There is no account, no server, and as of this release no font host either.
 - The app is not yet the reason to install it. Limits on **applications** rather than sites — the thing an extension can never do — come next, and they arrive after syncing rather than before, because an app limit that disagrees with your fortress is worse than no app limit at all.
 
 ## [1.11] — 2026-08-31

@@ -4,11 +4,14 @@
  * from Styles/Tokens.css at the repository root. The extension and this app
  * therefore cannot drift apart on what gold is.
  *
+ * That file carries the @font-face rules and the woff2 files sit beside it, so
+ * this window fetches nothing from the network on launch. It used to @import
+ * Playfair Display from Google, which is a request leaving the machine in an
+ * app whose Seal panel says your record is on this machine and nowhere else.
+ *
  * The class names deliberately match the extension's shell (.rail, .view,
  * .panel) so the two surfaces read as one product, and so anything learned
  * about one layout applies to the other. */
-
-@import url("https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&display=swap");
 
 *, *::before, *::after { box-sizing: border-box; }
 

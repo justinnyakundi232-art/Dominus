@@ -23,7 +23,7 @@
 // the cost of that is a defence that quietly stops being enforced rather than a
 // wrong colour.
 
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -91,6 +91,32 @@ function jsBanner(file) {
 // run the same merge rules rather than two implementations of them.
 
 `;
+}
+
+// The typeface, which tokens.css now @font-faces rather than importing from
+// Google. The files have to sit beside the copy of tokens.css exactly as they
+// sit beside the original, because the url() in it is relative — which is what
+// lets one rule serve both surfaces instead of two rules drifting apart.
+//
+// Fatal on failure, like the tokens: a window with no font falls back to a
+// system serif, which is a different product wearing the same colours.
+const FONT_DIR = join(here, "..", "..", "Styles", "fonts");
+const fontTarget = join(here, "..", "src", "styles", "fonts");
+
+try {
+    const files = readdirSync(FONT_DIR);
+    mkdirSync(fontTarget, { recursive: true });
+    files.forEach((name) => {
+        writeFileSync(join(fontTarget, name), readFileSync(join(FONT_DIR, name)));
+    });
+    // OFL.txt is copied along with them deliberately. The licence requires the
+    // font to travel with its notice, and a bundled font whose licence stayed
+    // behind in the other half of the repository has not.
+    console.log(`fonts:  Styles/fonts -> src/styles/fonts (${files.length} files)`);
+} catch (error) {
+    console.error(`fonts:  could not copy from ${FONT_DIR}`);
+    console.error(`  ${error.message}`);
+    process.exit(1);
 }
 
 // The crest, for the same reason: one source, copied in, never edited here.

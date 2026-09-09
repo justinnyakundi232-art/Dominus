@@ -45,6 +45,9 @@ desktop/
     styles/
       app.css
       tokens.css        GENERATED — do not edit
+      fonts/            GENERATED — do not edit
+        *.woff2         Playfair Display, so nothing is fetched from Google
+        OFL.txt         the licence it has to travel with
     shared/             GENERATED — do not edit
       sync.js           the merge and authoring rules, verbatim
       categories.js
@@ -149,7 +152,3 @@ running the real `LocalPeer.js` against a stand-in for the service here.
 there is no toggle, so the app does not start with the machine. It wants a
 control on The Seal rather than being switched on silently.
 
-**The window fetches a webfont from Google.** `src/styles/app.css` imports
-Playfair Display over the network, which is a request leaving the machine on
-every launch of an app whose Seal panel says your record is "on this machine,
-and nowhere else". The font should be bundled or dropped.
