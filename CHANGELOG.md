@@ -26,7 +26,7 @@ This project loosely follows [Keep a Changelog](https://keepachangelog.com/) and
 - The rules for that merge ship with tests, because they are the part that is expensive to get wrong once two devices are in the wild. Three of them exist purely so a second device can never make friction cheaper: escalating cooldowns will count *you* rather than each browser separately, a wrong-seal wait can't be cleared by syncing, and a seal recovery can't be restarted to stall it.
 
 ### Notes
-- Everything is still stored locally in `chrome.storage.local`, and **no data leaves your device**. The only new permission is `alarms`, which is what wakes the extension periodically once there is a desktop app to reconcile with.
+- Everything is still stored locally in `chrome.storage.local`, **no data leaves your device**, and this release asks for **no new permissions at all**. The periodic reconcile the record-keeping is for — and the `alarms` permission it will need — arrives with the desktop app itself, rather than being requested a release early for something you cannot use yet.
 - Fortresses built before this release carry over untouched.
 
 ## [1.10] — 2026-08-22
