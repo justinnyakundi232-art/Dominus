@@ -681,19 +681,51 @@ async function togglePicker() {
     if (!picker.hidden) {
         picker.hidden = true;
         button.textContent = "BLOCK A PROGRAM";
+        stopPickerRefresh();
         return;
     }
 
     button.textContent = "CLOSE";
     picker.hidden = false;
+    pickerShown = "";
     await renderPicker();
+    startPickerRefresh();
+}
+
+// The list is a snapshot of what is open, and what is open changes while the
+// picker is on screen — close Chrome, open Notepad, come back. Asking once, on
+// open, left it showing a program that had already gone and missing the one
+// the user had just opened to block. So it asks again every two seconds for as
+// long as it is visible, and again the moment the window regains focus.
+const PICKER_REFRESH_MS = 2000;
+let pickerTimer = null;
+// What the list last drew, so an unchanged answer does not rebuild it — a
+// rebuild every two seconds would steal the hover and flicker under the cursor.
+let pickerShown = "";
+
+function pickerIsVisible() {
+    const picker = document.getElementById("applicationPicker");
+    const view = document.getElementById("view-fortress");
+    return Boolean(picker && !picker.hidden && view && view.classList.contains("is-active")
+        && !document.hidden);
+}
+
+function startPickerRefresh() {
+    stopPickerRefresh();
+    pickerTimer = setInterval(() => {
+        if (pickerIsVisible()) renderPicker();
+    }, PICKER_REFRESH_MS);
+}
+
+function stopPickerRefresh() {
+    if (pickerTimer) clearInterval(pickerTimer);
+    pickerTimer = null;
 }
 
 async function renderPicker() {
     const list = document.getElementById("pickerList");
     if (!list || !fortressState) return;
 
-    list.textContent = "";
     const held = fortressState.fortress.applications || [];
 
     // Protected programs are left out rather than shown disabled. Offering the
@@ -701,6 +733,17 @@ async function renderPicker() {
     // only answer is "because it would lock you out".
     const running = (await service.runningApplications())
         .filter((entry) => !isProtectedExecutable(entry.exe));
+
+    // Asked before clearing, not after: clearing first left the list empty for
+    // the length of the round trip, which reads as the programs vanishing.
+    const shown = JSON.stringify([
+        running.map((entry) => [entry.exe, entry.title]),
+        held.filter((a) => a.enabled).map((a) => a.id)
+    ]);
+    if (shown === pickerShown) return;
+    pickerShown = shown;
+
+    list.textContent = "";
 
     if (!running.length) {
         const empty = document.createElement("li");
@@ -1007,6 +1050,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const pickerBtn = document.getElementById("pickerToggle");
     if (pickerBtn) pickerBtn.addEventListener("click", togglePicker);
+
+    // Coming back to this window is the usual moment the list is stale — the
+    // user has just been off opening the program they want to block.
+    window.addEventListener("focus", () => {
+        if (pickerIsVisible()) renderPicker();
+    });
 
     window.addEventListener("hashchange", () => show(routeFromHash()));
 
