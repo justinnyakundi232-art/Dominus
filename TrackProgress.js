@@ -80,9 +80,28 @@ const MONTH_LABELS = [
 
 // Intensity within a state. Deliberately coarse: three steps are readable at
 // 14px, and the exact count is in the tooltip for anyone who wants it.
-function heatLevel(count) {
-    if (count >= 6) return 3;
-    if (count >= 3) return 2;
+//
+// Two ramps, written out separately, because the two things being measured are
+// not the same size. Stands are cheap and come in handfuls; unlocks are rare
+// and each one costs the day. Putting six of each at the top of its scale would
+// mean a six-unlock day — which almost never happens — is the only one ever
+// drawn in full red, so the slipped end of the grid would sit permanently in
+// its darkest shade and say nothing.
+//
+// These used to share one function, with the slipped side passing `unlocks * 2`
+// to borrow the thresholds meant for stands. That produced exactly the numbers
+// below and was correct, but the relationship it encoded could only be read by
+// doing the multiplication in your head, and a scale you have to solve is one
+// nobody can check.
+function standLevel(stands) {
+    if (stands >= 6) return 3;
+    if (stands >= 3) return 2;
+    return 1;
+}
+
+function slipLevel(unlocks) {
+    if (unlocks >= 3) return 3;
+    if (unlocks >= 2) return 2;
     return 1;
 }
 
@@ -128,18 +147,43 @@ function describeDay(day) {
 
     // Slipped. Name the site that actually gave way, and when — the late-night
     // pattern is the useful thing here, and a bare count hides it.
-    const sites = Object.keys(entry.sites);
-    const worst = sites.sort((a, b) => entry.sites[b] - entry.sites[a])[0];
-
-    const gave = worst
-        ? `${worst}${entry.sites[worst] > 1 ? ` ×${entry.sites[worst]}` : ""}`
-        : (entry.unlocks === 1 ? "one unlock" : `${entry.unlocks} unlocks`);
-
+    const gave = describeSlip(entry);
     const when = entry.firstSlip ? ` at ${entry.firstSlip}` : "";
 
     return entry.stands > 0
         ? `${stands}, then ${gave}${when}.`
         : `${gave}${when}.`;
+}
+
+// What gave way, in as many words as it takes to account for every unlock on
+// the day — and never fewer.
+//
+// Naming only the worst site used to lose the count entirely. Three unlocks
+// across three different sites left all three tied at one, so the ×N suffix was
+// suppressed on each and the sentence read exactly like a single slip — sitting
+// under a square drawn at full brightness, because the colour is scaled by the
+// day's unlocks rather than by one site's share of them. The grid and its own
+// tooltip contradicted each other, and the grid was the one telling the truth.
+//
+// So whatever the named site doesn't account for is stated too. The remainder
+// is counted in unlocks rather than in sites, because unlocks are what coloured
+// the square and because recordUnlock() takes its domain optionally: an unlock
+// recorded without one belongs in that remainder, not nowhere.
+function describeSlip(entry) {
+    const sites = Object.keys(entry.sites)
+        .sort((a, b) => entry.sites[b] - entry.sites[a]);
+
+    // Nothing named the whole day. A real shape, not a corrupt one.
+    if (sites.length === 0) {
+        return entry.unlocks === 1 ? "one unlock" : `${entry.unlocks} unlocks`;
+    }
+
+    const worst = sites[0];
+    const share = entry.sites[worst];
+    const named = `${worst}${share > 1 ? ` ×${share}` : ""}`;
+    const rest = entry.unlocks - share;
+
+    return rest > 0 ? `${named}, +${rest} more` : named;
 }
 
 function stateLabel(state) {
@@ -296,9 +340,9 @@ function buildCells(history, blanks, tip) {
         cell.className = `heat-cell heat-${day.state}`;
 
         if (day.state === "held") {
-            cell.classList.add(`level-${heatLevel(day.entry.stands)}`);
+            cell.classList.add(`level-${standLevel(day.entry.stands)}`);
         } else if (day.state === "slipped") {
-            cell.classList.add(`level-${heatLevel(day.entry.unlocks * 2)}`);
+            cell.classList.add(`level-${slipLevel(day.entry.unlocks)}`);
         }
 
         if (day.date === today) cell.classList.add("is-today");
