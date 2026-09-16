@@ -106,7 +106,27 @@ function displayName(exe) {
     return (application && application.name) || applicationDisplayName(exe) || exe;
 }
 
-async function open(next) {
+// Resolves once open() has the fortress in hand. A button pressed in the moment
+// between the window appearing and the state arriving waits for it, rather than
+// answering with no state at all — which recorded nothing and still closed the
+// gate, so a walk-away could vanish without trace.
+let opening = Promise.resolve();
+
+// Called by every button before it does anything. If the gate is showing but
+// was never told what for, it asks now instead of answering blind.
+async function ready() {
+    await opening;
+    if (!pending) await syncWithNative();
+    await opening;
+    return Boolean(pending && peer.state);
+}
+
+function open(next) {
+    opening = load(next);
+    return opening;
+}
+
+async function load(next) {
     pending = next;
     answered = false;
     peer = await native.peerState();
@@ -128,6 +148,10 @@ async function open(next) {
 // The good outcome, and the one the whole product is arranged around. It is a
 // stand, and it counts exactly as a stand in the browser counts.
 async function walkAway() {
+    if (answered) return;
+    // Nothing to answer for: close rather than strand the user behind a gate
+    // that cannot say what it is guarding.
+    if (!(await ready())) return native.closeGate();
     if (answered) return;
     answered = true;
 
@@ -161,8 +185,9 @@ function priorUnlocks(exe) {
     return Math.max(0, Number(counts[exe]) || 0);
 }
 
-function beginUnlock() {
+async function beginUnlock() {
     if (answered) return;
+    if (!(await ready())) return native.closeGate();
 
     actions.hidden = true;
     const task = fortressTask();
@@ -431,12 +456,31 @@ document.addEventListener("keydown", (event) => {
 
 // Rust emits this whenever it raises the gate. The window is built once and
 // reused, so it has to be told each time rather than reading itself at load.
+//
+// The event is a fast path, not the only path. It once silently never arrived —
+// the gate window was missing from the capability that permits listening — and
+// a gate that depends on one message arriving is a gate whose buttons stop
+// working the second time. So it also asks for itself whenever it is shown.
 if (window.__TAURI__ && window.__TAURI__.event) {
-    window.__TAURI__.event.listen("gate-raised", (message) => open(message.payload));
+    Promise.resolve()
+        .then(() => window.__TAURI__.event.listen("gate-raised", (message) => open(message.payload)))
+        .catch(() => { /* covered by syncWithNative() below */ });
 }
 
-// And it asks for itself on load, which covers the first raise — the webview
-// may not have attached the listener above by the time the event goes out.
-native.pendingGate().then((next) => {
-    if (next) open(next);
+// Asks Rust what the gate is standing in front of, and opens it if that is a
+// different raise from the one on screen. Each raise carries its own `at`, so a
+// second gate for the same program is still recognised as new.
+async function syncWithNative() {
+    const next = await native.pendingGate();
+    if (!next) return;
+    if (pending && pending.exe === next.exe && pending.at === next.at) return;
+    await open(next);
+}
+
+// On load, which covers the first raise; and whenever the window comes forward,
+// which is what raise_gate() does every time — show, then focus.
+syncWithNative();
+window.addEventListener("focus", () => syncWithNative());
+document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) syncWithNative();
 });
