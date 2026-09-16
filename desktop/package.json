@@ -5,7 +5,9 @@
   "description": "Dominus for the desktop \u2014 the keep.",
   "scripts": {
     "shared": "node tools/sync-shared.mjs",
+    "predev": "npm run shared",
     "dev": "tauri dev",
+    "prebuild": "npm run shared",
     "build": "tauri build"
   },
   "devDependencies": {

@@ -137,6 +137,39 @@ async function run() {
         eq(S.applicationDisplayName("league of legends.exe"), "League Of Legends");
     });
 
+    describe("What can never be blocked");
+
+    await it("refuses the shell, the exit and the gate itself", async () => {
+        // Blocking explorer.exe would minimize the taskbar the moment it was
+        // clicked. Blocking Task Manager would remove the way out. Blocking
+        // dominus.exe would gate the gate.
+        ["explorer.exe", "C:\\Windows\\explorer.exe", "TASKMGR.EXE", "dominus.exe",
+         "SystemSettings.exe", "ApplicationFrameHost.exe"].forEach((exe) => {
+            eq(S.normalizeApplication({ exe: exe, enabled: true }), null, exe + " got in");
+        });
+    });
+
+    await it("keeps them out however they arrive", async () => {
+        // A peer, a backup or a hand-edited file is not a way around the floor.
+        const list = S.normalizeApplicationList([
+            { id: "app:explorer.exe", enabled: true, permanent: true },
+            app("taskmgr.exe", { permanent: true }),
+            app("steam.exe")
+        ]);
+        eq(ids(list), ["app:steam.exe"]);
+
+        const merged = S.mergeApplications([app("steam.exe")], [app("explorer.exe")], 1, 2);
+        eq(ids(merged), ["app:steam.exe"], "a peer carried the shell into the fortress");
+    });
+
+    await it("reads an entry that carries only its id", async () => {
+        // It used to become app:app:steam.exe — the same confusion that once
+        // switched off rules 3 and 4, one layer down.
+        const entry = S.normalizeApplication({ id: "app:steam.exe", enabled: true });
+        eq(entry.id, "app:steam.exe");
+        eq(entry.exe, "steam.exe");
+    });
+
     describe("Normalising a list");
 
     await it("drops an entry with no executable rather than repairing it", async () => {

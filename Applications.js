@@ -21,6 +21,53 @@ const APPLICATIONS_KEY = "applications";
 // to keep a note.
 const MAX_APPLICATION_NAME_LENGTH = 40;
 
+// Programs Dominus will never stand in front of, whoever asks.
+//
+// Not a preference list — a floor. Each of these is here because blocking it
+// would do something other than block it:
+//
+//   explorer.exe            the Windows shell. It owns the taskbar and the
+//                           desktop, so clicking either makes it the
+//                           foreground, and the gate would minimize the
+//                           thing you use to get anywhere.
+//   dominus.exe             the gate itself is a dominus.exe window.
+//   taskmgr.exe             the way out of anything. Dominus is a tool, not a
+//                           cage, and a fortress that can block the exit is a
+//                           cage.
+//   systemsettings.exe      where a program is uninstalled. If you truly do
+//                           not want something, that is the honest fix, and
+//                           Dominus must never stand between you and it.
+//   applicationframehost.exe  the host every Store app runs inside. Blocking it
+//                           would block all of them at once under one name.
+//   the rest                parts of Windows that briefly take the foreground
+//                           (Start, search, the lock screen, notifications).
+//
+// Enforced where an application ENTERS the fortress — normalizeApplication()
+// refuses these — so a list arriving from a peer, a backup or a hand-edited
+// file cannot carry one in either.
+const PROTECTED_EXECUTABLES = [
+    "explorer.exe",
+    "dominus.exe",
+    "taskmgr.exe",
+    "systemsettings.exe",
+    "applicationframehost.exe",
+    "dwm.exe",
+    "csrss.exe",
+    "winlogon.exe",
+    "lockapp.exe",
+    "logonui.exe",
+    "searchhost.exe",
+    "searchapp.exe",
+    "startmenuexperiencehost.exe",
+    "shellexperiencehost.exe",
+    "textinputhost.exe",
+    "sihost.exe"
+];
+
+function isProtectedExecutable(exe) {
+    return PROTECTED_EXECUTABLES.includes(normalizeExecutable(exe));
+}
+
 // ---- Identity -------------------------------------------------------------
 
 // An executable's basename, lowercased.
@@ -91,8 +138,13 @@ function applicationDisplayName(exe) {
 // which is worse than not being there.
 function normalizeApplication(raw) {
     const source = raw || {};
-    const exe = normalizeExecutable(source.exe || source.id);
+    // An id is "app:" + exe. Strip the prefix rather than trusting whoever sent
+    // it to have sent the exe as well.
+    const exe = normalizeExecutable(source.exe || String(source.id || "").replace(/^app:/, ""));
     if (!exe) return null;
+
+    // Refused rather than repaired, for the reason on PROTECTED_EXECUTABLES.
+    if (isProtectedExecutable(exe)) return null;
 
     return {
         id: applicationId(exe),
@@ -195,6 +247,7 @@ if (typeof module !== "undefined" && module.exports) {
         normalizeExecutable,
         applicationId,
         applicationDisplayName,
+        isProtectedExecutable,
         normalizeApplication,
         normalizeApplicationList,
         findApplication,

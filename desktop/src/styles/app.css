@@ -15,6 +15,11 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 
+/* The same floor gate.css needed: the browser's [hidden] ties with any single
+   class and loses on source order, so a rule that sets `display` quietly
+   un-hides whatever this window hides. */
+[hidden] { display: none !important; }
+
 html, body { height: 100%; }
 
 body {
@@ -591,3 +596,58 @@ code {
 }
 
 .site-add input:focus-visible { outline: 1px solid var(--gold-deep); outline-offset: 1px; }
+
+/* ---- The program picker --------------------------------------------------
+ *
+ * A list of things with a window open, each with one button. The window title
+ * is there only to help recognise the program — it can be a document name or a
+ * chat, so it is small, muted, and cut short rather than wrapped. */
+
+.picker {
+    margin-top: 18px;
+    padding-top: 16px;
+    border-top: 1px solid rgba(184, 134, 11, 0.35);
+    text-align: left;
+}
+
+.picker-note {
+    margin: 0 0 12px;
+    font-size: 0.85rem;
+    font-style: italic;
+    color: var(--muted);
+}
+
+.picker-list { list-style: none; margin: 0; padding: 0; }
+
+.picker-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 10px 0;
+    border-bottom: 1px solid rgba(184, 134, 11, 0.2);
+}
+
+.picker-item:last-child { border-bottom: none; }
+
+.picker-label {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.picker-name { font-size: 1.05rem; color: var(--parchment); }
+
+.picker-detail {
+    font-size: 0.8rem;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.picker-empty {
+    padding: 10px 0;
+    font-size: 0.9rem;
+    color: var(--muted);
+}

@@ -171,21 +171,32 @@
                 <ul class="chip-list" id="manualList"></ul>
               </section>
 
+              <!-- Applications are the reason the desktop app exists: the browser
+                   cannot see them at all, so this is the only place they can be
+                   added. Enforced by this app alone — see APP-LIMITS.md. -->
+              <section class="panel">
+                <h2 class="panel-heading">APPLICATIONS</h2>
+                <p class="panel-note" id="applicationsNote">
+                  Programs Dominus puts away when you open them. They get the
+                  same gate, task and cooldown as a site.
+                </p>
+                <ul class="category-list" id="applicationList"></ul>
+
+                <div class="picker" id="applicationPicker" hidden>
+                  <p class="picker-note">
+                    Programs with a window open right now. Matched by name, so
+                    anything else called the same thing is blocked too.
+                  </p>
+                  <ul class="picker-list" id="pickerList"></ul>
+                </div>
+
+                <div class="panel-actions">
+                  <button type="button" class="btn" id="pickerToggle">BLOCK A PROGRAM</button>
+                </div>
+              </section>
+
               <p class="page-status" id="fortressStatus" role="status" aria-live="polite"></p>
             </div>
-
-            <!-- Applications are the reason the desktop app exists: the browser
-                 cannot see them at all. Named now, honestly marked, so the
-                 shape of the product is legible from the first run. -->
-            <section class="panel panel-soon">
-              <h2 class="panel-heading">APPLICATIONS</h2>
-              <p class="panel-note">
-                Limits on programs rather than sites — the thing an extension can
-                never do. Not built yet. It arrives once syncing is proven, because
-                an app limit that disagrees with your fortress is worse than no app
-                limit at all.
-              </p>
-            </section>
           </div>
         </section>
 
@@ -280,6 +291,7 @@
          so they are evaluated before the deferred module below. -->
     <script src="shared/tasks.js"></script>
     <script src="shared/categories.js"></script>
+    <script src="shared/applications.js"></script>
     <script src="shared/sync.js"></script>
 
     <script type="module" src="app.js"></script>

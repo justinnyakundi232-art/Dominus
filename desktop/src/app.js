@@ -90,8 +90,76 @@ const service = {
         } catch (error) {
             return null;
         }
+    },
+
+    // Programs with a window open right now, for the picker. Empty rather than
+    // an error when there is no bridge, which is also what a machine with
+    // nothing open looks like.
+    async runningApplications() {
+        if (!hasBridge()) return [];
+        try {
+            return await window.__TAURI__.core.invoke("running_applications");
+        } catch (error) {
+            return [];
+        }
+    },
+
+    // What the watcher enforces. See pushEnforcement() below.
+    async setEnforced(enforced) {
+        if (!hasBridge()) return false;
+        try {
+            await window.__TAURI__.core.invoke("set_enforced", { enforced: enforced });
+            return true;
+        } catch (error) {
+            return false;
+        }
     }
 };
+
+// ---- Telling the watcher what to enforce ----------------------------------
+//
+// Rust holds a list of executables and a map of expiries, and nothing else; this
+// window is the only thing that works them out, from the same state it shows.
+// See ../APP-LIMITS.md, "Enforcement, and where it runs".
+//
+// Pushed on load, after every edit, and on a timer — the timer is what carries a
+// change that arrived from the extension while nobody was looking at this
+// window. The extension reconciles once a minute, so a timer faster than that
+// only ever re-sends what the watcher already has, and that is skipped.
+
+const ENFORCEMENT_INTERVAL_MS = 20 * 1000;
+let lastEnforced = "";
+
+function enforcementFor(state) {
+    const fortress = (state && state.fortress) || {};
+    const unlocks = (state && state.tempUnlocks) || {};
+    const now = Date.now();
+
+    const blocked = blockedExecutables(fortress.applications);
+    const until = {};
+    blocked.forEach((exe) => {
+        const expiry = Number(unlocks[exe]) || 0;
+        if (expiry > now) until[exe] = expiry;
+    });
+
+    return { blocked: blocked, unlocked_until: until };
+}
+
+async function pushEnforcement(state) {
+    let source = state;
+    if (source === undefined) source = (await service.peerState()).state;
+
+    // No state means never synced. Saying nothing leaves whatever the watcher
+    // loaded from disk in force, which is the stricter of the two choices —
+    // an empty push here would switch every block off on a fresh window.
+    if (!source) return;
+
+    const enforced = enforcementFor(source);
+    const key = JSON.stringify(enforced);
+    if (key === lastEnforced) return;
+
+    if (await service.setEnforced(enforced)) lastEnforced = key;
+}
 
 // ---- Routing --------------------------------------------------------------
 
@@ -371,6 +439,7 @@ async function refreshFortress() {
 
     renderCategories(fortressState.fortress.categories || []);
     renderManualSites(fortressState.fortress.manualSites || []);
+    renderApplications(fortressState.fortress.applications || []);
 }
 
 function renderCategories(categories) {
@@ -533,6 +602,183 @@ function renderManualSites(manual) {
     });
 }
 
+// ---- Applications ---------------------------------------------------------
+//
+// The only place in Dominus a program can be added. The browser cannot see one,
+// so the extension shows this list and nothing more.
+
+function renderApplications(applications) {
+    const list = document.getElementById("applicationList");
+    const note = document.getElementById("applicationsNote");
+    if (!list || !note) return;
+
+    list.textContent = "";
+    const sealed = fortressIsSealed();
+
+    note.textContent = applications.length
+        ? "Put away when you open them, with the same gate, task and cooldown as a site."
+        : "No programs blocked. The browser cannot see these, so this is the only"
+            + " place they are added.";
+
+    applications.forEach((application) => {
+        const item = document.createElement("li");
+        item.className = "category" + (application.enabled ? "" : " is-down");
+
+        const head = document.createElement("div");
+        head.className = "category-head";
+
+        const glyph = document.createElement("span");
+        glyph.className = "category-glyph";
+        glyph.setAttribute("aria-hidden", "true");
+        glyph.textContent = "▣";
+
+        const name = document.createElement("span");
+        name.className = "category-name";
+        name.textContent = application.name || application.exe;
+
+        // The executable, because it is what is actually matched and the name
+        // is only a label the user chose.
+        const exe = document.createElement("span");
+        exe.className = "category-count";
+        exe.textContent = application.enabled
+            ? application.exe + (application.permanent ? " · permanent" : "")
+            : "stood down";
+
+        head.append(glyph, name, exe);
+        item.appendChild(head);
+
+        const actions = document.createElement("div");
+        actions.className = "category-actions";
+
+        const toggle = document.createElement("button");
+        toggle.type = "button";
+        toggle.className = "btn-quiet";
+        toggle.textContent = application.enabled ? "STAND DOWN" : "TAKE UP";
+        toggle.disabled = sealed && application.enabled;
+        toggle.addEventListener("click", () => toggleApplication(application.id));
+        actions.appendChild(toggle);
+
+        if (!application.permanent) {
+            const remove = document.createElement("button");
+            remove.type = "button";
+            remove.className = "btn-quiet is-breach";
+            remove.textContent = "REMOVE";
+            remove.disabled = sealed;
+            remove.addEventListener("click", () => removeApplication(application.id));
+            actions.appendChild(remove);
+        }
+
+        item.appendChild(actions);
+        list.appendChild(item);
+    });
+}
+
+async function togglePicker() {
+    const picker = document.getElementById("applicationPicker");
+    const button = document.getElementById("pickerToggle");
+    if (!picker || !button) return;
+
+    if (!picker.hidden) {
+        picker.hidden = true;
+        button.textContent = "BLOCK A PROGRAM";
+        return;
+    }
+
+    button.textContent = "CLOSE";
+    picker.hidden = false;
+    await renderPicker();
+}
+
+async function renderPicker() {
+    const list = document.getElementById("pickerList");
+    if (!list || !fortressState) return;
+
+    list.textContent = "";
+    const held = fortressState.fortress.applications || [];
+
+    // Protected programs are left out rather than shown disabled. Offering the
+    // shell or Task Manager with a greyed-out button invites a question whose
+    // only answer is "because it would lock you out".
+    const running = (await service.runningApplications())
+        .filter((entry) => !isProtectedExecutable(entry.exe));
+
+    if (!running.length) {
+        const empty = document.createElement("li");
+        empty.className = "picker-empty";
+        empty.textContent = hasBridge()
+            ? "Nothing to offer. Open the program you want to block, then look again."
+            : "The picker needs the desktop app — it cannot list programs from a browser.";
+        list.appendChild(empty);
+        return;
+    }
+
+    running.forEach((entry) => {
+        const item = document.createElement("li");
+        item.className = "picker-item";
+
+        const label = document.createElement("span");
+        label.className = "picker-label";
+
+        const name = document.createElement("span");
+        name.className = "picker-name";
+        name.textContent = applicationDisplayName(entry.exe);
+
+        const detail = document.createElement("span");
+        detail.className = "picker-detail";
+        // A window title can be anything — a document name, a chat — and it
+        // is shown only to help recognise the program. It is never stored.
+        detail.textContent = entry.exe + " — " + entry.title;
+
+        label.append(name, detail);
+
+        const already = Boolean(findApplication(held, entry.exe));
+        const add = document.createElement("button");
+        add.type = "button";
+        add.className = "btn-quiet";
+        add.textContent = already ? "BLOCKED" : "BLOCK";
+        add.disabled = already;
+        add.addEventListener("click", () => addApplication(entry.exe));
+
+        item.append(label, add);
+        list.appendChild(item);
+    });
+}
+
+function applicationsWith(id, change) {
+    return (fortressState.fortress.applications || []).map((application) => (
+        application.id === id ? change(application) : application
+    ));
+}
+
+function addApplication(exe) {
+    const entry = normalizeApplication({ exe: exe, enabled: true });
+    if (!entry) return fortressSays("Dominus will not block that program.", true);
+
+    const held = fortressState.fortress.applications || [];
+    const existing = findApplication(held, exe);
+
+    // Already there but stood down: taking it back up is what the user meant.
+    if (existing) {
+        if (existing.enabled) return fortressSays(existing.name + " is already blocked.");
+        return commitEdit({ applications: applicationsWith(existing.id, (a) => Object.assign({}, a, { enabled: true })) });
+    }
+
+    commitEdit({ applications: held.concat([entry]) });
+}
+
+function toggleApplication(id) {
+    commitEdit({ applications: applicationsWith(id, (application) => Object.assign({}, application, {
+        enabled: !application.enabled,
+        permanent: application.enabled ? false : application.permanent
+    })) });
+}
+
+function removeApplication(id) {
+    commitEdit({
+        applications: (fortressState.fortress.applications || []).filter((a) => a.id !== id)
+    });
+}
+
 // ---- Editing --------------------------------------------------------------
 
 function categoriesWith(id, change) {
@@ -542,12 +788,12 @@ function categoriesWith(id, change) {
 }
 
 function toggleCategory(id) {
-    commitEdit(categoriesWith(id, (category) => Object.assign({}, category, {
+    commitEdit({ categories: categoriesWith(id, (category) => Object.assign({}, category, {
         enabled: !category.enabled,
         // Permanence cannot outlive being switched off — the same rule
         // normalizeCategoryList() enforces and applyAuthored() re-applies.
         permanent: category.enabled ? false : category.permanent
-    })));
+    })) });
 }
 
 function addSite(id, typed) {
@@ -559,29 +805,30 @@ function addSite(id, typed) {
         return fortressSays(site + " is already blocked there.");
     }
 
-    commitEdit(categoriesWith(id, (c) => Object.assign({}, c, {
+    commitEdit({ categories: categoriesWith(id, (c) => Object.assign({}, c, {
         sites: (c.sites || []).concat([site])
-    })));
+    })) });
 }
 
 function removeSite(id, site) {
-    commitEdit(categoriesWith(id, (category) => Object.assign({}, category, {
+    commitEdit({ categories: categoriesWith(id, (category) => Object.assign({}, category, {
         sites: (category.sites || []).filter((held) => held !== site)
-    })));
+    })) });
 }
 
 function removeCategory(id) {
-    commitEdit((fortressState.fortress.categories || []).filter((c) => c.id !== id));
+    commitEdit({ categories: (fortressState.fortress.categories || []).filter((c) => c.id !== id) });
 }
 
-// Stamps and writes an edit. `categories` is the whole list, after.
+// Stamps and writes an edit. `change` is the parts of the fortress that moved —
+// `categories`, `applications`, or both — each as the whole list, after.
 //
 // Nothing else in this file writes: every edit above builds a list and arrives
 // here, for the same reason every edit in the extension goes through
 // commitFortress() — a rule that lives in one place is a rule that exists.
-async function commitEdit(categories) {
+async function commitEdit(change) {
     const before = fortressState.fortress;
-    const after = Object.assign({}, before, { categories: categories });
+    const after = Object.assign({}, before, change);
 
     const authored = describeAuthoredWeakening(before, after);
 
@@ -621,7 +868,19 @@ async function commitEdit(categories) {
     fortressRev = written;
 
     renderCategories(after.categories || []);
-    fortressSays(describeEdit(authored) + " The extension picks it up within a minute.");
+    renderApplications(after.applications || []);
+
+    // Programs are enforced here, not in the browser, so an application edit
+    // takes effect now — only the record waits for the next tick.
+    await pushEnforcement(next);
+
+    const picker = document.getElementById("applicationPicker");
+    if (picker && !picker.hidden) await renderPicker();
+
+    const reach = ("applications" in change)
+        ? " It takes effect now; the extension records it within a minute."
+        : " The extension picks it up within a minute.";
+    fortressSays(describeEdit(authored) + reach);
 }
 
 // What just happened, in the words the seal prompt would have used. An edit
@@ -633,6 +892,8 @@ function describeEdit(authored) {
     if (authored.categoriesRemoved.length) given.push("a category removed");
     if (authored.categoriesDisabled.length) given.push("a category stood down");
     if (Object.keys(authored.sitesRemoved).length) given.push("a site unblocked");
+    if (authored.applicationsRemoved.length) given.push("a program removed");
+    if (authored.applicationsDisabled.length) given.push("a program stood down");
 
     return given.length
         ? "Saved \u2014 " + given.join(", ") + "."
@@ -744,7 +1005,15 @@ document.addEventListener("DOMContentLoaded", () => {
     const refreshBtn = document.getElementById("pairRefresh");
     if (refreshBtn) refreshBtn.addEventListener("click", issueCode);
 
+    const pickerBtn = document.getElementById("pickerToggle");
+    if (pickerBtn) pickerBtn.addEventListener("click", togglePicker);
+
     window.addEventListener("hashchange", () => show(routeFromHash()));
 
     show(routeFromHash());
+
+    // Whatever view is open, and whether or not the window is ever shown: the
+    // watcher is enforcing on the strength of what this sends it.
+    pushEnforcement();
+    setInterval(() => pushEnforcement(), ENFORCEMENT_INTERVAL_MS);
 });
