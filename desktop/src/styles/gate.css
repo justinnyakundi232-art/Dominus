@@ -1,0 +1,200 @@
+/* gate.css — the window a blocked program gets you.
+ *
+ * Deliberately the same shapes as the extension's Blocked.css, from the same
+ * tokens. Being stopped in the browser and being stopped on the desktop should
+ * feel like the same thing happening, because it is.
+ *
+ * Narrower than a page, though: this is an interruption sized to be read at a
+ * glance and answered, not a document. It is also undecorated and always on
+ * top, so it carries its own edge. */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+/* The browser's own [hidden] rule is a bare attribute selector, which ties with
+   any single class and then loses on source order — so .gate-actions{display:flex}
+   below silently un-hides the button row this file spends its time hiding.
+   Stated once, loudly, rather than remembering to check every rule that sets a
+   display. */
+[hidden] { display: none !important; }
+
+html, body { height: 100%; }
+
+.gate-body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--parchment);
+    font-family: var(--font-display);
+    /* The whole window is the border a titlebar would otherwise have drawn. */
+    border: 2px solid var(--gold-deep);
+    user-select: none;
+    cursor: default;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+.gate {
+    width: 100%;
+    height: 100%;
+    padding: 34px 40px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    overflow-y: auto;
+}
+
+.gate-crest { width: 64px; height: auto; margin-bottom: 10px; }
+
+.gate-heading {
+    margin: 0 0 6px;
+    font-size: 2.6rem;
+    letter-spacing: 0.06em;
+    color: var(--breach);
+    /* The reflection message is carried up here once the task is passed, and a
+       long one must not push the countdown off the window. */
+    overflow-wrap: anywhere;
+}
+
+/* The program's name, and the largest ordinary text on the window. The one
+   thing a person has to recognise before deciding anything. */
+.gate-program {
+    margin: 0 0 14px;
+    font-size: 1.7rem;
+    color: var(--gold);
+    overflow-wrap: anywhere;
+}
+
+.gate-line {
+    margin: 0 0 22px;
+    max-width: 40ch;
+    font-size: 1rem;
+    line-height: 1.6;
+    color: var(--muted);
+}
+
+.gate-task { width: 100%; }
+
+.gate-actions {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    margin-top: 18px;
+    flex-wrap: wrap;
+}
+
+.gate-note {
+    margin: 16px 0 0;
+    font-size: 0.85rem;
+    font-style: italic;
+    color: var(--muted);
+    min-height: 1.2em;
+}
+
+/* ---- The task ----------------------------------------------------------- */
+
+.task-instruction {
+    margin: 0 0 10px;
+    font-size: 0.95rem;
+    color: var(--parchment);
+}
+
+/* What has to be retyped. Selectable is the wrong instinct here — copying it
+   is the entire thing the task exists to prevent — but pasting is blocked on
+   the input, so leaving this unselectable only stops an honest reader from
+   checking their work against it. */
+.task-target {
+    margin: 0 0 14px;
+    padding: 14px 16px;
+    border: 1px solid var(--gold-deep);
+    background: rgba(212, 175, 55, 0.05);
+    font-size: 1.05rem;
+    line-height: 1.6;
+    color: var(--gold);
+    overflow-wrap: anywhere;
+}
+
+#taskInput {
+    width: 100%;
+    padding: 12px 14px;
+    border: 1px solid var(--gold-deep);
+    background: var(--panel);
+    color: var(--parchment);
+    font-family: inherit;
+    font-size: 1rem;
+    resize: none;
+    user-select: text;
+    cursor: text;
+}
+
+#taskInput:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+
+input#taskInput {
+    text-align: center;
+    letter-spacing: 0.3em;
+    font-size: 1.3rem;
+}
+
+.task-error {
+    margin: 8px 0 0;
+    min-height: 1.2em;
+    font-size: 0.9rem;
+    color: var(--breach);
+}
+
+/* ---- The countdown ------------------------------------------------------ */
+
+.countdown-note {
+    margin: 0 0 10px;
+    font-size: 0.9rem;
+    color: var(--breach);
+    min-height: 1.2em;
+}
+
+.countdown-clock {
+    margin: 0;
+    font-size: 4rem;
+    line-height: 1.1;
+    color: var(--gold);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.04em;
+}
+
+/* ---- Buttons ------------------------------------------------------------ */
+
+.btn {
+    padding: 12px 26px;
+    font-family: inherit;
+    font-size: 0.95rem;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+    color: black;
+    border: 1px solid var(--gold-deep);
+    background: linear-gradient(to bottom, var(--gold), var(--gold-deep));
+}
+
+.btn:hover { background: linear-gradient(to bottom, var(--gold-bright), var(--gold)); }
+
+.btn:disabled {
+    cursor: not-allowed;
+    color: var(--muted);
+    background: linear-gradient(to bottom, var(--locked-top), var(--locked-bottom));
+}
+
+/* Walking away is the outcome Dominus wants, so it is not the loud button.
+   The loud one is gold because gold is what this product uses for a control,
+   not because unlocking is being encouraged — a quiet primary and a shouting
+   secondary would be a dark pattern pointed the other way. */
+.btn-quiet {
+    color: var(--gold);
+    background: none;
+    border-color: var(--gold-deep);
+}
+
+.btn-quiet:hover {
+    background: rgba(212, 175, 55, 0.08);
+    border-color: var(--gold);
+}
+
+:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }

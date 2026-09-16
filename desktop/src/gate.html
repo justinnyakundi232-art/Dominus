@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dominus</title>
+
+    <!-- Colours and typeface, both local. Same tokens as the extension's
+         blocked page, because this is the same gate. -->
+    <link rel="stylesheet" href="styles/tokens.css" />
+    <link rel="stylesheet" href="styles/gate.css" />
+  </head>
+
+  <body class="gate-body">
+    <main class="gate">
+      <img src="assets/crest.png" class="gate-crest" alt="" onerror="this.remove()">
+
+      <h1 class="gate-heading" id="gateHeading">HALT.</h1>
+
+      <p class="gate-program" id="gateProgram">…</p>
+
+      <p class="gate-line" id="gateLine">
+        You blocked this. Dominus has put it away.
+      </p>
+
+      <!-- The task, the countdown, and finally the unlock all render in here,
+           the same way Blocked.js does it in the browser. -->
+      <div class="gate-task" id="gateTask"></div>
+
+      <div class="gate-actions" id="gateActions">
+        <button type="button" class="btn btn-quiet" id="gateWalk">WALK AWAY</button>
+        <button type="button" class="btn" id="gateUnlock">UNLOCK ANYWAY</button>
+      </div>
+
+      <p class="gate-note" id="gateNote"></p>
+    </main>
+
+    <!-- The shared layer, copied in from the repository root by
+         tools/sync-shared.mjs. The task rules and the record-keeping are the
+         extension's, verbatim — this window has none of its own. -->
+    <script src="shared/tasks.js"></script>
+    <script src="shared/categories.js"></script>
+    <script src="shared/applications.js"></script>
+    <script src="shared/sync.js"></script>
+    <script src="gate.js"></script>
+  </body>
+</html>

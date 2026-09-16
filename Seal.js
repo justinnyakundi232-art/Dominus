@@ -541,6 +541,39 @@ function describeCategoryStandards(was, now, before, after, lines) {
     }
 }
 
+// Applications, in the same voice as the rest of the prompt. Only enabled ones
+// are worth a line: an application that was already switched off was defending
+// nothing, so removing it takes nothing down — the same test the category loop
+// applies before it says anything.
+//
+// The seal prompt is the last thing between a user and a weaker fortress, and
+// it is read in a moment when they would rather not be reading. Every line here
+// has to name something they will recognise, which is why it is the display
+// name and not the executable.
+function describeApplicationChanges(before, after, lines) {
+    const afterById = new Map((after || []).map((entry) => [entry.id, entry]));
+
+    (before || []).forEach((was) => {
+        if (!was.enabled) return;
+
+        const now = afterById.get(was.id);
+
+        if (!now) {
+            lines.push(`${was.name} removed — that program stops being blocked.`);
+            return;
+        }
+
+        if (!now.enabled) {
+            lines.push(`${was.name} switched off — that program stops being blocked.`);
+            return;
+        }
+
+        if (was.permanent && !now.permanent) {
+            lines.push(`Permanent block lifted on ${now.name}.`);
+        }
+    });
+}
+
 function describeWeakening(before, after) {
     const lines = [];
 
@@ -599,6 +632,8 @@ function describeWeakening(before, after) {
         lines.push(`${countSites(droppedManual.length)} unblocked.`);
     }
 
+    describeApplicationChanges(before.applications, after.applications, lines);
+
     describeTaskChange(before.task, after.task, null, lines);
     describeCooldownChange(before.cooldown, after.cooldown, null, lines);
 
@@ -633,9 +668,18 @@ function loadStandards() {
 // The whole fortress as one object, which is the unit describeWeakening()
 // compares and writeFortress() persists.
 function readFortress() {
-    return Promise.all([loadCategories(), loadStandards()]).then(([model, standards]) => ({
+    return Promise.all([
+        loadCategories(),
+        loadStandards(),
+        // Carried by the extension, enforced by the desktop app. This browser
+        // cannot see a process, so it will never gate one — but it is the
+        // record holder and the merge authority, and a fortress that lost its
+        // applications whenever the app was closed would not be one fortress.
+        loadApplications()
+    ]).then(([model, standards, applications]) => ({
         categories: model.categories,
         manualSites: model.manualSites,
+        applications: applications,
         task: standards.task,
         cooldown: standards.cooldown
     }));
@@ -652,12 +696,13 @@ function fillFortressState(next, stored) {
     return {
         categories: next.categories || stored.categories,
         manualSites: next.manualSites || stored.manualSites,
+        applications: next.applications || stored.applications,
         task: ("task" in next) ? next.task : stored.task,
         cooldown: next.cooldown || stored.cooldown
     };
 }
 
-// Stamps a commit for the sync layer: raises the fortress revision, stores the
+// Stamps a commit for the sync layer: raises the fortress revision, appends the
 // machine-readable weakening record if this edit took anything down, and logs
 // the commit as an event.
 //
@@ -668,6 +713,11 @@ function fillFortressState(next, stored) {
 // saying the user deliberately took a defence down, a peer would simply put it
 // back on the next tick.
 //
+// APPENDED, not replaced. Taking two things down before one sync tick is an
+// ordinary thing to do, and a single slot lost the first of them — the category
+// came back on the next merge and nobody was told. The list is pruned in
+// normalizeAuthoredList(); see the four rules above mergeAuthored().
+//
 // Guarded the same way Stats.js guards its mirror, and for the same reason:
 // this file is loaded on pages that have no need of the sync layer, and a
 // missing Sync.js must cost the stamp, not the save.
@@ -676,13 +726,23 @@ function stampCommit(before, after) {
 
     const authored = describeAuthoredWeakening(before, after);
 
-    return enqueueSyncMetaUpdate((meta) => {
+    return ensureDevice().then((device) => enqueueSyncMetaUpdate((meta) => {
         meta.fortressRev += 1;
-        meta.authored = authored
-            ? Object.assign({ rev: meta.fortressRev, at: Date.now() }, authored)
-            : null;
+
+        if (authored) {
+            // The device is what makes the id unique across peers: a device
+            // only ever raises its own revision, so device:rev names exactly
+            // one commit and both peers agree on the name.
+            meta.authored = normalizeAuthoredList(meta.authored.concat([
+                Object.assign(
+                    { rev: meta.fortressRev, at: Date.now(), device: device.id },
+                    authored
+                )
+            ]));
+        }
+
         return meta;
-    }).then((meta) => {
+    })).then((meta) => {
         // Awaited, unlike the stats mirror, so the revision and the event that
         // names it land in the same order they were made. A sync tick that
         // fires between the two would otherwise send a fortress revision with

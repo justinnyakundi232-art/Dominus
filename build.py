@@ -27,6 +27,7 @@ is reported, which is how Assets/Key.png was found sitting unused in the tree.
 import argparse
 import json
 import os
+import posixpath
 import re
 import sys
 import zipfile
@@ -34,6 +35,15 @@ from urllib.parse import unquote
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DIST = os.path.join(ROOT, "dist")
+
+# The one thing reference-following cannot find, because nothing points at it.
+#
+# The SIL Open Font License requires the licence and copyright notice to travel
+# with the font. Nothing in a stylesheet has any reason to url() a text file, so
+# a derived allowlist leaves it behind — and shipping a bundled font without its
+# licence is the one way this could go from a privacy fix to a licence breach.
+# Named here, with the reason, rather than smuggled in through a fake reference.
+REQUIRED = {"Styles/fonts/OFL.txt"}
 
 # Anything matching these is a reference to somewhere else, not to a file here.
 EXTERNAL = re.compile(r"^(https?:|data:|mailto:|#|//)")
@@ -45,8 +55,14 @@ IMPORT_SCRIPTS = re.compile(r"importScripts\s*\(([^)]*)\)", re.I)
 JS_STRING = re.compile(r"""["']([^"']+\.(?:js|css|html|png|jpg|jpeg|svg|webp))["']""", re.I)
 
 
-def norm(ref):
-    """A reference as a repo-relative path, or None if it points off-site."""
+def norm(ref, base=""):
+    """A reference as a repo-relative path, or None if it points off-site.
+
+    `base` is the directory of the file the reference was found in. A url() in
+    Styles/Tokens.css means "beside Tokens.css", not "at the root" — which
+    never came up while every referencing file happened to sit at the root, and
+    became wrong the moment a stylesheet pointed at a font next to it.
+    """
     ref = ref.strip()
     if not ref or EXTERNAL.match(ref):
         return None
@@ -54,7 +70,19 @@ def norm(ref):
     ref = ref.split("#")[0].split("?")[0]
     if not ref:
         return None
-    return unquote(ref).replace("\\", "/").lstrip("./")
+
+    ref = unquote(ref).replace("\\", "/")
+
+    # A leading slash means the extension's root, which is this directory.
+    if ref.startswith("/"):
+        base, ref = "", ref.lstrip("/")
+
+    path = posixpath.normpath(posixpath.join(base, ref))
+
+    # Nothing above the repository root is part of the extension.
+    if path in (".", "") or path.startswith(".."):
+        return None
+    return path
 
 
 def refs_in(path):
@@ -80,9 +108,11 @@ def refs_in(path):
             found += re.findall(r"""["']([^"']+)["']""", call)
         found += JS_STRING.findall(text)
 
+    base = posixpath.dirname(path.replace("\\", "/"))
+
     out = []
     for ref in found:
-        p = norm(ref)
+        p = norm(ref, base)
         if p:
             out.append(p)
     return out
@@ -114,7 +144,7 @@ def collect():
 
     shipping = {"manifest.json"}
     missing = []
-    queue = list(manifest_refs(manifest))
+    queue = list(manifest_refs(manifest)) + sorted(REQUIRED)
 
     while queue:
         path = queue.pop()

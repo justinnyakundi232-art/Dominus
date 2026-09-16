@@ -17,6 +17,56 @@
  * fortress at night — so there is no light palette to switch to, and these are
  * plain values rather than a pair of theme blocks. */
 
+/* ---- The typeface -------------------------------------------------------
+ *
+ * Playfair Display, served from beside this file rather than from Google.
+ *
+ * It used to be a <link> to fonts.googleapis.com on every page — which meant a
+ * request to Google every time the popup opened, carrying an IP address and a
+ * referrer, from a product whose Seal panel says your record is on this machine
+ * and nowhere else. That sentence has to be true of the fonts too, or it is not
+ * true.
+ *
+ * Two subsets, latin and latin-ext, of the variable font: one file covers 400
+ * through 700, which is why there is no separate bold. 58 KB together, once, at
+ * install — against a network round trip on every launch, forever.
+ *
+ * The path is relative to this file, so the same rule works from Styles/ in the
+ * extension and from src/styles/ in the desktop app, which is a copy of this
+ * file. See desktop/tools/sync-shared.mjs.
+ *
+ * SIL Open Font License 1.1 — fonts/OFL.txt, which ships with them. */
+
+@font-face {
+    font-family: 'Playfair Display';
+    font-style: normal;
+    /* A range, not a value: this is the variable font, and naming the range is
+       what lets the browser render 700 from it instead of smearing a synthetic
+       bold over the 400. */
+    font-weight: 400 700;
+    /* Nothing here waits on a font that is already on disk, but swap keeps a
+       blocked page readable even if decoding is slow — the one page in Dominus
+       that must never be blank. */
+    font-display: swap;
+    src: url("fonts/PlayfairDisplay-latin.woff2") format("woff2");
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+                   U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122,
+                   U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+/* Category names are typed by the user, so accented letters are not a
+   hypothetical. Loaded only if one is actually used. */
+@font-face {
+    font-family: 'Playfair Display';
+    font-style: normal;
+    font-weight: 400 700;
+    font-display: swap;
+    src: url("fonts/PlayfairDisplay-latin-ext.woff2") format("woff2");
+    unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+                   U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF,
+                   U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
 :root {
     /* ---- Gold -----------------------------------------------------------
      * The accent, and the only hue in the product. --gold is text and active
