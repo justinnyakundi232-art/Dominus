@@ -442,6 +442,67 @@ async function refreshFortress() {
     renderApplications(fortressState.fortress.applications || []);
 }
 
+// ---- What the controls mean ----------------------------------------------
+//
+// "Stand down" and "Remove" sit side by side and are easy to mistake for each
+// other: one is off-for-now, the other is gone. Every control says which on
+// hover, in the same words wherever it appears, including the extension.
+
+const HELP = {
+    category: {
+        standDown: "Stand down: switch this category off for now. Its sites stay in the list"
+            + " but stop being blocked until you take it back up. Nothing is deleted.",
+        takeUp: "Take up: switch this category back on. Its sites are blocked again"
+            + " within a minute.",
+        remove: "Remove: delete this category and its site list for good. To block these"
+            + " sites again you would have to rebuild it.",
+        stoodDown: "Stood down: switched off for now, not deleted. Take it up again to"
+            + " resume blocking its sites."
+    },
+    application: {
+        standDown: "Stand down: switch this program off for now. It stays in the list but"
+            + " stops being blocked until you take it back up. Nothing is deleted.",
+        takeUp: "Take up: start blocking this program again, straight away.",
+        remove: "Remove: take this program out of your fortress entirely. To block it"
+            + " again, add it from Block a program.",
+        stoodDown: "Stood down: switched off for now, not deleted. Take it up again to"
+            + " resume blocking it."
+    },
+    site: (site) => "Stop blocking " + site + ". It is removed from this category.",
+    sealed: "Sealed — taking a defence down needs your password, and that prompt is"
+        + " in the extension. Open The Fortress in Chrome to do it."
+};
+
+// A control that would take a defence down, on a sealed fortress.
+//
+// Not `disabled`. Chromium — which this window is — does not reliably show a
+// tooltip on a disabled button, so the one moment the explanation matters most
+// (someone skimming past the notice, meeting the not-allowed cursor) is the
+// moment it would not appear. So the button looks disabled and says why on
+// hover, and a click says it again in the status line rather than doing
+// nothing, which is the other thing that reads as broken.
+//
+// The seal's reason is added under what the button does, not in place of it —
+// someone meeting "Stand down" for the first time on a sealed fortress still
+// needs to know what it would have done.
+function holdForSeal(button) {
+    button.setAttribute("aria-disabled", "true");
+    button.classList.add("is-sealed");
+    button.title = (button.title ? button.title + "\n\n" : "") + HELP.sealed;
+}
+
+// Wires a click, unless the control is held for the seal.
+function onPress(button, action) {
+    button.addEventListener("click", (event) => {
+        if (button.getAttribute("aria-disabled") === "true") {
+            event.preventDefault();
+            fortressSays(HELP.sealed, true);
+            return;
+        }
+        action();
+    });
+}
+
 function renderCategories(categories) {
     const list = document.getElementById("categoryList");
     const empty = document.getElementById("categoriesEmpty");
@@ -476,6 +537,7 @@ function renderCategories(categories) {
         count.textContent = category.enabled
             ? sites.length + " " + plural(sites.length, "site", "sites")
             : "stood down";
+        if (!category.enabled) count.title = HELP.category.stoodDown;
 
         head.append(glyph, name, count);
         item.appendChild(head);
@@ -503,12 +565,10 @@ function renderSites(category, sealed) {
         drop.type = "button";
         drop.className = "chip-drop";
         drop.textContent = "\u00d7";
-        drop.title = sealed
-            ? "Sealed \u2014 remove this from the extension"
-            : "Stop blocking " + site;
+        drop.title = HELP.site(site);
         drop.setAttribute("aria-label", "Stop blocking " + site);
-        drop.disabled = sealed;
-        drop.addEventListener("click", () => removeSite(category.id, site));
+        if (sealed) holdForSeal(drop);
+        onPress(drop, () => removeSite(category.id, site));
 
         chip.append(label, drop);
         sites.appendChild(chip);
@@ -556,9 +616,10 @@ function renderCategoryActions(category, sealed) {
     toggle.type = "button";
     toggle.className = "btn-quiet";
     toggle.textContent = category.enabled ? "STAND DOWN" : "TAKE UP";
+    toggle.title = category.enabled ? HELP.category.standDown : HELP.category.takeUp;
     // Switching a category back on is strengthening. Switching it off is not.
-    toggle.disabled = sealed && category.enabled;
-    toggle.addEventListener("click", () => toggleCategory(category.id));
+    if (sealed && category.enabled) holdForSeal(toggle);
+    onPress(toggle, () => toggleCategory(category.id));
     actions.appendChild(toggle);
 
     // A permanent category cannot be removed at all — that is what permanent
@@ -568,8 +629,13 @@ function renderCategoryActions(category, sealed) {
         remove.type = "button";
         remove.className = "btn-quiet is-breach";
         remove.textContent = "REMOVE";
-        remove.disabled = sealed;
-        remove.addEventListener("click", () => removeCategory(category.id));
+        remove.title = HELP.category.remove;
+        // Held even for one already stood down: removing it still writes a
+        // weakening record, and commitEdit() refuses any record on a sealed
+        // fortress. A button that looked free and was then refused is worse
+        // than one that says up front where to go.
+        if (sealed) holdForSeal(remove);
+        onPress(remove, () => removeCategory(category.id));
         actions.appendChild(remove);
     }
 
@@ -643,6 +709,7 @@ function renderApplications(applications) {
         exe.textContent = application.enabled
             ? application.exe + (application.permanent ? " · permanent" : "")
             : "stood down";
+        if (!application.enabled) exe.title = HELP.application.stoodDown;
 
         head.append(glyph, name, exe);
         item.appendChild(head);
@@ -654,8 +721,9 @@ function renderApplications(applications) {
         toggle.type = "button";
         toggle.className = "btn-quiet";
         toggle.textContent = application.enabled ? "STAND DOWN" : "TAKE UP";
-        toggle.disabled = sealed && application.enabled;
-        toggle.addEventListener("click", () => toggleApplication(application.id));
+        toggle.title = application.enabled ? HELP.application.standDown : HELP.application.takeUp;
+        if (sealed && application.enabled) holdForSeal(toggle);
+        onPress(toggle, () => toggleApplication(application.id));
         actions.appendChild(toggle);
 
         if (!application.permanent) {
@@ -663,8 +731,9 @@ function renderApplications(applications) {
             remove.type = "button";
             remove.className = "btn-quiet is-breach";
             remove.textContent = "REMOVE";
-            remove.disabled = sealed;
-            remove.addEventListener("click", () => removeApplication(application.id));
+            remove.title = HELP.application.remove;
+            if (sealed) holdForSeal(remove);
+            onPress(remove, () => removeApplication(application.id));
             actions.appendChild(remove);
         }
 
@@ -876,14 +945,10 @@ async function commitEdit(change) {
     const authored = describeAuthoredWeakening(before, after);
 
     if (authored && fortressIsSealed()) {
-        // Should be unreachable — every control that could weaken is disabled
-        // on a sealed fortress. Checked anyway, because "the button was greyed
-        // out" is not an enforcement boundary.
-        return fortressSays(
-            "This fortress is sealed. That asks for your password, and the"
-            + " prompt for it lives in the extension.",
-            true
-        );
+        // Should be unreachable — every control that could weaken is held on a
+        // sealed fortress. Checked anyway, because "the button was greyed out"
+        // is not an enforcement boundary.
+        return fortressSays(HELP.sealed, true);
     }
 
     const rev = (fortressState.fortressRev || 0) + 1;

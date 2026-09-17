@@ -861,6 +861,20 @@ removeTaskModalConfirm.addEventListener("click", () => {
 // Each action commits on its own, the way Remove Task does, rather than
 // joining the working copy SAVE FORTRESS writes.
 
+// What each control means, on hover. The same words the desktop app uses, so
+// "stand down" means one thing wherever it appears: off for now, not gone.
+const PROGRAM_HELP = {
+    standDown: "Stand down: switch this program off for now. It stays in the list but"
+        + " stops being blocked until you take it back up. Nothing is deleted.",
+    takeUp: "Take up: start blocking this program again. The desktop app picks it up"
+        + " on the next sync, within a minute.",
+    remove: "Remove: take this program out of your fortress entirely. To block it"
+        + " again, add it from The Fortress in the desktop app.",
+    stoodDown: "Stood down: switched off for now, not deleted. Take it up again to"
+        + " resume blocking it.",
+    permanent: "Permanent: this program cannot be removed. It can still be stood down."
+};
+
 function renderApplicationsPanel(applications, message) {
     const list = document.getElementById("applicationList");
     const note = document.getElementById("applicationsNote");
@@ -891,6 +905,8 @@ function renderApplicationsPanel(applications, message) {
         exe.textContent = application.enabled
             ? application.exe + (application.permanent ? " · permanent" : "")
             : application.exe + " · stood down";
+        if (!application.enabled) exe.title = PROGRAM_HELP.stoodDown;
+        else if (application.permanent) exe.title = PROGRAM_HELP.permanent;
 
         label.append(name, exe);
         row.appendChild(label);
@@ -902,6 +918,7 @@ function renderApplicationsPanel(applications, message) {
         toggle.type = "button";
         toggle.className = "task-btn";
         toggle.textContent = application.enabled ? "Stand down" : "Take up";
+        toggle.title = application.enabled ? PROGRAM_HELP.standDown : PROGRAM_HELP.takeUp;
         toggle.addEventListener("click", () => requestApplicationChange(application, "toggle"));
         actions.appendChild(toggle);
 
@@ -911,6 +928,7 @@ function renderApplicationsPanel(applications, message) {
             remove.type = "button";
             remove.className = "task-btn";
             remove.textContent = "Remove";
+            remove.title = PROGRAM_HELP.remove;
             remove.addEventListener("click", () => requestApplicationChange(application, "remove"));
             actions.appendChild(remove);
         }
