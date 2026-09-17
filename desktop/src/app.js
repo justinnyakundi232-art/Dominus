@@ -172,6 +172,7 @@ function refreshHookFor(route) {
     if (route === "seal") return refreshSeal;
     if (route === "keep") return refreshKeep;
     if (route === "fortress") return refreshFortress;
+    if (route === "campaign") return showCampaign;
     return null;
 }
 
@@ -248,35 +249,29 @@ async function refreshKeep() {
     text("keepMirrored", "Mirrored from the extension" + (state.today ? " \u00b7 " + state.today : "") + ".");
 }
 
-function renderStanding(state) {
-    const s = state.stats || {};
+// Where the fortress stands today, from the synced state \u2014 the one reading both
+// The Keep and The Campaign draw from, so the two views cannot disagree.
+//
+// standingFrom() is the extension's own, from shared/stats.js: it brings the
+// streak current, so a run of clean days since the extension last synced still
+// counts, and it takes the victory rate from every device's counters.
+function standing(state) {
+    return standingFrom(state.stats, state.counters, todayLocal());
+}
 
-    text("keepStreak", s.currentStreak || 0);
+function renderStanding(state) {
+    const s = standing(state);
+
+    text("keepStreak", s.currentStreak);
     text("keepStreakNote", s.longestStreak
         ? "Longest " + s.longestStreak + " " + plural(s.longestStreak, "day", "days") : "");
 
-    text("keepResistance", s.currentResistance || 0);
+    text("keepResistance", s.currentResistance);
     text("keepResistanceNote", s.longestResistance
         ? "Longest " + s.longestResistance + " " + plural(s.longestResistance, "stand", "stands") : "");
 
-    // The per-device counters are the canonical all-time totals: grow-only per
-    // device, summed across them, which is what survives both merging and the
-    // event log being pruned. The stats copy is this browser's own view, and
-    // the fallback for a peer that predates them.
-    let stands = 0;
-    let unlocks = 0;
-    const counters = state.counters || {};
-    Object.keys(counters).forEach((id) => {
-        stands += Number(counters[id].stands) || 0;
-        unlocks += Number(counters[id].unlocks) || 0;
-    });
-    if (stands + unlocks === 0) {
-        stands = Number(s.stayFocusedCount) || 0;
-        unlocks = Number(s.unlockCount) || 0;
-    }
-
-    const total = stands + unlocks;
-    text("keepVictory", total ? Math.round((stands / total) * 100) + "%" : "\u2014");
+    const total = s.stayFocusedCount + s.unlockCount;
+    text("keepVictory", s.ratio === null ? "\u2014" : Math.round(s.ratio * 100) + "%");
     text("keepVictoryNote", total
         ? "From " + total + " " + plural(total, "moment", "moments")
         : "Nothing has tested you yet");
@@ -284,14 +279,61 @@ function renderStanding(state) {
     const rail = document.getElementById("railStreak");
     const railLabel = document.getElementById("railStreakLabel");
     if (rail && railLabel) {
-        rail.textContent = s.currentStreak || 0;
+        rail.textContent = s.currentStreak;
         railLabel.textContent = s.currentStreak === 1 ? "day held" : "days held";
     }
 }
 
+// ---- The Campaign ---------------------------------------------------------
+//
+// Drawn by shared/trackprogress.js \u2014 the extension's own Campaign code \u2014 from
+// figures built here out of the synced state. Nothing about what a held day is,
+// how a square is shaded or what the tooltip says lives in this file.
+
+const CAMPAIGN_DAYS = 26 * 7;
+
+async function showCampaign() {
+    const empty = document.getElementById("campaignEmpty");
+    const content = document.getElementById("campaignContent");
+    if (!empty || !content) return;
+
+    const { state } = await service.peerState();
+
+    if (!state || !state.stats) {
+        empty.hidden = false;
+        content.hidden = true;
+        return;
+    }
+
+    empty.hidden = true;
+    content.hidden = false;
+
+    const today = todayLocal();
+    const s = standing(state);
+
+    // A fortress synced by a build older than the day log's backfill has no
+    // inferred days in it. The extension would draw them in on its next read;
+    // this draws them into a copy, so the grid matches what the extension will
+    // show without this window ever writing to the state it was handed.
+    let log = state.dayLog || {};
+    if (!s.stats.dayLogSeeded) log = seedDayLog(JSON.parse(JSON.stringify(log)), s.stats);
+
+    renderCampaign(s, buildDayHistory(log, s.stats, CAMPAIGN_DAYS, today));
+
+    text("campaignMirrored", "Mirrored from the extension"
+        + (state.today ? " \u00b7 last synced " + state.today : "")
+        + ". Stands and unlocks from this app appear after the next sync.");
+
+    // The rail shows the same streak, and should not wait for a visit to The Keep.
+    renderStanding(state);
+}
+
 function renderToday(state) {
     const band = document.getElementById("keepToday");
-    const entry = (state.dayLog || {})[state.today];
+    // Today here, not the day the extension last synced \u2014 a state synced
+    // yesterday has nothing to say about today, and reading its "today" would
+    // report yesterday's fight as this one.
+    const entry = (state.dayLog || {})[todayLocal()];
     if (!band) return;
 
     band.classList.remove("is-held", "is-slipped");

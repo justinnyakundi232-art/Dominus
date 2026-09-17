@@ -52,16 +52,21 @@ desktop/
       app.css
       gate.css
       tokens.css        GENERATED — do not edit
+      campaign.css      GENERATED — the extension's TrackProgress.css
+      common.css        GENERATED — the extension's Common.css, for the (?) tips
       fonts/            GENERATED — do not edit
         *.woff2         Playfair Display, so nothing is fetched from Google
         OFL.txt         the licence it has to travel with
     shared/             GENERATED — do not edit
       sync.js           the merge and authoring rules, verbatim
       applications.js   what a program is, and which can never be blocked
+      stats.js          standingFrom() and buildDayHistory() for The Campaign
+      trackprogress.js  renderCampaign() — the extension's Campaign, verbatim
       categories.js
       tasks.js
     assets/
       crest.png         GENERATED — do not edit
+      strategy.png      GENERATED — do not edit
   tools/
     sync-shared.mjs     copies all of the above in from the repo root
   src-tauri/            the Rust side — window, tray, and the loopback service

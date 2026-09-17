@@ -588,26 +588,69 @@ function getDayHistory(days) {
         return stats;
     }).then(
         () => ensureDayLogSeeded()
-    ).then((stats) => enqueueDayLogUpdate(pruneDayLog).then((log) => {
-        const start = historyStartDate(stats, log);
-        const history = [];
-        let date = addDaysLocal(todayLocal(), -(days - 1));
+    ).then((stats) => enqueueDayLogUpdate(pruneDayLog).then((log) => (
+        buildDayHistory(log, stats, days, todayLocal())
+    )));
+}
 
-        for (let i = 0; i < days; i++) {
-            // String comparison works on "YYYY-MM-DD". Today can never fall
-            // here: the start date is at worst today itself.
-            const before = date < start;
-            const entry = (!before && log[date]) ? normalizeDayEntry(log[date]) : null;
+// The same list, from a day log and stats already in hand. Pure — no storage —
+// which is what lets the desktop app draw The Campaign from the state it was
+// synced, with this code rather than a copy of it.
+function buildDayHistory(log, stats, days, today) {
+    const entries = log || {};
+    const start = historyStartDate(stats || {}, entries);
+    const history = [];
+    let date = addDaysLocal(today, -(days - 1));
 
-            history.push({
-                date: date,
-                state: before ? DAY_BEFORE : dayState(entry),
-                entry: entry
-            });
+    for (let i = 0; i < days; i++) {
+        // String comparison works on "YYYY-MM-DD". Today can never fall here:
+        // the start date is at worst today itself.
+        const before = date < start;
+        const entry = (!before && entries[date]) ? normalizeDayEntry(entries[date]) : null;
 
-            date = addDaysLocal(date, 1);
-        }
+        history.push({
+            date: date,
+            state: before ? DAY_BEFORE : dayState(entry),
+            entry: entry
+        });
 
-        return history;
-    }));
+        date = addDaysLocal(date, 1);
+    }
+
+    return history;
+}
+
+// Where a fortress stands as of `today`, from stats and per-device counters
+// already in hand. Pure, for the same reason as buildDayHistory().
+//
+// The streak is brought current first, exactly as getStats() does, so a
+// stretch of clean days since the last write still counts. The victory rate
+// prefers the per-device counters — grow-only per device and summed across
+// them, which is what survives both merging and the event log being pruned —
+// and falls back to this copy's own totals for a peer that predates them.
+function standingFrom(rawStats, counters, today) {
+    const stats = updateStreak(normalizeStats(rawStats), today);
+
+    let stands = 0;
+    let unlocks = 0;
+    Object.keys(counters || {}).forEach((id) => {
+        stands += Math.max(0, Number(counters[id].stands) || 0);
+        unlocks += Math.max(0, Number(counters[id].unlocks) || 0);
+    });
+    if (stands + unlocks === 0) {
+        stands = stats.stayFocusedCount;
+        unlocks = stats.unlockCount;
+    }
+
+    const total = stands + unlocks;
+    return {
+        currentStreak: stats.currentStreak,
+        longestStreak: stats.longestStreak,
+        currentResistance: stats.currentResistance,
+        longestResistance: stats.longestResistance,
+        ratio: total === 0 ? null : stands / total,
+        stayFocusedCount: stands,
+        unlockCount: unlocks,
+        stats: stats
+    };
 }

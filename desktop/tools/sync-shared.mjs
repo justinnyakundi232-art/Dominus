@@ -58,15 +58,24 @@ try {
 // which is the same contract that lets the service worker pull them in with
 // importScripts() — so a <script> tag in index.html is all this takes.
 //
-// Only the four the window actually uses. Stats.js and Seal.js are the
-// extension's own storage and its seal prompt, and neither has any business
-// running in here.
+// Only what the window actually uses. Seal.js is the extension's seal prompt
+// and has no business running in here.
 //
 // Applications.js is here because Sync.js calls into it — the merge normalises
 // an application list before touching it — and because this window is the only
 // surface that can author an application edit at all. The browser cannot see a
 // process.
-const SHARED = ["Tasks.js", "Categories.js", "Applications.js", "Sync.js"];
+//
+// Stats.js and TrackProgress.js are here for The Campaign. The window draws it
+// with the extension's own code rather than a second copy of it: Stats.js
+// supplies standingFrom() and buildDayHistory(), which work from the synced
+// state with no storage at all, and TrackProgress.js supplies renderCampaign().
+// Stats.js also carries the extension's storage functions, which read
+// chrome.storage and are never called here — the same load-anything,
+// run-nothing contract every shared file keeps.
+const SHARED = [
+    "Tasks.js", "Categories.js", "Applications.js", "Stats.js", "Sync.js", "TrackProgress.js"
+];
 
 SHARED.forEach((file) => {
     const from = join(here, "..", "..", file);
@@ -124,17 +133,60 @@ try {
     process.exit(1);
 }
 
-// The crest, for the same reason: one source, copied in, never edited here.
-const crestFrom = join(here, "..", "..", "Assets", "Golden crown and crossed swords emblem.png");
-const crestTo = join(here, "..", "src", "assets", "crest.png");
+// The Campaign's stylesheet, and the small set of shared rules it leans on (the
+// (?) tooltips live in Common.css). Copied rather than rewritten, for the reason
+// the tokens are: one history grid, drawn one way, in both windows. Fatal like
+// the tokens — a grid without its styles is a column of unstyled spans.
+const STYLES = [
+    ["TrackProgress.css", "campaign.css"],
+    ["Common.css", "common.css"]
+];
 
-try {
-    const png = readFileSync(crestFrom);
-    mkdirSync(dirname(crestTo), { recursive: true });
-    writeFileSync(crestTo, png);
-    console.log(`crest:  Assets/…emblem.png -> src/assets/crest.png (${png.length} bytes)`);
-} catch (error) {
-    // Not fatal. The window drops the <img> if it fails to load, and a missing
-    // crest is a cosmetic loss where missing tokens is an unreadable one.
-    console.warn(`crest:  skipped — ${error.message}`);
+STYLES.forEach(([file, name]) => {
+    const from = join(here, "..", "..", "Styles", file);
+    const to = join(here, "..", "src", "styles", name);
+
+    try {
+        const css = readFileSync(from, "utf8");
+        mkdirSync(dirname(to), { recursive: true });
+        writeFileSync(to, cssBanner(file) + css, "utf8");
+        console.log(`styles: Styles/${file} -> src/styles/${name} (${css.length} bytes)`);
+    } catch (error) {
+        console.error(`styles: could not copy ${file}`);
+        console.error(`  ${error.message}`);
+        process.exit(1);
+    }
+});
+
+function cssBanner(file) {
+    return `/* GENERATED — do not edit.
+ *
+ * Copied from Styles/${file} at the repository root by
+ * desktop/tools/sync-shared.mjs. Edit the source, not this.
+ */
+
+`;
 }
+
+// Artwork, for the same reason: one source, copied in, never edited here.
+//
+// Not fatal. The window drops an <img> that fails to load, and missing artwork
+// is a cosmetic loss where missing tokens is an unreadable one.
+const ART = [
+    ["Golden crown and crossed swords emblem.png", "crest.png"],
+    ["Medieval_Strategy.png", "strategy.png"]
+];
+
+ART.forEach(([file, name]) => {
+    const from = join(here, "..", "..", "Assets", file);
+    const to = join(here, "..", "src", "assets", name);
+
+    try {
+        const png = readFileSync(from);
+        mkdirSync(dirname(to), { recursive: true });
+        writeFileSync(to, png);
+        console.log(`art:    Assets/${file} -> src/assets/${name} (${png.length} bytes)`);
+    } catch (error) {
+        console.warn(`art:    ${file} skipped — ${error.message}`);
+    }
+});
