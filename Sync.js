@@ -85,6 +85,12 @@ const EVENT_STAND = "stand";
 const EVENT_UNLOCK = "unlock";
 const EVENT_COMMIT = "commit";
 
+// Time a program spent in front, for daily allowances. The one event whose
+// content changes after it is written: there is one per device, per program,
+// per day, and its `seconds` only ever grow. See usageEventId() and
+// mergeEventLogs(), and "Spending" in desktop/APP-LIMITS.md.
+const EVENT_USAGE = "usage";
+
 // ---- Device identity ------------------------------------------------------
 
 function normalizeDevice(raw) {
@@ -276,6 +282,13 @@ function normalizeEvent(raw) {
     // Local "HH:MM" of the recording device, for dayLog.firstSlip.
     if (source.time) event.time = String(source.time);
     if (source.rev !== undefined) event.rev = Math.max(0, Math.round(Number(source.rev) || 0));
+
+    if (event.type === EVENT_USAGE) {
+        event.exe = normalizeExecutable(source.exe);
+        event.seconds = Math.max(0, Math.round(Number(source.seconds) || 0));
+        // A usage event that names no program counts toward nothing.
+        if (!event.exe) return null;
+    }
 
     return event.date ? event : null;
 }
@@ -507,10 +520,67 @@ function mergeEventLogs(mine, theirs, today) {
 
     normalizeEventLog(mine).forEach((event) => byId.set(event.id, event));
     normalizeEventLog(theirs).forEach((event) => {
-        if (!byId.has(event.id)) byId.set(event.id, event);
+        const held = byId.get(event.id);
+        if (!held) {
+            byId.set(event.id, event);
+            return;
+        }
+        // The one exception to keep-the-first. A usage event is a running total
+        // for one device, program and day, so two copies of it are the same
+        // total seen at different moments, and the larger is the later. Taking
+        // the larger is idempotent, and no device can lower another's figure.
+        if (event.type === EVENT_USAGE && event.seconds > held.seconds) {
+            byId.set(event.id, event);
+        }
     });
 
     return pruneEvents([...byId.values()].sort(compareEvents), today);
+}
+
+// ---- Usage ---------------------------------------------------------------
+//
+// Pure. The desktop app's watcher counts foreground time; its window hands that
+// time here to be written into the day's usage event, and reads the day's total
+// back out to tell the watcher how much of each allowance is spent.
+
+// The same string on every device that could hold this event, which is what
+// lets mergeEventLogs() recognise two copies of one running total.
+function usageEventId(device, exe, date) {
+    return "usage:" + device + ":" + normalizeExecutable(exe) + ":" + date;
+}
+
+// Adds seconds to this device's usage for a program on a day. Returns a new log;
+// the one passed in is left alone.
+function addUsage(events, device, exe, date, seconds, at) {
+    const name = normalizeExecutable(exe);
+    const add = Math.max(0, Math.round(Number(seconds) || 0));
+    const log = normalizeEventLog(events);
+    if (!name || !add || !device || !date) return log;
+
+    const id = usageEventId(device, name, date);
+    const held = log.find((event) => event.id === id);
+
+    const next = {
+        id: id,
+        type: EVENT_USAGE,
+        device: device,
+        at: Math.max(Number(at) || 0, held ? held.at : 0),
+        date: date,
+        exe: name,
+        seconds: (held ? held.seconds : 0) + add
+    };
+
+    return log.filter((event) => event.id !== id).concat([next]);
+}
+
+// Seconds each program spent in front on `date`, summed across devices.
+function deriveUsage(events, date) {
+    const totals = {};
+    normalizeEventLog(events).forEach((event) => {
+        if (event.type !== EVENT_USAGE || event.date !== date) return;
+        totals[event.exe] = (totals[event.exe] || 0) + event.seconds;
+    });
+    return totals;
 }
 
 // Per-device max. A device's own total only ever grows, so the higher figure is
@@ -810,6 +880,7 @@ function describeAuthoredWeakening(before, after) {
         manualRemoved: [],
         applicationsRemoved: [],
         applicationsDisabled: [],
+        allowancesRaised: {},
         taskCleared: false,
         cooldownLowered: null
     };
@@ -854,6 +925,13 @@ function describeAuthoredWeakening(before, after) {
             return;
         }
         if (was.enabled && !now.enabled) record.applicationsDisabled.push(was.id);
+
+        // More time, or time where there was none. The value travels, not the
+        // fact: a peer told only "this went up" has nothing to raise it to,
+        // because the merge it would be undoing already took the smaller.
+        if (now.allowanceMinutes > was.allowanceMinutes) {
+            record.allowancesRaised[was.id] = now.allowanceMinutes;
+        }
     });
 
     if (before.task && !after.task) record.taskCleared = true;
@@ -880,6 +958,7 @@ function isEmptyAuthored(record) {
         && !record.manualRemoved.length
         && !record.applicationsRemoved.length
         && !record.applicationsDisabled.length
+        && !Object.keys(record.allowancesRaised || {}).length
         && !record.taskCleared
         && !record.cooldownLowered;
 }
@@ -926,6 +1005,8 @@ function normalizeAuthored(raw) {
         // because there were no applications to bring down.
         applicationsRemoved: Array.isArray(source.applicationsRemoved) ? source.applicationsRemoved.map(String) : [],
         applicationsDisabled: Array.isArray(source.applicationsDisabled) ? source.applicationsDisabled.map(String) : [],
+        // Absent before allowances existed, which reads as nothing raised.
+        allowancesRaised: normalizeRaisedAllowances(source.allowancesRaised),
         taskCleared: source.taskCleared === true,
         // `true` is the pre-1.12 shape, which named no value to lower to. It
         // normalizes away rather than being guessed at: a record that cannot
@@ -937,6 +1018,23 @@ function normalizeAuthored(raw) {
 
     record.id = String(source.id || authoredId(record));
     return record;
+}
+
+// { "app:steam.exe": 60 }, cleaned. Anything that is not a whole number of
+// minutes above zero is dropped rather than guessed at: a record that cannot
+// say what the user chose has no business choosing for them.
+function normalizeRaisedAllowances(raw) {
+    const out = {};
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out;
+
+    Object.keys(raw).forEach((id) => {
+        const minutes = Math.round(Number(raw[id]));
+        if (Number.isFinite(minutes) && minutes > 0) {
+            out[String(id)] = Math.min(minutes, MAX_ALLOWANCE_MINUTES);
+        }
+    });
+
+    return out;
 }
 
 // Accepts either shape, because 1.11 stored one record and 1.12 stores a list.
@@ -1113,7 +1211,13 @@ function mergeApplication(mine, theirs, myRev, theirRev) {
         exe: mine.exe,
         name: newer.name,
         enabled: mine.enabled || theirs.enabled,
-        permanent: mine.permanent || theirs.permanent
+        permanent: mine.permanent || theirs.permanent,
+        // The smaller allowance is the stronger one, and 0 — blocked outright —
+        // is the smallest of all. Raising one takes an authored record, like
+        // lowering a cooldown; see applyAuthored().
+        allowanceMinutes: Math.min(mine.allowanceMinutes, theirs.allowanceMinutes),
+        // A warning defends nothing, so it follows the newer commit.
+        warnMinutes: newer.warnMinutes
     };
 }
 
@@ -1293,14 +1397,35 @@ function applyAuthored(merged, authored, holders) {
 
     merged.manualSites = merged.manualSites.filter((site) => !manualGone.has(site));
 
+    // A raised allowance lands the way a lowered cooldown does: unless a holder
+    // has since made it stricter than the recorded value, which is the later
+    // decision and wins. A holder without the program has nothing to say about
+    // its allowance.
+    const raised = {};
+    Object.keys(authored.allowancesRaised || {}).forEach((id) => {
+        const minutes = authored.allowancesRaised[id];
+        const stricterSince = !without((peer) => {
+            const application = findApplicationById(peer, id);
+            return Boolean(application)
+                && clampWholeMinutes(application.allowanceMinutes, MAX_ALLOWANCE_MINUTES, 0) < minutes;
+        });
+        if (!stricterSince) raised[id] = minutes;
+    });
+
     merged.applications = (merged.applications || [])
         .filter((application) => !applicationsGone.has(application.id))
         .map((application) => {
-            if (!applicationsOff.has(application.id)) return application;
+            let next = application;
+
+            if (application.id in raised) {
+                next = Object.assign({}, next, { allowanceMinutes: raised[application.id] });
+            }
+
+            if (!applicationsOff.has(application.id)) return next;
             // Permanence cannot outlive being switched off — the same rule
             // normalizeApplicationList() enforces, restated here so a merge
             // cannot leave a stale flag to re-apply on the next tick.
-            return Object.assign({}, application, { enabled: false, permanent: false });
+            return Object.assign({}, next, { enabled: false, permanent: false });
         });
 
     if (authored.taskCleared && without((peer) => peer.task)) merged.task = null;
@@ -1557,6 +1682,10 @@ if (typeof module !== "undefined" && module.exports) {
         mergeTempUnlocks,
         mergeSeal,
         mergeFortress,
+        usageEventId,
+        addUsage,
+        deriveUsage,
+        EVENT_USAGE,
         mergeApplications,
         mergeApplication,
         mergeCooldown,

@@ -21,6 +21,24 @@ const APPLICATIONS_KEY = "applications";
 // to keep a note.
 const MAX_APPLICATION_NAME_LENGTH = 40;
 
+// A day's allowance, in whole minutes. 0 means blocked outright — which is also
+// what every entry written before allowances existed means, so a missing field
+// changes nothing about a fortress that already has programs in it. A whole day
+// is the ceiling: an allowance above it could never run out and would only be a
+// block pretending to be one. See "Daily allowances" in APP-LIMITS.md.
+const MAX_ALLOWANCE_MINUTES = 24 * 60;
+
+// How long before the allowance runs out the reminder appears. 0 is no
+// reminder. An hour is plenty of notice for anything a reminder is for.
+const DEFAULT_WARN_MINUTES = 5;
+const MAX_WARN_MINUTES = 60;
+
+function clampWholeMinutes(raw, max, fallback) {
+    const n = Number(raw);
+    if (!Number.isFinite(n)) return fallback;
+    return Math.max(0, Math.min(max, Math.round(n)));
+}
+
 // Programs Dominus will never stand in front of, whoever asks.
 //
 // Not a preference list — a floor. Each of these is here because blocking it
@@ -152,7 +170,11 @@ function normalizeApplication(raw) {
         name: String(source.name || applicationDisplayName(exe))
             .slice(0, MAX_APPLICATION_NAME_LENGTH),
         enabled: source.enabled === true,
-        permanent: source.permanent === true
+        permanent: source.permanent === true,
+        // Anything unreadable reads as 0 — blocked outright — because the safe
+        // wrong answer about a defence is the stronger one.
+        allowanceMinutes: clampWholeMinutes(source.allowanceMinutes, MAX_ALLOWANCE_MINUTES, 0),
+        warnMinutes: clampWholeMinutes(source.warnMinutes, MAX_WARN_MINUTES, DEFAULT_WARN_MINUTES)
     };
 }
 
@@ -179,9 +201,13 @@ function normalizeApplicationList(raw) {
         if (held) {
             held.enabled = held.enabled || application.enabled;
             held.permanent = held.permanent || application.permanent;
-            // The later entry's name wins, matching the merge rule, where a
-            // name is cosmetic and follows the newer commit.
+            // The smaller allowance is the stronger one, and 0 — blocked — is
+            // the smallest of all.
+            held.allowanceMinutes = Math.min(held.allowanceMinutes, application.allowanceMinutes);
+            // The later entry's name and warning win, matching the merge rule:
+            // neither defends anything, so neither has a stronger direction.
             held.name = application.name;
+            held.warnMinutes = application.warnMinutes;
         } else {
             byId.set(application.id, application);
         }
@@ -211,8 +237,35 @@ function findApplication(applications, exe) {
 // permanent, or anything else it might be tempted to make a decision with.
 function blockedExecutables(applications) {
     return normalizeApplicationList(applications)
-        .filter((entry) => entry.enabled)
+        .filter((entry) => entry.enabled && entry.allowanceMinutes === 0)
         .map((entry) => entry.exe);
+}
+
+// The programs that are allowed some time a day, keyed by executable, in the
+// units the watcher counts in. Enabled entries only, and never a blocked one —
+// those are in blockedExecutables() instead, so no program is in both.
+function allowancesFor(applications) {
+    const out = {};
+    normalizeApplicationList(applications)
+        .filter((entry) => entry.enabled && entry.allowanceMinutes > 0)
+        .forEach((entry) => {
+            out[entry.exe] = {
+                allowance_secs: entry.allowanceMinutes * 60,
+                // Never at or past the allowance itself: a warning that arrives
+                // with the gate is not a warning.
+                warn_secs: Math.min(entry.warnMinutes, entry.allowanceMinutes - 1) * 60
+            };
+        });
+    return out;
+}
+
+// "45 min", "1 h", "1 h 30 min". Whole minutes are all an allowance is set in.
+function formatAllowance(minutes) {
+    const m = Math.max(0, Math.round(Number(minutes) || 0));
+    const h = Math.floor(m / 60);
+    const rest = m % 60;
+    if (!h) return rest + " min";
+    return rest ? h + " h " + rest + " min" : h + " h";
 }
 
 function isPermanentApplication(applications, exe) {
@@ -252,6 +305,8 @@ if (typeof module !== "undefined" && module.exports) {
         normalizeApplicationList,
         findApplication,
         blockedExecutables,
+        allowancesFor,
+        formatAllowance,
         isPermanentApplication
     });
 }
