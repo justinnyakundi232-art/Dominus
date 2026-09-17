@@ -9,6 +9,8 @@
          app and the extension can only ever be the same black and the same
          gold. See desktop/tools/sync-tokens.mjs. -->
     <link rel="stylesheet" href="styles/tokens.css" />
+    <link rel="stylesheet" href="styles/common.css" />
+    <link rel="stylesheet" href="styles/campaign.css" />
     <link rel="stylesheet" href="styles/app.css" />
   </head>
 
@@ -217,6 +219,67 @@
               </p>
               <button type="button" class="btn" data-route="seal">PAIR THIS APP</button>
             </div>
+
+            <!-- The same view as the extension's Campaign, drawn by the same code:
+                 shared/trackprogress.js fills every id below, from figures
+                 app.js builds out of the synced state. The ids therefore have to
+                 match App.html's exactly. -->
+            <div class="campaign" id="campaignContent" hidden>
+              <img src="assets/strategy.png" class="strategy-map" alt="" onerror="this.remove()">
+
+              <section class="progress-section">
+                <div class="progress-bar" id="progressBar">
+                  <span class="progress-square"></span><span class="progress-square"></span>
+                  <span class="progress-square"></span><span class="progress-square"></span>
+                  <span class="progress-square"></span><span class="progress-square"></span>
+                  <span class="progress-square"></span><span class="progress-square"></span>
+                  <span class="progress-square"></span><span class="progress-square"></span>
+                </div>
+
+                <p class="victory-rate">
+                  Victory rate: <span class="victory-value" id="victoryValue">…</span>
+                  <span class="info-tip" tabindex="0" role="button" aria-label="What does victory rate mean?">(?)<span class="info-tooltip" role="tooltip">Your victory rate is how often you hold the line — the share of moments a blocked site or program tested you and you walked away instead of unlocking. It's stands &divide; (stands + unlocks), counted across every paired device.</span></span>
+                </p>
+
+                <div class="streak-block">
+                  <h2 class="streak-heading">DISCIPLINE STREAK</h2>
+                  <p class="streak-line">Current: <span class="streak-value" id="currentStreak">…</span></p>
+                  <p class="streak-line">Longest: <span class="streak-value" id="longestStreak">…</span></p>
+                </div>
+
+                <div class="streak-block">
+                  <h2 class="streak-heading">
+                    RESISTANCE STREAK
+                    <span class="info-tip" tabindex="0" role="button" aria-label="What does resistance streak mean?">(?)<span class="info-tooltip" role="tooltip">How many times in a row you walked away without unlocking anything. It counts choices, not days — every stand adds one, and a single unlock puts it back to zero. Your discipline streak measures clean days; this measures how often you held the line.</span></span>
+                  </h2>
+                  <p class="streak-line">Current: <span class="streak-value" id="currentResistance">…</span></p>
+                  <p class="streak-line">Longest: <span class="streak-value" id="longestResistance">…</span></p>
+                </div>
+
+                <div class="streak-block history-block">
+                  <h2 class="streak-heading">
+                    STREAK HISTORY
+                    <span class="info-tip" tabindex="0" role="button" aria-label="What does the streak history show?">(?)<span class="info-tooltip" role="tooltip">One square per day. A day is HELD if something blocked tested you and you walked away every time, SLIPPED if you unlocked, and UNTESTED if nothing asked anything of you. Untested days keep your streak — they just weren't a fight. Days before your history begins are left blank rather than called untested, because Dominus wasn't recording them.</span></span>
+                  </h2>
+
+                  <p class="history-summary" id="historySummary">…</p>
+
+                  <div class="history-scroll">
+                    <div class="history-grid" id="historyGrid"></div>
+                  </div>
+
+                  <div class="history-legend" aria-hidden="true">
+                    <span class="legend-item"><span class="heat-cell heat-untested"></span>Untested</span>
+                    <span class="legend-item"><span class="heat-cell heat-held level-1"></span><span class="heat-cell heat-held level-2"></span><span class="heat-cell heat-held level-3"></span>Held</span>
+                    <span class="legend-item"><span class="heat-cell heat-slipped level-1"></span><span class="heat-cell heat-slipped level-2"></span><span class="heat-cell heat-slipped level-3"></span>Slipped</span>
+                    <span class="legend-item"><span class="heat-cell heat-inferred"></span>From your streak</span>
+                    <span class="legend-item"><span class="heat-cell heat-before"></span>No record</span>
+                  </div>
+                </div>
+              </section>
+
+              <p class="mirror-note" id="campaignMirrored"></p>
+            </div>
           </div>
         </section>
 
@@ -292,7 +355,9 @@
     <script src="shared/tasks.js"></script>
     <script src="shared/categories.js"></script>
     <script src="shared/applications.js"></script>
+    <script src="shared/stats.js"></script>
     <script src="shared/sync.js"></script>
+    <script src="shared/trackprogress.js"></script>
 
     <script type="module" src="app.js"></script>
   </body>

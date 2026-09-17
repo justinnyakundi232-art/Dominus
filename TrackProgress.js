@@ -10,12 +10,23 @@
 // Safe to call repeatedly: every render below replaces its own content rather
 // than appending to it.
 function refreshCampaign() {
-    getStats().then((stats) => {
-        renderVictoryRate(stats);
-        renderStreak(stats);
-    });
+    Promise.all([getStats(), getDayHistory(HISTORY_WEEKS * 7)])
+        .then(([stats, history]) => renderCampaign(stats, history));
+}
 
-    renderStreakHistory();
+// Draws the whole view from figures already in hand.
+//
+// Split from refreshCampaign() so the desktop app can use this file as it is:
+// it has no chrome.storage, so it builds the same two things from the state the
+// extension synced to it — standingFrom() and buildDayHistory() in Stats.js —
+// and hands them here. One implementation of what The Campaign shows, the same
+// way there is one of the merge rules.
+//
+// `stats` is the shape getStats() returns; `history` is getDayHistory()'s.
+function renderCampaign(stats, history) {
+    renderVictoryRate(stats);
+    renderStreak(stats);
+    renderStreakHistory(history);
 }
 
 // No DOMContentLoaded handler on purpose: the router calls this the first time
@@ -261,15 +272,25 @@ function createHeatTip() {
     // with a trackpad: the momentum keeps firing scroll events for a moment
     // after you stop, so a tooltip opened right after scrolling to the grid
     // vanished while the cursor was still sitting on the square.
-    window.addEventListener("scroll", position, { passive: true });
+    //
+    // Listened for on the document in the capture phase, because the scroll
+    // that matters is rarely the window's. Both shells scroll a content pane,
+    // and the grid scrolls sideways inside its own box on narrow windows —
+    // element scroll events don't bubble, but they are captured.
+    document.addEventListener("scroll", position, { passive: true, capture: true });
     window.addEventListener("resize", position, { passive: true });
 
-    // The grid scrolls horizontally inside its own box on narrow windows, and
-    // an element's scroll event doesn't reach window.
-    const scroller = document.querySelector(".history-scroll");
-    if (scroller) scroller.addEventListener("scroll", position, { passive: true });
-
     return { show: show, hide: hide };
+}
+
+// One tooltip for the life of the page. The grid is redrawn on every visit to
+// the view, and making a new tooltip each time left the old ones — and their
+// listeners — behind in the document.
+let heatTip = null;
+
+function heatTipFor() {
+    if (!heatTip) heatTip = createHeatTip();
+    return heatTip;
 }
 
 // Blank cells before the first day, so every row is one weekday all the way
@@ -412,20 +433,21 @@ function renderHistorySummary(history) {
     });
 }
 
-function renderStreakHistory() {
+function renderStreakHistory(history) {
     const grid = document.getElementById("historyGrid");
-    if (!grid) return;
+    if (!grid || !history || !history.length) return;
 
-    getDayHistory(HISTORY_WEEKS * 7).then((history) => {
-        renderHistorySummary(history);
+    renderHistorySummary(history);
 
-        grid.textContent = "";
+    const tip = heatTipFor();
+    // The cells being replaced may be the one the tooltip is showing for.
+    tip.hide();
 
-        const blanks = leadingBlanks(history[0].date);
-        const tip = createHeatTip();
+    grid.textContent = "";
 
-        grid.appendChild(buildMonthLabels(history, blanks));
-        grid.appendChild(buildWeekdayLabels());
-        grid.appendChild(buildCells(history, blanks, tip));
-    });
+    const blanks = leadingBlanks(history[0].date);
+
+    grid.appendChild(buildMonthLabels(history, blanks));
+    grid.appendChild(buildWeekdayLabels());
+    grid.appendChild(buildCells(history, blanks, tip));
 }
