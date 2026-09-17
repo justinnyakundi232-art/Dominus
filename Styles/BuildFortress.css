@@ -724,3 +724,41 @@
     padding:6px 12px;
     cursor:pointer;
 }
+
+.application-used{
+    font-size:0.85rem;
+    color:var(--parchment);
+    margin-top:2px;
+}
+
+.application-allowance{
+    display:flex;
+    flex-wrap:wrap;
+    align-items:center;
+    gap:6px 14px;
+    margin-top:6px;
+    font-size:0.85rem;
+    color:var(--muted);
+}
+
+.application-field{ white-space:nowrap; }
+
+.application-input{
+    width:4.6em;
+    padding:2px 6px;
+    background:black;
+    color:var(--parchment);
+    border:1px solid var(--gold-deep);
+    font-family:inherit;
+    font-size:0.9rem;
+}
+
+.application-allowance .task-btn{
+    padding:3px 10px;
+    cursor:pointer;
+}
+
+.application-allowance .task-btn:disabled{
+    opacity:0.45;
+    cursor:default;
+}

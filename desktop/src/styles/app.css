@@ -656,3 +656,50 @@ code {
     font-size: 0.9rem;
     color: var(--muted);
 }
+
+/* ---- Allowances ----------------------------------------------------------
+ *
+ * One quiet line under each program: how much of today is gone, how long it is
+ * allowed, and when to be reminded. Small inputs, because these are numbers of
+ * minutes, not sentences. */
+
+.allowance {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-start;
+    text-align: left;
+    gap: 10px 16px;
+    margin: 8px 0 4px;
+    font-size: 0.85rem;
+    color: var(--muted);
+}
+
+.allowance-used {
+    flex-basis: 100%;
+    color: var(--parchment);
+    font-variant-numeric: tabular-nums;
+}
+
+.allowance-field { white-space: nowrap; }
+
+.allowance-input {
+    width: 4.6em;
+    padding: 3px 6px;
+    background: var(--ground);
+    color: var(--parchment);
+    border: 1px solid var(--line);
+    font-family: inherit;
+    font-size: 0.9rem;
+    font-variant-numeric: tabular-nums;
+    user-select: text;
+}
+
+.allowance-input:focus-visible { outline: 1px solid var(--gold-deep); outline-offset: 1px; }
+
+.picker-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}

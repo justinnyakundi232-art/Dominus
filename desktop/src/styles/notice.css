@@ -1,0 +1,61 @@
+/* notice.css — the allowance reminder in the corner.
+ *
+ * Quieter than the gate on purpose: gold rather than red, small type, no
+ * buttons to decide between. It is information, not a question. */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+[hidden] { display: none !important; }
+
+html, body { height: 100%; margin: 0; }
+
+.notice-body {
+    background: var(--panel);
+    color: var(--parchment);
+    font-family: var(--font-display);
+    border: 1px solid var(--gold-deep);
+    border-left: 4px solid var(--gold);
+    user-select: none;
+    cursor: default;
+    overflow: hidden;
+}
+
+.notice {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 16px;
+}
+
+.notice-crest { width: 38px; height: auto; flex-shrink: 0; }
+
+.notice-text { min-width: 0; flex: 1; }
+
+.notice-title {
+    margin: 0 0 4px;
+    font-size: 1.05rem;
+    color: var(--gold);
+    overflow-wrap: anywhere;
+}
+
+.notice-line {
+    margin: 0;
+    font-size: 0.82rem;
+    line-height: 1.4;
+    color: var(--muted);
+}
+
+.notice-close {
+    align-self: flex-start;
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-size: 1.2rem;
+    line-height: 1;
+    padding: 2px 4px;
+    cursor: pointer;
+}
+
+.notice-close:hover { color: var(--gold); }
+.notice-close:focus-visible { outline: 1px solid var(--gold); }

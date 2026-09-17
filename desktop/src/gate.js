@@ -101,6 +101,18 @@ function applicationFor(exe) {
     return findApplication(fortress.applications, exe);
 }
 
+// Why the gate is up, in one line. A program with an allowance was not blocked
+// by the user so much as given so long — and saying "you blocked this" when
+// they had an hour and used it would be telling them something untrue.
+function gateReason(exe) {
+    const application = applicationFor(exe);
+    const entry = application ? normalizeApplication(application) : null;
+    const minutes = entry ? entry.allowanceMinutes : 0;
+    return minutes > 0
+        ? `You've used today's ${formatAllowance(minutes)}. Dominus has put it away.`
+        : "You blocked this. Dominus has put it away.";
+}
+
 function displayName(exe) {
     const application = applicationFor(exe);
     return (application && application.name) || applicationDisplayName(exe) || exe;
@@ -135,7 +147,7 @@ async function load(next) {
 
     programEl.textContent = displayName(exe);
     heading.textContent = "HALT.";
-    lineEl.textContent = "You blocked this. Dominus has put it away.";
+    lineEl.textContent = gateReason(exe);
     taskArea.innerHTML = "";
     noteEl.textContent = "";
     actions.hidden = false;
@@ -428,18 +440,13 @@ async function record({ type, domain, expiry }) {
 
 // Hands Rust the list and the expiries, derived from the state this window is
 // holding. Nothing on the Rust side works any of this out for itself.
+//
+// Built by enforcementFor() in the shared layer, the same function the main
+// window uses. This used to be a hand-built copy of the old shape, and sending
+// that after an unlock would have wiped every allowance from the watcher.
 async function pushEnforced() {
-    const fortress = (peer.state && peer.state.fortress) || {};
-    const unlocks = (peer.state && peer.state.tempUnlocks) || {};
-
-    const blocked = blockedExecutables(fortress.applications);
-    const until = {};
-    blocked.forEach((exe) => {
-        const expiry = Number(unlocks[exe]) || 0;
-        if (expiry > Date.now()) until[exe] = expiry;
-    });
-
-    await native.setEnforced({ blocked: blocked, unlocked_until: until });
+    if (!peer.state) return;
+    await native.setEnforced(enforcementFor(peer.state, localDateString(new Date())));
 }
 
 // ---- Wiring ---------------------------------------------------------------

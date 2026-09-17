@@ -90,6 +90,13 @@
      * your seal?" link is the case this was chosen for. */
     --muted: #8B95A3;
 
+    /* Hairlines: borders on quiet controls, and the rules between rows. Warm
+     * rather than grey, so a line on black reads as part of the gold rather
+     * than as a different material. The desktop app named these before they
+     * were defined here, and every border that did so simply did not draw. */
+    --line: #2C2519;
+    --line-soft: #1E1A14;
+
     /* ---- Breach ---------------------------------------------------------
      * Everything that says a defence is coming down: the streak-at-stake line
      * on a friction gate, the seal recovery notice, a slipped day in the

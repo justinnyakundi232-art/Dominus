@@ -48,9 +48,12 @@ desktop/
                         program picker, and what the watcher is told to enforce
     gate.html           the window a blocked program gets you
     gate.js             its task, cooldown and record-keeping
+    notice.html         the "few minutes left" reminder, shown without focus
+    notice.js
     styles/
       app.css
       gate.css
+      notice.css
       tokens.css        GENERATED — do not edit
       campaign.css      GENERATED — the extension's TrackProgress.css
       common.css        GENERATED — the extension's Common.css, for the (?) tips
@@ -216,6 +219,11 @@ than it did: program blocks are only enforced while this app is running.
 nothing off Windows; a second platform needs `foreground()`, `minimize()` and
 `running_applications()`, and nothing else.
 
-**No daily budget.** A program is blocked or it is not. Budgets are 1.13, with
-a settings page for what counts against you — see the end of `APP-LIMITS.md`.
+**Allowance reminders can be hidden by a fullscreen game.** The reminder is a
+topmost window shown without focus; an exclusive-fullscreen game may draw over
+it. The gate still arrives on time. See *The warning* in `APP-LIMITS.md`.
+
+**How hard Dominus pushes back is not a setting yet.** Running out of an
+allowance raises the usual gate, which can be unlocked. A settings tab for
+stricter modes, and for what counts against the streak, is a future idea.
 

@@ -200,6 +200,27 @@ async function run() {
         eq(merged, []);
     });
 
+    describe("What the watcher is told");
+
+    await it("carries blocks, allowances, today's spend and live unlocks", async () => {
+        const state = {
+            fortress: fortress([
+                app("notepad.exe"),
+                app("steam.exe", { allowanceMinutes: 60, warnMinutes: 5 }),
+                app("discord.exe", { allowanceMinutes: 30, enabled: false })
+            ]),
+            tempUnlocks: { "steam.exe": Date.now() + 60000, "notepad.exe": Date.now() - 1, "youtube.com": Date.now() + 60000 },
+            events: S.addUsage(S.addUsage([], "pc", "steam.exe", "2026-09-17", 600, 1), "pc", "steam.exe", "2026-09-16", 999, 2)
+        };
+        const told = S.enforcementFor(state, "2026-09-17");
+
+        eq(told.blocked, ["notepad.exe"]);
+        eq(told.allowances, { "steam.exe": { allowance_secs: 3600, warn_secs: 300 } });
+        eq(told.spent, { "steam.exe": 600 }, "yesterday's time, or another program's, was counted");
+        eq(Object.keys(told.unlocked_until), ["steam.exe"], "an expired or unrelated unlock was sent");
+        eq(told.day, "2026-09-17");
+    });
+
     describe("The whole trip");
 
     await it("time spent in the app reaches the extension through a real merge", async () => {

@@ -259,6 +259,42 @@ function allowancesFor(applications) {
     return out;
 }
 
+// Everything the desktop watcher is told, from a synced state, for `today`.
+//
+// One function, because two windows send it — the main window on every change,
+// the gate after an unlock — and a second hand-built copy is how the gate once
+// stood to wipe every allowance by sending the old shape. Names and fields
+// match `watcher::Enforced` in the desktop app.
+//
+// Needs deriveUsage() from Sync.js at call time, which every window that calls
+// this has loaded.
+function enforcementFor(state, today) {
+    const fortress = (state && state.fortress) || {};
+    const unlocks = (state && state.tempUnlocks) || {};
+    const now = Date.now();
+
+    const blocked = blockedExecutables(fortress.applications);
+    const allowances = allowancesFor(fortress.applications);
+
+    const until = {};
+    blocked.concat(Object.keys(allowances)).forEach((exe) => {
+        const expiry = Number(unlocks[exe]) || 0;
+        if (expiry > now) until[exe] = expiry;
+    });
+
+    const used = deriveUsage((state && state.events) || [], today);
+    const spent = {};
+    Object.keys(allowances).forEach((exe) => { spent[exe] = used[exe] || 0; });
+
+    return {
+        blocked: blocked,
+        unlocked_until: until,
+        allowances: allowances,
+        spent: spent,
+        day: today
+    };
+}
+
 // "45 min", "1 h", "1 h 30 min". Whole minutes are all an allowance is set in.
 function formatAllowance(minutes) {
     const m = Math.max(0, Math.round(Number(minutes) || 0));
@@ -306,6 +342,7 @@ if (typeof module !== "undefined" && module.exports) {
         findApplication,
         blockedExecutables,
         allowancesFor,
+        enforcementFor,
         formatAllowance,
         isPermanentApplication
     });
