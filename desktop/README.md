@@ -5,13 +5,15 @@ navigation and stop it — and this holds everything the browser cannot reach:
 limits on applications rather than sites, schedules, the full record, and later
 the community servers.
 
-**Status: Phase 2.** The window, the tray, the loopback service and pairing all
-work, and syncing is bidirectional — The Fortress here edits categories, and the
-edit reaches the browser on its next tick. See `SYNC-PROTOCOL.md` for how the
-two halves find each other and what they exchange.
+**Status: Phase 3.** The window, the tray, the loopback service and pairing all
+work, syncing is bidirectional, and **this app blocks programs**. Add one from
+*The Fortress*, and opening it minimizes it and raises the same gate a blocked
+site raises — the same task, the same cooldown, and a walk-away or an unlock
+recorded against the same streak.
 
-Not built yet: limits on applications rather than sites, which is Phase 3 and
-the actual reason to install this.
+- `SYNC-PROTOCOL.md` — how the two halves find each other and what they exchange.
+- `APP-LIMITS.md` — what a program block is, how it is enforced, and why it is
+  the mechanic sites already have rather than a daily budget (yet).
 
 ---
 
@@ -39,17 +41,23 @@ references `desktop/`, so it is excluded without anyone having to remember.
 ```
 desktop/
   SYNC-PROTOCOL.md      how the two halves talk — read this first
+  APP-LIMITS.md         blocking programs: the design, and what it decided
   src/                  the window: plain HTML, CSS and JS, no build step
     index.html
-    app.js              shell, routing, pairing, the fortress editor
+    app.js              shell, routing, pairing, the fortress editor, the
+                        program picker, and what the watcher is told to enforce
+    gate.html           the window a blocked program gets you
+    gate.js             its task, cooldown and record-keeping
     styles/
       app.css
+      gate.css
       tokens.css        GENERATED — do not edit
       fonts/            GENERATED — do not edit
         *.woff2         Playfair Display, so nothing is fetched from Google
         OFL.txt         the licence it has to travel with
     shared/             GENERATED — do not edit
       sync.js           the merge and authoring rules, verbatim
+      applications.js   what a program is, and which can never be blocked
       categories.js
       tasks.js
     assets/
@@ -58,8 +66,14 @@ desktop/
     sync-shared.mjs     copies all of the above in from the repo root
   src-tauri/            the Rust side — window, tray, and the loopback service
     src/
-      lib.rs            commands, tray, lifecycle
+      lib.rs            commands, tray, the gate window, the watch loop
       service.rs        the HTTP service, and its tests
+      watcher.rs        which program is in front, minimizing it, and the
+                        list the picker offers — and its tests
+    capabilities/
+      default.json      BOTH windows. The gate is told what it is guarding by
+                        an event, and a window outside every capability cannot
+                        listen for one — its buttons silently stop working.
 ```
 
 Everything marked GENERATED is a copy, gitignored, with a banner saying so.
@@ -133,12 +147,23 @@ a bad trade against thirty seconds of `init`.
 ## Tests
 
 ```bash
-cargo test --lib service
+cargo test --lib
 ```
 
-Drives the real router through `oneshot`, so what is exercised is the thing that
-is served: the round trip, the compare-and-set refusal, an unpaired request, and
-a `text/plain` body that must never reach a handler.
+`service` drives the real router through `oneshot`, so what is exercised is the
+thing that is served: the round trip, the compare-and-set refusal, an unpaired
+request, and a `text/plain` body that must never reach a handler.
+
+`watcher` covers the decision half of enforcement, which is pure: a blocked
+program raises the gate once and not on every poll, leaving and coming back is a
+new decision, a live unlock lets it through and an expired one does not, and the
+list survives a restart. The Win32 half cannot be unit-tested; it was checked on
+the running app through Windows UI Automation — open Notepad, the gate names
+it, Notepad is minimized, walk away, twice.
+
+`Tests/applications.test.js`, at the repository root, covers the rest: the
+identity rule, the merge, the weakening path, the programs that can never be
+blocked, and a program given up from the browser actually being saved.
 
 The extension's own suites are dependency-free and run with plain `node` from
 the repository root — `Tests/wire.test.js` is the one that covers this app,
@@ -146,9 +171,46 @@ running the real `LocalPeer.js` against a stand-in for the service here.
 
 ---
 
+## Building on Windows 11
+
+**Smart App Control blocks a Rust build.** It refuses to run any unsigned
+executable it has not seen before, and a build creates dozens — every crate's
+build script, and `dominus.exe` itself. The failure looks like this:
+
+```
+could not execute process `target\debug\build\...\build-script-build` (never executed)
+An Application Control policy has blocked this file
+```
+
+A Windows update can switch it on. The only fix for development is turning it
+off (Windows Security → App & browser control → Smart App Control), and it
+cannot be turned back on without resetting Windows, so that is the owner's
+decision to make. Signing does not help day to day: it only trusts
+certificates from a real authority, which suits release builds.
+
+**Run one build at a time.** `npm run dev` rebuilds the moment a file under
+`src-tauri/` changes. A `cargo check` or `cargo test` started alongside it uses
+different feature flags, and the two fight over `target/` badly enough to leave
+it unusable. Stop the dev server first.
+
+**`npm run dev` is the app.** It stays running for as long as the window does,
+and ends when Dominus is quit from the tray. Stopping it closes the app — and
+can leave `dominus.exe` behind, which the single-instance guard then hands every
+new launch back to. Check for a leftover process before relaunching.
+
+---
+
 ## Still loose
 
 **Autostart is half-built.** The plugin is registered and never enabled, and
 there is no toggle, so the app does not start with the machine. It wants a
-control on The Seal rather than being switched on silently.
+control on The Seal rather than being switched on silently. It matters more now
+than it did: program blocks are only enforced while this app is running.
+
+**Program blocks are Windows-only.** `watcher.rs` compiles everywhere and does
+nothing off Windows; a second platform needs `foreground()`, `minimize()` and
+`running_applications()`, and nothing else.
+
+**No daily budget.** A program is blocked or it is not. Budgets are 1.13, with
+a settings page for what counts against you — see the end of `APP-LIMITS.md`.
 

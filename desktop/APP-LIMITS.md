@@ -3,9 +3,10 @@
 Phase 3, and the actual reason to install the desktop app. The browser cannot
 see Steam. This can.
 
-Status: **design**. Written before either side has code, for the same reason
-`SYNC-PROTOCOL.md` was — the decisions below get expensive to change once a
-fortress in the wild contains applications.
+Status: **built, Windows only.** Written before either side had code, for the
+same reason `SYNC-PROTOCOL.md` was, and amended where building it proved the
+design wrong. The amendments are marked *Changed in building*, because the
+reason a decision was reversed is worth more than the decision.
 
 ---
 
@@ -106,6 +107,41 @@ They are closer to `manualSites` — a flat list of things you blocked by hand �
 with `enabled` and `permanent` on each, because switching one off has to be a
 weakening the seal can see.
 
+### Choosing a program
+
+The desktop app offers a list of what is open right now: top-level windows that
+are visible, titled, unowned and not tool windows — the ones in the taskbar —
+grouped by executable. That filter is what turns a process table of two hundred
+entries into a list of things a person recognises. Each row shows a window title
+beside the executable to help with that; the title is never stored.
+
+*Changed in building:* the list was fetched once, when the picker opened, and
+went stale in the most ordinary use of it — close one program, open the one you
+mean to block, and the picker still showed the first and not the second. It now
+asks again every two seconds while it is visible, and again when the window
+regains focus, and only redraws when the answer changed.
+
+### Programs that can never be blocked
+
+A floor, not a preference. `PROTECTED_EXECUTABLES` in `Applications.js`:
+
+| | why |
+|---|---|
+| `explorer.exe` | the Windows shell. It owns the taskbar and the desktop, so clicking either makes it the foreground — and the gate would minimize the thing you use to get anywhere |
+| `taskmgr.exe` | the way out of anything. A fortress that can block the exit is a cage |
+| `dominus.exe` | the gate is a Dominus window |
+| `systemsettings.exe` | where a program you truly do not want is uninstalled — the honest fix, which Dominus must never stand in front of |
+| `applicationframehost.exe` | hosts every Store app, so blocking it would block all of them under one name |
+| the rest | parts of Windows that briefly take the foreground: Start, search, the lock screen, notifications |
+
+Enforced where an application **enters** the fortress: `normalizeApplication()`
+refuses these, so a list from a peer, a backup or a hand-edited file cannot
+carry one in either. The picker leaves them out rather than showing them
+disabled — a greyed-out Task Manager invites a question whose only answer is
+"because it would lock you out".
+
+Rust deliberately has no copy of this list. The decision is made once.
+
 ---
 
 ## Merging
@@ -167,6 +203,14 @@ That is all it holds. It has no merge rules, no authoring rules, and no opinion
 about what should be blocked — the same division as everywhere else in this
 protocol.
 
+The window sends it on load, after every edit, and on a twenty-second timer. The
+timer carries a change that arrived from the extension while nobody was looking;
+the extension reconciles once a minute, so anything faster only re-sends what
+Rust already has, and an unchanged list is skipped. A window with no state at
+all sends nothing — an empty list from a fresh window would switch every block
+off. Rust keeps the last list in `enforced.json`, so a cold start enforces before
+the window has spoken.
+
 The watcher polls the foreground window once a second:
 
 ```
@@ -221,6 +265,20 @@ Three ways out:
   trap input — you can alt-tab away from it, and the blocked app stays
   minimized because nothing un-minimized it.
 
+An unlock opens the program for fifteen minutes. The expiry goes into
+`tempUnlocks` beside the site ones, keyed by executable, and into what Rust
+enforces — so the gate returns on its own when the window closes.
+
+*Changed in building:* the gate learns what it is guarding from a `gate-raised`
+event, and the gate window was missing from the capability that permits
+listening for one. Nothing failed loudly. Plain commands still worked, so the
+first Walk Away closed the gate — but the gate never knew which program it was
+guarding, never loaded the fortress, recorded nothing, and never reset, so every
+button on the next gate did nothing at all. Both windows are in the capability
+now, and the gate no longer depends on the event: it asks Rust what it is
+guarding whenever it is shown or focused, and every button waits for the
+fortress to finish loading before it answers.
+
 ### Why the exe goes in `domain`
 
 Because the event log already does everything needed, and puts it in the right
@@ -244,16 +302,38 @@ thing to record needed no new kind of record.
 ## What the extension does with applications
 
 Stores them, merges them, seals them, exports them — and enforces none of them,
-because it cannot see a process.
+because it cannot see a process. It still has to carry them: the extension is
+the merge authority and the record holder, and a fortress that lost its
+applications whenever the desktop app was closed would not be one fortress.
 
-The extension's *Fortress* lists them read-only, with a line saying they are
-managed in the desktop app. It cannot offer to add one: choosing an application
-means picking from the programs actually running on the machine, and a browser
-has no way to show that list.
+Its *Fortress* has a **Programs** panel with *Stand down* and *Remove*. It
+cannot add one — that means picking from what is running, which a browser
+cannot see — but adding never needed the seal anyway. Each action saves on its
+own, like *Remove Task*: an open fortress holds the confirm for ten seconds, and
+a sealed one goes straight to the seal prompt, which names the program.
 
-It still has to carry them. The extension is the merge authority and the record
-holder — a fortress that lost its applications the moment the desktop app was
-closed would not be one fortress.
+*Changed in building:* this was designed read-only, and that was wrong. On a
+sealed fortress the desktop app refuses every weakening, because the password
+prompt lives in the extension — so a program blocked from the app could not be
+unblocked anywhere. A block that can only be taken down somewhere the seal
+cannot be asked for is a block that cannot be taken down at all.
+
+Building it also found that `writeFortress()` never wrote programs: a removal
+would have passed the seal, stamped its record, and not been saved. It writes
+them now whenever the state carries them, and leaves them alone when a save
+never read them.
+
+### Saying what the controls mean
+
+*Stand down* is off for now, with nothing deleted; *Remove* is gone for good;
+*Take up* turns it back on. Both surfaces say so on hover, in the same words.
+
+On a sealed fortress the desktop app's weakening controls are held with
+`aria-disabled` rather than `disabled`, because Chromium does not reliably show
+a tooltip on a disabled button — and the moment someone meets the not-allowed
+cursor is the moment the explanation matters. They say what they would do and
+then that the prompt is in The Fortress in Chrome, and a click explains the same
+in the status line rather than doing nothing.
 
 ---
 
