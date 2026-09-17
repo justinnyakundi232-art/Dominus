@@ -10,6 +10,11 @@ the desktop app is worth installing — pairing alone is too thin to spend a
 version number on.
 
 ### Added
+- **Block programs, not just sites.** The thing a browser extension can never do. In the desktop app, *The Fortress* → *Applications* → *Block a program* lists what you have open; pick one, and from then on opening it puts it away — the window is minimized and the Dominus gate comes up in front of it. It is the same gate a blocked site gives you: the same unlock task, the same cooldown, escalating the same way, and walking away or unlocking counts toward the same streaks. An unlock opens the program for fifteen minutes.
+- **Nothing is ever closed on you.** A blocked program is minimized, never shut, so nothing unsaved is lost — unlocking simply lets you switch back to it.
+- **Some programs can never be blocked,** however they arrive: File Explorer (it runs the taskbar, so the gate would hide the thing you use to get anywhere), Task Manager (the way out of anything), Settings (where a program you truly don't want is uninstalled), the host every Store app runs inside, and Dominus itself.
+- **Programs in the extension, too.** *The Fortress* in Chrome has a *Programs* panel where a program can be stood down or removed — and on a sealed fortress, that is the only place it can be, because that is where your password is asked for. Adding one stays in the desktop app, which is the only half that can see what is running.
+- **Every control says what it does.** Hover *Stand down*, *Take up* or *Remove* — in either half — to see which is off-for-now and which is gone-for-good. On a sealed fortress, the controls you cannot use from the app say so on hover and on click, and tell you to open *The Fortress* in Chrome.
 - **Dominus for the desktop, and it holds your fortress rather than watching it.** Pair the app with the extension once, with a six-character code, and the two keep each other up to date from then on. The browser still keeps the gate — it is the only thing that can see a navigation and stop it — but the app is now somewhere your fortress genuinely lives rather than a window showing you a copy of it.
 - **Edit your fortress from the app.** *The Fortress* lists your categories, and each one can be switched on or off, have a site added or taken off, or be removed. The change reaches the browser within a minute. Until now the extension was the only place anything could be changed.
 - **The seal still means something in the app.** Strengthening your fortress from the desktop is free, the way it always was. Taking a defence down asks for your password — and because that prompt lives in the extension, the app says so and sends you there rather than letting you around it. Installing a second thing is not allowed to make the seal cheaper to get past.
@@ -23,7 +28,8 @@ version number on.
 
 ### Notes
 - **Still no data leaves your device** — and now genuinely nothing does, in either half. The two halves talk over `127.0.0.1`, the loopback address, which nothing on your network and nothing on the internet can reach. There is no account, no server, and as of this release no font host either.
-- The app is not yet the reason to install it. Limits on **applications** rather than sites — the thing an extension can never do — come next, and they arrive after syncing rather than before, because an app limit that disagrees with your fortress is worse than no app limit at all.
+- **Program blocking is Windows-only,** and it works only while the desktop app is running — it lives in the tray when its window is closed. Starting it with your computer is not switched on yet.
+- **A program is blocked or it isn't.** A daily allowance — thirty minutes of a game, say — is the better answer for programs, because a program you truly didn't want you would uninstall, and a website can't be uninstalled. It comes in a later release, together with a settings page for choosing what counts against your streak.
 
 ## [1.11] — 2026-08-31
 

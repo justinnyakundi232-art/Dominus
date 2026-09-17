@@ -762,14 +762,25 @@ function writeFortress(state) {
     // it would leave what is enforced disagreeing with what is shown.
     const blockedSites = computeBlockedSites(state.categories, state.manualSites);
 
+    const writes = {
+        [CATEGORY_DEFS_KEY]: state.categories,
+        [MANUAL_SITES_KEY]: state.manualSites,
+        blockedSites: blockedSites,
+        unlockTask: state.task,
+        cooldownSettings: normalizeCooldown(state.cooldown)
+    };
+
+    // Applications are written too, or a program stood down or removed here —
+    // behind the seal, which is the only place a sealed fortress can give one
+    // up — would pass the prompt, stamp its record, and then never be saved.
+    // Only when present: a state that never read them must not clear them.
+    if (Array.isArray(state.applications)) {
+        writes[APPLICATIONS_KEY] = normalizeApplicationList(state.applications);
+    }
+
     return new Promise((resolve) => {
-        chrome.storage.local.set({
-            [CATEGORY_DEFS_KEY]: state.categories,
-            [MANUAL_SITES_KEY]: state.manualSites,
-            blockedSites: blockedSites,
-            unlockTask: state.task,
-            cooldownSettings: normalizeCooldown(state.cooldown)
-        }, () => resolve({ saved: true, blockedSites: blockedSites, state: state }));
+        chrome.storage.local.set(writes,
+            () => resolve({ saved: true, blockedSites: blockedSites, state: state }));
     });
 }
 

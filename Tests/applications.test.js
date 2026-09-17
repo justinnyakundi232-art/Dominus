@@ -378,6 +378,37 @@ async function run() {
             "one of two removals made before a sync was lost");
     });
 
+    describe("Giving a program up from the browser");
+
+    await it("saves it, and writes the record the desktop app will honour", async () => {
+        // The extension cannot add a program, but on a sealed fortress it is the
+        // only place one can be given up. writeFortress() once left programs out,
+        // so a removal passed the seal, stamped its record, and was never saved.
+        const L = loadSharedLayer();
+        L.store.applications = [app("notepad.exe", { name: "Notepad" }), app("steam.exe")];
+
+        const outcome = await L.scope.commitFortress({ applications: [app("steam.exe")] });
+        ok(outcome.saved, "an unsealed removal was refused");
+
+        const stored = await L.scope.loadApplications();
+        eq(ids(stored), ["app:steam.exe"], "the removal was not saved");
+
+        const meta = await L.scope.getSyncMetaRaw();
+        const records = S.normalizeAuthoredList(meta.authored);
+        eq(records.length, 1, "no weakening record was stamped");
+        eq(records[0].applicationsRemoved, ["app:notepad.exe"]);
+    });
+
+    await it("leaves programs alone when a save never read them", async () => {
+        // SAVE FORTRESS commits categories and standards. It must not clear the
+        // programs on the way past.
+        const L = loadSharedLayer();
+        L.store.applications = [app("steam.exe")];
+
+        await L.scope.writeFortress({ categories: [], manualSites: [], task: null, cooldown: null });
+        eq(ids(await L.scope.loadApplications()), ["app:steam.exe"]);
+    });
+
     describe("What the seal says out loud");
 
     await it("names the program, not the executable", async () => {

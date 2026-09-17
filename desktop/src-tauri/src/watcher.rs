@@ -214,60 +214,135 @@ impl WatchInner {
 /// mean "nothing to do this tick", and the next one is a second away.
 #[cfg(target_os = "windows")]
 pub fn foreground() -> Option<(String, isize)> {
-    use windows_sys::Win32::Foundation::{CloseHandle, MAX_PATH};
-    use windows_sys::Win32::System::Threading::{
-        OpenProcess, QueryFullProcessImageNameW, PROCESS_QUERY_LIMITED_INFORMATION,
-    };
-    use windows_sys::Win32::UI::WindowsAndMessaging::{
-        GetForegroundWindow, GetWindowThreadProcessId,
-    };
+    use windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
 
     unsafe {
         let hwnd = GetForegroundWindow();
         if hwnd.is_null() {
             return None;
         }
-
-        let mut pid: u32 = 0;
-        GetWindowThreadProcessId(hwnd, &mut pid);
-        if pid == 0 {
-            return None;
-        }
-
-        // The least privilege that answers the question. PROCESS_QUERY_INFORMATION
-        // would also work and would additionally fail against anything running
-        // at a higher integrity level, which would mean Dominus had to be
-        // elevated to see that a game was open.
-        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
-        if handle.is_null() {
-            return None;
-        }
-
-        let mut buffer = [0u16; MAX_PATH as usize];
-        let mut len = buffer.len() as u32;
-        let ok = QueryFullProcessImageNameW(handle, 0, buffer.as_mut_ptr(), &mut len);
-        CloseHandle(handle);
-
-        if ok == 0 || len == 0 {
-            return None;
-        }
-
-        let path = String::from_utf16_lossy(&buffer[..len as usize]);
-        let name = basename(&path);
-        if name.is_empty() {
-            return None;
-        }
-
-        Some((name, hwnd as isize))
+        exe_for_window(hwnd).map(|name| (name, hwnd as isize))
     }
+}
+
+/// The executable basename behind a window, lowercased. Shared by the watcher
+/// and the picker, so the name a program is added under is exactly the name it
+/// is later matched by.
+#[cfg(target_os = "windows")]
+unsafe fn exe_for_window(hwnd: windows_sys::Win32::Foundation::HWND) -> Option<String> {
+    use windows_sys::Win32::Foundation::{CloseHandle, MAX_PATH};
+    use windows_sys::Win32::System::Threading::{
+        OpenProcess, QueryFullProcessImageNameW, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+    use windows_sys::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
+
+    let mut pid: u32 = 0;
+    GetWindowThreadProcessId(hwnd, &mut pid);
+    if pid == 0 {
+        return None;
+    }
+
+    // The least privilege that answers the question. PROCESS_QUERY_INFORMATION
+    // would also work and would additionally fail against anything running at a
+    // higher integrity level, which would mean Dominus had to be elevated to see
+    // that a game was open.
+    let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+    if handle.is_null() {
+        return None;
+    }
+
+    let mut buffer = [0u16; MAX_PATH as usize];
+    let mut len = buffer.len() as u32;
+    let ok = QueryFullProcessImageNameW(handle, 0, buffer.as_mut_ptr(), &mut len);
+    CloseHandle(handle);
+
+    if ok == 0 || len == 0 {
+        return None;
+    }
+
+    let name = basename(&String::from_utf16_lossy(&buffer[..len as usize]));
+    if name.is_empty() {
+        None
+    } else {
+        Some(name)
+    }
+}
+
+/// A program the picker can offer: something with a window a person would
+/// recognise, not one of the two hundred processes Windows runs behind them.
+#[derive(Clone, Serialize)]
+pub struct RunningApplication {
+    pub exe: String,
+    /// The title of one of its windows, so "chrome.exe" can be shown beside
+    /// something the user actually recognises. Not stored anywhere.
+    pub title: String,
+}
+
+/// Visible, titled, top-level, unowned, non-tool windows — the ones in the
+/// taskbar — grouped by executable. That filter is what turns a process table
+/// into a list of things someone has actually opened.
+///
+/// Protected executables are NOT filtered here. That is Applications.js's
+/// decision, made where an application enters the fortress, and a second copy of
+/// the list in Rust would be a second list to keep in step.
+#[cfg(target_os = "windows")]
+pub fn running_applications() -> Vec<RunningApplication> {
+    use windows_sys::Win32::Foundation::{HWND, LPARAM};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        EnumWindows, GetWindow, GetWindowLongPtrW, GetWindowTextLengthW, GetWindowTextW,
+        IsWindowVisible, GWL_EXSTYLE, GW_OWNER, WS_EX_TOOLWINDOW,
+    };
+
+    unsafe extern "system" fn visit(hwnd: HWND, lparam: LPARAM) -> i32 {
+        let found = &mut *(lparam as *mut Vec<RunningApplication>);
+
+        if IsWindowVisible(hwnd) == 0 || !GetWindow(hwnd, GW_OWNER).is_null() {
+            return 1;
+        }
+        if (GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32) & WS_EX_TOOLWINDOW != 0 {
+            return 1;
+        }
+
+        let len = GetWindowTextLengthW(hwnd);
+        if len <= 0 {
+            return 1;
+        }
+        let mut buffer = vec![0u16; len as usize + 1];
+        let copied = GetWindowTextW(hwnd, buffer.as_mut_ptr(), buffer.len() as i32);
+        let title = String::from_utf16_lossy(&buffer[..copied.max(0) as usize])
+            .trim()
+            .to_string();
+        if title.is_empty() {
+            return 1;
+        }
+
+        if let Some(exe) = exe_for_window(hwnd) {
+            if !found.iter().any(|entry| entry.exe == exe) {
+                found.push(RunningApplication { exe, title });
+            }
+        }
+        1
+    }
+
+    let mut found: Vec<RunningApplication> = Vec::new();
+    unsafe {
+        EnumWindows(Some(visit), &mut found as *mut _ as LPARAM);
+    }
+    found.sort_by(|a, b| a.exe.cmp(&b.exe));
+    found
 }
 
 #[cfg(not(target_os = "windows"))]
 pub fn foreground() -> Option<(String, isize)> {
     // Applications are Windows-only in Phase 3. The rest of this file compiles
     // and is tested everywhere, so the day a second platform arrives it needs
-    // this function and nothing else.
+    // this function and the two below, and nothing else.
     None
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn running_applications() -> Vec<RunningApplication> {
+    Vec::new()
 }
 
 /// Minimizes a window by handle.

@@ -149,6 +149,13 @@ fn set_enforced(watch: tauri::State<Watch>, enforced: Enforced) {
     }
 }
 
+/// The programs the picker can offer. Enumerated on request rather than kept
+/// up to date, because nothing needs it except a person looking at the list.
+#[tauri::command]
+fn running_applications() -> Vec<watcher::RunningApplication> {
+    watcher::running_applications()
+}
+
 /// What the gate is currently standing in front of, if anything.
 ///
 /// The gate window asks for this on load rather than being handed it, because a
@@ -233,6 +240,7 @@ pub fn run() {
             service_status,
             new_pairing_code,
             set_enforced,
+            running_applications,
             pending_gate,
             close_gate,
             peer_state,

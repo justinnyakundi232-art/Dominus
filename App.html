@@ -179,6 +179,20 @@
                   SAVE FORTRESS
                 </button>
 
+                <!-- Programs are added in the desktop app, the only half of Dominus
+                     that can see one. They can be stood down or removed from here
+                     as well, because on a sealed fortress this browser holds the
+                     password prompt — and a block that can only be taken down
+                     somewhere the seal cannot be asked for is a block that cannot
+                     be taken down at all. Each action saves on its own; SAVE
+                     FORTRESS above is not needed for these. -->
+                <section class="panel applications-panel" id="applicationsPanel">
+                  <h2 class="panel-heading">PROGRAMS</h2>
+                  <p class="panel-description">BLOCKED FROM THE DESKTOP APP</p>
+                  <p class="panel-note" id="applicationsNote"></p>
+                  <ul class="application-list" id="applicationList"></ul>
+                </section>
+
                 <!-- Friction gate for removing a task. Mirrors the popup's block-removal
                      gate: name what's being given up, show the streak at stake, and hold
                      the confirm button shut long enough for the impulse to pass. -->

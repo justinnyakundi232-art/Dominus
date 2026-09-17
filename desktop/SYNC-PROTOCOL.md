@@ -208,10 +208,29 @@ extension that wanted to weaken a fortress does not need this endpoint — it is
 the extension, it holds the enforceable copy, and the user can remove it in two
 clicks. The protocol is not trying to be stronger than the product.
 
-What the app does **not** do is accept a commit as an instruction it then acts
-on independently. It stores it. Phase 3, where the app starts enforcing limits
-on applications rather than mirroring the browser, is where that stops being
-free — and is where this section will need arguing again.
+### Phase 3: the app acts on what it is committed
+
+Until Phase 3 the app only stored a commit. Now it enforces one: the program
+list in a committed state is what the watcher minimizes. That was flagged here
+as the point where this grant would need arguing again, so here it is.
+
+A paired extension can now make the app **block** programs. It cannot make it do
+anything worse than that, for three reasons:
+
+- **Blocking is minimizing.** Nothing is killed and nothing is lost. The worst a
+  bad commit can do is put a program behind a gate the user can walk through.
+- **It cannot block the way out.** Explorer, Task Manager, Settings and Dominus
+  itself are dropped by `normalizeApplicationList()`, which every reader of a
+  program list goes through — including the one that works out what the watcher
+  enforces. A commit carrying one is stored as sent and changes nothing. See
+  *Programs that can never be blocked* in `APP-LIMITS.md`.
+- **It cannot unblock without the seal.** Taking a program down still needs an
+  authored record, and on a sealed fortress that record is written on the far
+  side of the extension's password prompt, exactly as for a site.
+
+The extension could equally have blocked every site the user visits; a program
+is the same grant made on the desktop. The protocol is still not trying to be
+stronger than the product.
 
 ### Authoring, on the app's side
 
