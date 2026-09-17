@@ -660,3 +660,67 @@
     line-height:1.5;
     text-align:center;
 }
+
+/* ---- Programs ------------------------------------------------------------
+   Blocked from the desktop app, given up from here. Full width under the two
+   panels rather than squeezed beside them: it is a different kind of list,
+   saved on its own rather than with SAVE FORTRESS. */
+
+.applications-panel{
+    width:auto;
+    max-width:1025px;
+    margin:30px auto 0;
+    box-sizing:border-box;
+    text-align:left;
+}
+
+.applications-panel .panel-heading,
+.applications-panel .panel-description{
+    text-align:center;
+}
+
+.application-list{
+    list-style:none;
+    margin:14px 0 0;
+    padding:0;
+}
+
+.application-row{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:16px;
+    border:1px solid var(--gold-deep);
+    padding:8px 12px;
+    margin-bottom:8px;
+}
+
+.application-label{
+    display:flex;
+    flex-direction:column;
+    min-width:0;
+}
+
+.application-name{
+    font-size:1.1rem;
+    color:var(--gold);
+    overflow-wrap:anywhere;
+}
+
+.application-row.is-down .application-name{ color:var(--muted); }
+
+.application-exe{
+    font-size:0.85rem;
+    color:var(--muted);
+}
+
+.application-actions{
+    display:flex;
+    gap:8px;
+    flex-shrink:0;
+}
+
+.application-actions .task-btn{
+    padding:6px 12px;
+    cursor:pointer;
+}

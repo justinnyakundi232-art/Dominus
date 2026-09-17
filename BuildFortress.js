@@ -792,9 +792,16 @@ let removeTaskCountdownInterval = null;
 let pendingTaskRemoval = null;
 let pendingTaskRemovalCancel = null;
 
-function openRemoveTaskModal(task, message, onConfirm, onCancel) {
+const removeTaskModalTitle = removeTaskModal.querySelector(".modal-title");
+
+// `labels` lets the programs panel borrow this gate without it announcing a
+// task. Set on every open, so a program's wording never lingers into a task's.
+function openRemoveTaskModal(task, message, onConfirm, onCancel, labels) {
     pendingTaskRemoval = onConfirm;
     pendingTaskRemovalCancel = onCancel || null;
+
+    const words = Object.assign({ title: "REMOVE THIS TASK?", confirm: "REMOVE TASK" }, labels || {});
+    if (removeTaskModalTitle) removeTaskModalTitle.textContent = words.title;
 
     removeTaskModalText.textContent = message;
 
@@ -810,7 +817,7 @@ function openRemoveTaskModal(task, message, onConfirm, onCancel) {
     });
 
     removeTaskModal.hidden = false;
-    startModalCooldown(removeTaskModalConfirm, "REMOVE TASK", (interval) => {
+    startModalCooldown(removeTaskModalConfirm, words.confirm, (interval) => {
         removeTaskCountdownInterval = interval;
     });
 }
@@ -839,6 +846,141 @@ removeTaskModalConfirm.addEventListener("click", () => {
     closeRemoveTaskModal();
     confirmed();
 });
+
+// ---- Programs -------------------------------------------------------------
+// Added in the desktop app, which is the only half of Dominus that can see a
+// program. Shown here, and given up from here, because on a sealed fortress
+// this browser holds the password prompt: a block that could only be taken
+// down where the seal cannot be asked for could not be taken down at all.
+//
+// Nothing here enforces anything. The desktop app does, once this edit reaches
+// it on the next sync — which the note under each action says, because "I
+// removed it and it is still blocking" is otherwise a fair complaint for a
+// minute.
+//
+// Each action commits on its own, the way Remove Task does, rather than
+// joining the working copy SAVE FORTRESS writes.
+
+function renderApplicationsPanel(applications, message) {
+    const list = document.getElementById("applicationList");
+    const note = document.getElementById("applicationsNote");
+    if (!list || !note) return;
+
+    list.textContent = "";
+
+    note.textContent = message || (applications.length
+        ? "Put away by the desktop app when opened. Standing one down or removing it"
+            + " here takes effect there on the next sync, within a minute."
+        : "No programs blocked. Programs are added from The Fortress in the desktop"
+            + " app, which can see what is running — this browser cannot.");
+
+    applications.forEach((application) => {
+        const row = document.createElement("li");
+        row.className = "application-row" + (application.enabled ? "" : " is-down");
+
+        const label = document.createElement("span");
+        label.className = "application-label";
+
+        const name = document.createElement("span");
+        name.className = "application-name";
+        // A name the user chose, arriving from another device. Text, never markup.
+        name.textContent = application.name || application.exe;
+
+        const exe = document.createElement("span");
+        exe.className = "application-exe";
+        exe.textContent = application.enabled
+            ? application.exe + (application.permanent ? " · permanent" : "")
+            : application.exe + " · stood down";
+
+        label.append(name, exe);
+        row.appendChild(label);
+
+        const actions = document.createElement("span");
+        actions.className = "application-actions";
+
+        const toggle = document.createElement("button");
+        toggle.type = "button";
+        toggle.className = "task-btn";
+        toggle.textContent = application.enabled ? "Stand down" : "Take up";
+        toggle.addEventListener("click", () => requestApplicationChange(application, "toggle"));
+        actions.appendChild(toggle);
+
+        // Permanent means permanent, in both windows.
+        if (!application.permanent) {
+            const remove = document.createElement("button");
+            remove.type = "button";
+            remove.className = "task-btn";
+            remove.textContent = "Remove";
+            remove.addEventListener("click", () => requestApplicationChange(application, "remove"));
+            actions.appendChild(remove);
+        }
+
+        row.appendChild(actions);
+        list.appendChild(row);
+    });
+}
+
+// What the panel last said about an action. Kept, because the save that
+// produced it also fires the storage listener below, and a redraw that forgot it
+// would wipe "Steam removed." the instant it appeared.
+let applicationsMessage = null;
+
+function refreshApplicationsPanel(message) {
+    if (message !== undefined) applicationsMessage = message;
+    return loadApplications().then((applications) => {
+        renderApplicationsPanel(applications, applicationsMessage);
+        return applications;
+    });
+}
+
+// Same shape as Remove Task: taking a program back up is strengthening and
+// saves at once; giving one up passes the ten-second gate on an open fortress,
+// or goes straight to the seal prompt on a sealed one — which names the program
+// itself, so a second gate on top would only be friction paid twice.
+function requestApplicationChange(application, kind) {
+    // Removing or standing down a program that is switched on gives ground.
+    // Anything done to one already stood down does not — the same test
+    // describeApplicationChanges() applies before the seal prompt says a word.
+    const weakening = application.enabled;
+
+    const apply = () => loadApplications().then((current) => {
+        const next = kind === "remove"
+            ? current.filter((entry) => entry.id !== application.id)
+            : current.map((entry) => entry.id !== application.id ? entry : Object.assign({}, entry, {
+                enabled: !entry.enabled,
+                // Permanence cannot outlive being switched off.
+                permanent: entry.enabled ? false : entry.permanent
+            }));
+
+        return commitFortress({ applications: next }).then((outcome) => {
+            if (!outcome.saved) {
+                return refreshApplicationsPanel("Nothing changed — the seal was not given.");
+            }
+            const done = kind === "remove"
+                ? `${application.name} removed.`
+                : `${application.name} ${application.enabled ? "stood down" : "taken up"}.`;
+            return refreshApplicationsPanel(`${done} The desktop app applies it on the next sync, within a minute.`);
+        });
+    });
+
+    if (!weakening) return apply();
+
+    isSealed().then((sealed) => {
+        if (sealed) return apply();
+
+        openRemoveTaskModal(
+            null,
+            kind === "remove"
+                ? `Remove ${application.name}? The desktop app will stop putting it away when you open it.`
+                : `Stand ${application.name} down? It stays in the list, but opening it will no longer be stopped.`,
+            apply,
+            null,
+            kind === "remove"
+                ? { title: "REMOVE THIS PROGRAM?", confirm: "REMOVE PROGRAM" }
+                : { title: "STAND THIS PROGRAM DOWN?", confirm: "STAND DOWN" }
+        );
+    });
+}
 
 // ---- The seal panel -------------------------------------------------------
 // Where the seal is set, changed and broken. Everything here goes through
@@ -1108,4 +1250,12 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     renderSealPanel();
+    refreshApplicationsPanel();
+
+    // Programs arrive from the desktop app on a sync, while this page may well
+    // be open. Redrawn when they change rather than only on load — a list that
+    // stays as it was when the page opened is the bug the desktop picker had.
+    chrome.storage.onChanged.addListener((changes, area) => {
+        if (area === "local" && changes[APPLICATIONS_KEY]) refreshApplicationsPanel();
+    });
 });
