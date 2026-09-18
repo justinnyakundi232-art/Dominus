@@ -179,6 +179,27 @@ fn close_gate(app: tauri::AppHandle, watch: tauri::State<Watch>) {
     }
 }
 
+/// Asks a program to close, because the user walked away from it.
+///
+/// Minimizing is what keeps a gate honest while it is being answered, and it is
+/// the wrong thing to be left with afterwards: a program that is only ever
+/// minimized is one the user cannot get back to in order to close, and clicking
+/// it in the taskbar just minimizes it again. That loop is escapable — hover the
+/// taskbar, close it from the preview — but only if you already know, and
+/// nobody in the middle of being told no is in the mood to work it out.
+///
+/// A request, never a kill. See `watcher::close_windows()`.
+#[tauri::command]
+fn close_application(exe: String, watch: tauri::State<Watch>) -> usize {
+    // The grace is marked first. A program with unsaved work answers WM_CLOSE
+    // with a question, and the poll that would minimize that question can land
+    // before this function has returned.
+    if let Ok(mut guard) = watch.lock() {
+        guard.mark_closing(&exe, service::now_ms());
+    }
+    watcher::close_windows(&exe)
+}
+
 /// Everything counted since the window last asked, for it to write into the
 /// day's usage event. Rust never writes a record; see "Spending" in
 /// ../APP-LIMITS.md.
@@ -326,6 +347,7 @@ pub fn run() {
             close_notice,
             pending_gate,
             close_gate,
+            close_application,
             peer_state,
             put_state
         ])

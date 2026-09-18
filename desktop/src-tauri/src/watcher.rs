@@ -43,6 +43,13 @@ pub const POLL_INTERVAL_MS: u64 = 1000;
 /// spend an allowance nobody used.
 pub const MAX_TICK_MS: u64 = 3 * POLL_INTERVAL_MS;
 
+/// How long the gate stands aside for a program it asked to close.
+///
+/// Long enough to answer "save changes?" without hurrying, short enough that it
+/// is no use as a way through. It is not an unlock: nothing is recorded, and
+/// when it lapses the program is gated again exactly as it was.
+pub const CLOSE_GRACE_MS: u64 = 30_000;
+
 /// A program allowed some time a day. Seconds, because seconds are what the
 /// watcher counts in; the window converts from the minutes a person set.
 #[derive(Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -179,6 +186,9 @@ pub struct WatchInner {
     /// for. Changing the allowance or the warning arms the reminder again.
     warned: HashMap<(String, String), Allowance>,
     pub notice: Option<Notice>,
+    /// Programs asked to close, and the instant the gate stops standing aside
+    /// for them. See `mark_closing()`.
+    closing: HashMap<String, u64>,
 }
 
 pub type Watch = Arc<Mutex<WatchInner>>;
@@ -206,6 +216,41 @@ impl WatchInner {
             .keys()
             .map(|exe| (exe.clone(), self.spent(exe)))
             .collect()
+    }
+
+    /// Stands the gate aside for `exe` while it shuts down.
+    ///
+    /// Walking away now asks the program to close, and a program being asked to
+    /// close often has a question of its own: save changes? That question is a
+    /// window belonging to the same executable, so without this the next poll
+    /// would minimize it — and the user would be back in the loop this was
+    /// meant to end, now unable to answer a prompt about their own work.
+    ///
+    /// Deliberately short, and deliberately a grace rather than an unlock:
+    /// nothing is recorded, no allowance is spent against it, and when it
+    /// lapses the program is gated again exactly as before. A program that
+    /// refused to close is back where it started, which is the honest outcome.
+    pub fn mark_closing(&mut self, exe: &str, now: u64) {
+        if exe.is_empty() {
+            return;
+        }
+        self.closing.insert(exe.to_string(), now + CLOSE_GRACE_MS);
+        // Whatever was in front is going away; the next arrival is a new
+        // decision and deserves to be asked about again.
+        self.was_gated = false;
+    }
+
+    /// Whether the gate is currently standing aside for `exe`. Lapsed entries
+    /// are dropped as they are found, so the map cannot grow without bound.
+    fn closing(&mut self, exe: &str, now: u64) -> bool {
+        match self.closing.get(exe) {
+            Some(until) if *until > now => true,
+            Some(_) => {
+                self.closing.remove(exe);
+                false
+            }
+            None => false,
+        }
     }
 
     /// Is this executable behind a gate right now?
@@ -280,6 +325,14 @@ impl WatchInner {
             self.was_gated = false;
             return verdict;
         };
+
+        // Shutting down at our own request. Its windows — including whatever it
+        // wants to ask about unsaved work — are left alone until the grace
+        // lapses.
+        if self.closing(&exe, now) {
+            self.was_gated = false;
+            return verdict;
+        }
 
         let gated = self.gated(&exe, now);
         let became_gated = gated && !self.was_gated;
@@ -590,6 +643,73 @@ pub fn minimize(_hwnd: isize) -> bool {
     false
 }
 
+/// Asks every top-level window belonging to `exe` to close, and says how many
+/// were asked.
+///
+/// `WM_CLOSE` is a request, not a kill. It is the same message the X button
+/// sends, so the program runs its own shutdown: it saves, it prompts about
+/// unsaved work, and it is free to refuse outright. Nothing here escalates to
+/// `TerminateProcess` when it does, and nothing ever should — walking away from
+/// a game is not a reason to lose an unsaved document, and a discipline tool
+/// that destroys work is a tool nobody can afford to trust. A program that
+/// refuses simply stays open and stays gated, which is where this started.
+///
+/// Matched by executable name, so a program running as several processes —
+/// a browser, anything with a helper per window — is asked as a whole. That is
+/// what "close it" means to the person who asked.
+///
+/// See `mark_closing()` for why the gate then keeps out of its way for a
+/// moment: a program asking "save changes?" needs an answer, and minimizing
+/// that question is the same trap by another name.
+#[cfg(target_os = "windows")]
+pub fn close_windows(exe: &str) -> usize {
+    use windows_sys::Win32::Foundation::{HWND, LPARAM, WPARAM};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        EnumWindows, GetWindow, IsWindowVisible, PostMessageW, GW_OWNER, WM_CLOSE,
+    };
+
+    struct Asking {
+        exe: String,
+        asked: usize,
+    }
+
+    unsafe extern "system" fn visit(hwnd: HWND, lparam: LPARAM) -> i32 {
+        let asking = &mut *(lparam as *mut Asking);
+
+        // Visible top-level windows only, by the same two tests
+        // running_applications() uses. An owned window is a dialog belonging to
+        // one of them and closes with its owner; asking it directly would be
+        // answering a prompt on the user's behalf.
+        if IsWindowVisible(hwnd) == 0 || !GetWindow(hwnd, GW_OWNER).is_null() {
+            return 1;
+        }
+
+        match exe_for_window(hwnd) {
+            Some(found) if found == asking.exe => {
+                PostMessageW(hwnd, WM_CLOSE, 0 as WPARAM, 0 as LPARAM);
+                asking.asked += 1;
+            }
+            _ => {}
+        }
+        1
+    }
+
+    if exe.is_empty() {
+        return 0;
+    }
+
+    let mut asking = Asking { exe: exe.to_string(), asked: 0 };
+    unsafe {
+        EnumWindows(Some(visit), &mut asking as *mut _ as LPARAM);
+    }
+    asking.asked
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn close_windows(_exe: &str) -> usize {
+    0
+}
+
 /// Shows a window without making it the active one, on top of everything.
 ///
 /// For the allowance reminder. Tauri's own `show()` activates the window,
@@ -696,6 +816,81 @@ mod tests {
         assert_eq!(basename("/Applications/Steam/steam"), "steam");
         assert_eq!(basename("STEAM.EXE"), "steam.exe");
         assert_eq!(basename(""), "");
+    }
+
+    // ---- Standing aside while it closes ---------------------------------
+
+    #[test]
+    fn a_program_asked_to_close_is_left_alone_to_do_it() {
+        // The save prompt belongs to the same executable. Minimizing it is the
+        // loop this feature exists to end, wearing a different hat.
+        let mut w = watch(&["notepad.exe"]);
+        assert!(w.observe(Some("notepad.exe"), 1_000).raise_gate);
+        w.close_gate();
+        w.mark_closing("notepad.exe", 2_000);
+
+        for at in [3_000, 10_000, 31_000] {
+            assert!(
+                !w.observe(Some("notepad.exe"), at).raise_gate,
+                "the gate came back while the program was still shutting down"
+            );
+        }
+    }
+
+    #[test]
+    fn a_program_that_refused_to_close_is_gated_again_when_the_grace_lapses() {
+        // Cancelled the save prompt and carried on. Back where it started, once.
+        let mut w = watch(&["notepad.exe"]);
+        w.mark_closing("notepad.exe", 1_000);
+
+        let lapsed = 1_000 + CLOSE_GRACE_MS + 1_000;
+        assert!(!w.observe(Some("notepad.exe"), lapsed - 2_000).raise_gate);
+        assert!(w.observe(Some("notepad.exe"), lapsed).raise_gate, "the grace never lapsed");
+        assert!(
+            !w.observe(Some("notepad.exe"), lapsed + 1_000).raise_gate,
+            "a second gate stacked on the first"
+        );
+    }
+
+    #[test]
+    fn standing_aside_for_one_program_does_not_stand_aside_for_another() {
+        let mut w = watch(&["notepad.exe", "steam.exe"]);
+        w.mark_closing("notepad.exe", 1_000);
+        assert!(w.observe(Some("steam.exe"), 2_000).raise_gate, "an unrelated program got through");
+    }
+
+    #[test]
+    fn the_grace_is_not_an_unlock_and_spends_nothing() {
+        // Two minutes allowed, all of it used, then asked to close. The grace
+        // must not hand back time or clear what was spent — it only keeps the
+        // gate out of the way while the windows go.
+        let mut w = allowed("steam.exe", 2, 0);
+        hold(&mut w, "steam.exe", 0, 130);
+        let spent = w.spent("steam.exe");
+        assert!(spent >= 120, "the allowance was not used up");
+
+        w.close_gate();
+        w.mark_closing("steam.exe", 131_000);
+        w.observe(Some("steam.exe"), 132_000);
+
+        assert!(w.spent("steam.exe") >= spent, "the grace gave time back");
+        assert!(w.gated("steam.exe", 132_000), "the grace unlocked the program");
+    }
+
+    #[test]
+    fn a_lapsed_grace_does_not_pile_up() {
+        let mut w = watch(&["notepad.exe"]);
+        w.mark_closing("notepad.exe", 1_000);
+        w.observe(Some("notepad.exe"), 1_000 + CLOSE_GRACE_MS + 1);
+        assert!(w.closing.is_empty(), "a lapsed grace was kept forever");
+    }
+
+    #[test]
+    fn nothing_is_asked_of_a_program_with_no_name() {
+        let mut w = watch(&[]);
+        w.mark_closing("", 1_000);
+        assert!(w.closing.is_empty(), "an empty executable was given a grace");
+        assert_eq!(close_windows(""), 0);
     }
 
     // ---- Blocked outright ----------------------------------------------

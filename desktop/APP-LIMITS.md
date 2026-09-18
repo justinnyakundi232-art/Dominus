@@ -257,8 +257,10 @@ unlock task, and it looks like `Blocked.html` because it is the same gate.
 
 Three ways out:
 
-- **Walk away.** Closes the gate, records a **stand**, and the app stays
-  minimized. Same event the browser records, same effect on both streaks.
+- **Walk away.** Closes the gate, records a **stand**, and asks the program to
+  close. Same event the browser records, same effect on both streaks. The
+  button says so on a second line — "and close Notepad" — because the whole
+  point is that you should not have to already know.
 - **Unlock.** The task, then the cooldown, then a temporary window. Records an
   **unlock** with `domain` set to the exe.
 - **Nothing.** The gate stays. It is not modal to the system and it does not
@@ -268,6 +270,39 @@ Three ways out:
 An unlock opens the program for fifteen minutes. The expiry goes into
 `tempUnlocks` beside the site ones, keyed by executable, and into what Rust
 enforces — so the gate returns on its own when the window closes.
+
+### Why walking away closes the program
+
+*Reported by the user, 18 Sep 2026.*
+
+Minimizing is the right thing while the gate is being answered and the wrong
+thing to be left with afterwards. A program that is only minimized is still
+there, and clicking it in the taskbar to close it just minimizes it again —
+so the obvious way to get rid of it is the one thing that cannot work. There
+**is** a way out: hover the taskbar and close it from the preview. It only
+helps if you already know it, and nobody in the middle of being told no is in
+the mood to work it out.
+
+So walking away now asks the program to close, and the button says it does.
+
+- **`WM_CLOSE`, never `TerminateProcess`.** The same message the X button
+  sends: the program runs its own shutdown, saves, prompts about unsaved work,
+  and is free to refuse. A discipline tool that destroys work is a tool nobody
+  can afford to trust, and walking away from a game is not a reason to lose an
+  unsaved document. A program that refuses stays open and stays gated, which is
+  where this started — no worse than before, and never escalated to.
+- **Matched by executable**, so a program running as several processes is
+  asked as a whole. That is what "close it" means to the person who asked.
+- **A 30-second grace** (`CLOSE_GRACE_MS`) during which the gate stands aside
+  for that program. A program asked to close usually has a question — *save
+  changes?* — and that question is a window belonging to the same executable,
+  so without this the next poll would minimize it. That is the same trap
+  wearing a different hat, and worse, because now it is the user's own work
+  being held hostage.
+
+The grace is **not an unlock**: nothing is recorded, no allowance is handed
+back, and when it lapses the program is gated again exactly as before — once,
+on the next arrival, because `mark_closing()` re-arms `was_gated`.
 
 *Changed in building:* the gate learns what it is guarding from a `gate-raised`
 event, and the gate window was missing from the capability that permits

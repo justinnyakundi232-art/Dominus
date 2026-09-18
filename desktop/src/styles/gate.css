@@ -197,4 +197,26 @@ input#taskInput {
     border-color: var(--gold);
 }
 
+/* Walking away closes the program, and the button has to say so — the whole
+   point is that the user should not have to already know. Two lines inside the
+   one control: the decision, and what it does. The second line is quieter but
+   not decorative, so it keeps enough contrast to be read rather than noticed. */
+.btn-line,
+.btn-sub {
+    display: block;
+    text-align: center;
+}
+
+.btn-sub {
+    margin-top: 3px;
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+    text-transform: none;
+    color: var(--gold-dim);
+}
+
+.btn-quiet:hover .btn-sub { color: var(--gold); }
+
+.btn-quiet:disabled .btn-sub { color: var(--muted); }
+
 :focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
