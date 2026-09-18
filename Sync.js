@@ -1165,7 +1165,12 @@ function unionSites(mine, theirs) {
 // handing the user two Steams.
 function mergeApplications(mine, theirs, myRev, theirRev) {
     const ours = normalizeApplicationList(mine);
-    const yours = normalizeApplicationList(theirs);
+    // Their list first has its silences filled in from ours, because an entry
+    // that arrived without an allowance was written by a build that has never
+    // heard of one, and the Math.min below would read that as "blocked" and
+    // win. See withHeldAllowances() in Applications.js for why this runs over
+    // their list and never over ours.
+    const yours = normalizeApplicationList(withHeldAllowances(theirs, mine));
 
     const mineById = new Map(ours.map((a) => [a.id, a]));
     const theirsById = new Map(yours.map((a) => [a.id, a]));
@@ -1404,9 +1409,15 @@ function applyAuthored(merged, authored, holders) {
     const raised = {};
     Object.keys(authored.allowancesRaised || {}).forEach((id) => {
         const minutes = authored.allowancesRaised[id];
+        // A holder that cannot represent an allowance has not decided anything
+        // stricter — it has said nothing. Without this the record dies on the
+        // first tick after an old peer rewrites the list: the stripped entry
+        // reads as 0, 0 is stricter than the raise, and rule 4 retires the
+        // record for good. carriesAllowance() is read off the peer's fortress
+        // as it arrived, which is why holders are raw and not normalized.
         const stricterSince = !without((peer) => {
             const application = findApplicationById(peer, id);
-            return Boolean(application)
+            return carriesAllowance(application)
                 && clampWholeMinutes(application.allowanceMinutes, MAX_ALLOWANCE_MINUTES, 0) < minutes;
         });
         if (!stricterSince) raised[id] = minutes;

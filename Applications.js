@@ -221,6 +221,71 @@ function normalizeApplicationList(raw) {
     return out;
 }
 
+// ---- What a peer is able to say -------------------------------------------
+//
+// Absence and zero are the same thing to normalizeApplication(), and they have
+// to be: a fortress upgrading from 1.11 holds entries with no allowance at all,
+// and reading those as "blocked outright" is what makes the upgrade silent.
+//
+// Across the wire they are not the same thing at all. A peer running a build
+// from before allowances existed rewrites the whole list through its own
+// normaliser whenever the user touches any program in it, and that normaliser
+// drops a field it has never heard of. What arrives is not a fortress asking
+// for every program to be blocked. It is a fortress that cannot pronounce the
+// question — and read as a zero, it is the strongest possible answer, so
+// strengthen-wins hands the argument to the peer that knows least, on every
+// tick, forever.
+//
+// So the merge asks a different question of an incoming entry than storage
+// does: not "what is the allowance" but "was this written by something that
+// could have said". These two functions are that question. They are the only
+// place in Dominus where a missing field means anything other than zero.
+
+// Whether this entry, as it arrived, is in a position to have an opinion about
+// an allowance. Read off the raw object, before normalisation fills the field
+// in — which is why nothing here may be handed a normalized entry.
+function carriesAllowance(entry) {
+    return Boolean(entry)
+        && typeof entry === "object"
+        && Object.prototype.hasOwnProperty.call(entry, "allowanceMinutes");
+}
+
+// `raw` as it arrived, with every silent entry given the allowance `held`
+// already has for it. Silence yields to what the holder knows; it does not
+// overwrite it.
+//
+// The asymmetry is deliberate and only runs one way — over a peer's list,
+// never over our own. Our own silent entries are a 1.11 fortress on first
+// read, where blocked outright is the true and intended meaning, and filling
+// those in from a peer would quietly unblock something nobody unblocked. A
+// peer's silence is a build that cannot speak, which is a different thing.
+//
+// A program only the silent peer has is left exactly as it sent it. There is
+// nothing held to fill it from, and a peer that can only block is a peer that
+// meant to block.
+function withHeldAllowances(raw, held) {
+    if (!Array.isArray(raw)) return [];
+
+    const mine = new Map(normalizeApplicationList(held).map((entry) => [entry.id, entry]));
+
+    return raw.map((entry) => {
+        if (carriesAllowance(entry)) return entry;
+
+        const application = normalizeApplication(entry);
+        const ours = application && mine.get(application.id);
+        if (!ours) return entry;
+
+        // The reminder travels with the allowance it belongs to. A peer that
+        // could not say one could not say the other either, and letting a
+        // silent newer commit win the warning would reset it to the default
+        // every time the two sides spoke.
+        return Object.assign({}, entry, {
+            allowanceMinutes: ours.allowanceMinutes,
+            warnMinutes: ours.warnMinutes
+        });
+    });
+}
+
 // ---- Reading -------------------------------------------------------------
 
 function findApplication(applications, exe) {
@@ -339,6 +404,8 @@ if (typeof module !== "undefined" && module.exports) {
         isProtectedExecutable,
         normalizeApplication,
         normalizeApplicationList,
+        carriesAllowance,
+        withHeldAllowances,
         findApplication,
         blockedExecutables,
         allowancesFor,

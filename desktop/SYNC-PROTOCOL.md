@@ -268,3 +268,39 @@ Protocol 1 answered `/sync` with `{ accepted: true }` and had no `/commit`. An
 extension still speaking 1 is refused at pairing with a message naming which
 side is behind, which is the whole reason the number is in `hello` rather than
 discovered halfway through an exchange.
+
+### Optional fields are not free
+
+"Adding optional fields does not bump it" is true of the wire and a trap for
+the merge, and 1.12 walked into it.
+
+The two halves update independently, so an older peer is a normal condition
+rather than a migration window. An older peer does not merely ignore a field it
+has never heard of — it **drops** it, because its own normaliser rebuilds every
+object from the keys it knows. What comes back is the same record with a hole
+in it.
+
+That is harmless until the merge has a strengthen-wins rule for the missing
+field, and then it is the opposite of harmless: the hole reads as whatever the
+"safe" default is, the safe default is by construction the strongest value, and
+the peer that understands least wins every tick. `allowanceMinutes` did exactly
+this to a real fortress — see [A peer that cannot
+say](APP-LIMITS.md#a-peer-that-cannot-say) for the full account and the fix.
+
+So, for any new field the merge resolves toward stricter:
+
+- Decide what **silence** means before deciding what a missing value defaults
+  to. They are usually not the same answer, and the difference only shows up
+  after a round trip.
+- Check for the key itself (`hasOwnProperty` on the raw object, before
+  normalisation), not for a falsy value.
+- Let silence yield to what the holder already knows — over the *peer's* copy,
+  never over your own, because your own missing field is genuinely an upgrade
+  from a version that did not have it.
+- Remember the authored records too. A stripped field also looks like a
+  *later, stricter decision*, which retires the very record that would have
+  repaired it.
+
+Bumping the protocol is the wrong instrument here. It gates the endpoints, and
+refusing to sync at all would take down event history, stands and the seal to
+protect one number.

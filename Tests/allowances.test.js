@@ -131,6 +131,94 @@ async function run() {
             .allowancesRaised, {}, "a record that cannot say what was chosen chose something");
     });
 
+    describe("A peer that cannot say");
+
+    // What a build from before allowances sends: the whole list rewritten
+    // through a normaliser that has never heard of the field. This is not a
+    // hypothetical — it is what a 1.11 desktop app does to every entry the
+    // moment the user touches any program in its window, and reading it as a
+    // list of zeroes is what wiped a real fortress's limits once a minute.
+    function silent(exe, overrides) {
+        const entry = app(exe, overrides);
+        delete entry.allowanceMinutes;
+        delete entry.warnMinutes;
+        return entry;
+    }
+
+    await it("tells silence apart from a zero", async () => {
+        ok(S.carriesAllowance(app("s.exe")), "an explicit block was read as silence");
+        ok(!S.carriesAllowance(silent("s.exe")), "silence was read as an answer");
+        ok(!S.carriesAllowance(null));
+    });
+
+    await it("does not let a silent peer block what we allow", async () => {
+        const merged = S.mergeApplications(
+            [app("s.exe", { allowanceMinutes: 30, warnMinutes: 7 })],
+            [silent("s.exe")],
+            1, 9
+        );
+        eq(merged[0].allowanceMinutes, 30, "a peer that cannot speak took the allowance away");
+        eq(merged[0].warnMinutes, 7, "a peer that cannot speak reset the reminder");
+    });
+
+    await it("still lets a peer that CAN speak block it", async () => {
+        // The guard must not become a way to ignore a real decision.
+        eq(S.mergeApplications(
+            [app("s.exe", { allowanceMinutes: 30 })],
+            [app("s.exe", { allowanceMinutes: 0 })],
+            1, 9
+        )[0].allowanceMinutes, 0, "a deliberate block was ignored");
+    });
+
+    await it("blocks a program only the silent peer has", async () => {
+        // Nothing held to fill it from, and a peer that can only block meant to.
+        const merged = S.mergeApplications([], [silent("n.exe")], 1, 9);
+        eq(merged.length, 1);
+        eq(merged[0].allowanceMinutes, 0);
+    });
+
+    await it("never fills OUR silence from a peer", async () => {
+        // Our own silent entry is a 1.11 fortress on first read, where blocked
+        // outright is the true meaning. Filling it in would unblock something
+        // nobody unblocked.
+        eq(S.mergeApplications([silent("s.exe")], [app("s.exe", { allowanceMinutes: 60 })], 9, 1)[0]
+            .allowanceMinutes, 0, "a program was quietly unblocked");
+    });
+
+    await it("does not drift when the same silent peer speaks again", async () => {
+        const held = [app("s.exe", { allowanceMinutes: 30, warnMinutes: 7 })];
+        const once = S.mergeApplications(held, [silent("s.exe")], 1, 9);
+        eq(S.mergeApplications(once, [silent("s.exe")], 1, 9), once, "the tick runs forever");
+    });
+
+    await it("keeps a raise alive that a silent holder would have retired", async () => {
+        // The exact failure: the record says 60, the holder's stripped entry
+        // reads as 0, 0 is stricter, and rule 4 retires the record for good.
+        const record = Object.assign({ rev: 2, at: 0, device: "browser" },
+            { allowancesRaised: { "app:s.exe": 60 } });
+
+        // The peer raised it to 60 and wrote the record. We have not adopted
+        // the new value yet — only the record has crossed — and by the time it
+        // reaches us the peer has stripped its own field on the way past. Its
+        // silence must not read as the peer thinking better of the raise.
+        const mine = fortress([app("s.exe", { allowanceMinutes: 30 })]);
+        const theirs = fortress([silent("s.exe")]);
+
+        eq(S.mergeFortress(mine, theirs, 3, 4, null, [record]).applications[0].allowanceMinutes, 60,
+            "a raise was retired by a peer that never disagreed with it");
+    });
+
+    await it("still retires a raise a holder really did make stricter", async () => {
+        const record = Object.assign({ rev: 2, at: 0, device: "browser" },
+            { allowancesRaised: { "app:s.exe": 60 } });
+
+        const mine = fortress([app("s.exe", { allowanceMinutes: 60 })]);
+        const theirs = fortress([app("s.exe", { allowanceMinutes: 20 })]);
+
+        eq(S.mergeFortress(mine, theirs, 3, 4, [record], [record]).applications[0].allowanceMinutes, 20,
+            "rule 4 was broken to fix rule 3");
+    });
+
     describe("What the seal says");
 
     await it("names the program and both amounts", async () => {

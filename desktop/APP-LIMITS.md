@@ -378,6 +378,10 @@ Strengthen-wins still holds, because a smaller allowance is a stronger one and
 | `allowanceMinutes` | the **smaller** of the two, 0 winning over any number |
 | `warnMinutes` | newer commit — a warning defends nothing, so it has no stronger direction |
 
+Both rules assume the peer can *represent* an allowance. When it cannot, see
+[A peer that cannot say](#a-peer-that-cannot-say) below — a missing field is
+not a zero once it has been over the wire.
+
 Raising an allowance, or giving a blocked program one, is a **weakening**. It
 travels as an authored record carrying the value — `allowancesRaised:
 { "app:steam.exe": 60 }` — for the reason `cooldownLowered` carries its value:
@@ -392,6 +396,51 @@ Adding a program with an allowance already set is **not** a weakening: it was
 not in the fortress before, so nothing came down. That matters on a sealed
 fortress — adding Steam blocked and then giving it an hour would ask for the
 password, where adding it with the hour does not.
+
+#### A peer that cannot say
+
+*Found the hard way, 18 Sep 2026, on a real fortress.*
+
+Reading a missing field as 0 is right for storage and wrong on the wire.
+
+The extension and the app update on their own schedules — one from the Web
+Store, one by hand — so a 1.12 extension paired with a 1.11 app is not an edge
+case, it is a Tuesday. The old app has no idea `allowanceMinutes` exists, and
+it rewrites the *whole* application list through its own normaliser the moment
+the user touches any program in its window. The field falls off every entry.
+
+Read as a zero, that is the strongest possible answer to a question the peer
+never heard. Strengthen-wins then hands the argument to whichever side knows
+least, once a minute, forever — and rule 4 finishes the job, because the
+stripped 0 also looks "stricter than the recorded value", so the authored
+record that could have put the allowance back is retired as superseded. The
+limit is gone and there is no way to set it again that survives a tick.
+
+So the merge asks an incoming entry a different question than storage does: not
+*what is the allowance* but **was this written by something that could have
+said**. `carriesAllowance()` is that question — a plain `hasOwnProperty` on the
+raw entry, read before normalisation fills the field in — and it is the only
+place in Dominus where a missing field means anything but zero.
+
+Two rules follow:
+
+- `withHeldAllowances(theirs, mine)` runs over a peer's list before it is
+  normalized, giving every silent entry the allowance we already hold for it.
+  Silence yields to what the holder knows rather than overwriting it.
+- A holder whose entry is silent is **not evidence** of a stricter decision, so
+  it cannot retire a raise it never disagreed with.
+
+The asymmetry is deliberate: this runs over a peer's list and **never over our
+own**. Our own silent entries are a 1.11 fortress on first read, where blocked
+outright is the true and intended meaning — filling those in from a peer would
+quietly unblock something nobody unblocked. A program only the silent peer has
+is left exactly as it arrived, at 0: there is nothing held to fill it from, and
+a peer that can only block is a peer that meant to block.
+
+A protocol bump was the other option and it is worse. The protocol version
+gates the *endpoints*, and refusing to sync at all over one unknown field would
+take down event history, stands and the seal to protect a number. The guard
+belongs at the level of the thing it protects.
 
 ### Spending
 
