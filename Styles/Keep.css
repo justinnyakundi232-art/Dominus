@@ -42,6 +42,36 @@
     color: var(--parchment);
 }
 
+/* ---- The page's emblem --------------------------------------------------
+ *
+ * The same placement as the fortress icon and the strategy map: under the
+ * tagline, centred, part of the header rather than of the content.
+ *
+ * The seal's is full height, matching the other pages. The Keep's is
+ * deliberately smaller and tighter, because The Keep is the dashboard — its
+ * job is to answer "where do I stand right now", and a 40vh crest would push
+ * that answer below the fold on a laptop.
+ *
+ * Both are capped in px as well as vh: on a tall window, vh alone grows the
+ * emblem past the point where it is a crest and into the point where it is
+ * the page. */
+.keep-icon,
+.seal-icon {
+    display: block;
+    margin: 0 auto;
+    height: auto;
+}
+
+.keep-icon {
+    width: min(22vh, 200px);
+    margin-bottom: 28px;
+}
+
+.seal-icon {
+    width: min(34vh, 320px);
+    margin-bottom: 36px;
+}
+
 /* ---- Today --------------------------------------------------------------
  *
  * The first thing on the page, and the only band that changes colour: held,
@@ -51,7 +81,7 @@
 .keep-today {
     border: 2px solid var(--gold-deep);
     border-left-width: 6px;
-    background: var(--panel);
+    background: var(--section);
     padding: 22px 26px;
     margin-bottom: 28px;
     text-align: left;
@@ -92,7 +122,7 @@
 
 .keep-stat {
     border: 1px solid var(--gold-deep);
-    background: var(--panel);
+    background: var(--section);
     padding: 20px 14px 16px;
     display: flex;
     flex-direction: column;
@@ -123,7 +153,7 @@
 
 .keep-band {
     border: 1px solid var(--gold-deep);
-    background: var(--panel);
+    background: var(--section);
     padding: 20px 26px;
     margin-bottom: 16px;
     text-align: left;

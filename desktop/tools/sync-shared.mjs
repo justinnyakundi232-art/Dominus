@@ -174,7 +174,10 @@ function cssBanner(file) {
 // is a cosmetic loss where missing tokens is an unreadable one.
 const ART = [
     ["Golden crown and crossed swords emblem.png", "crest.png"],
-    ["Medieval_Strategy.png", "strategy.png"]
+    ["Medieval_Strategy.png", "strategy.png"],
+    ["Fortress.png", "fortress.png"],
+    ["Watchtower.png", "watchtower.png"],
+    ["Seal.png", "seal.png"]
 ];
 
 ART.forEach(([file, name]) => {

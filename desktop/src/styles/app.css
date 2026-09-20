@@ -203,6 +203,32 @@ body {
     color: var(--parchment);
 }
 
+/* ---- The page's emblem --------------------------------------------------
+ *
+ * The same rules as the extension's, in the same places, because a user moving
+ * between the two should be moving between windows rather than between
+ * programs. The Keep's is smaller: it is the dashboard, and the day's standing
+ * has to be on screen when the window opens. Capped in px as well as vh so a
+ * tall window does not turn a crest into the page. */
+.keep-icon,
+.seal-icon,
+.fortress-icon {
+    display: block;
+    margin: 0 auto;
+    height: auto;
+}
+
+.keep-icon {
+    width: min(22vh, 200px);
+    margin-bottom: 28px;
+}
+
+.seal-icon,
+.fortress-icon {
+    width: min(34vh, 320px);
+    margin-bottom: 36px;
+}
+
 /* ---- Empty states ------------------------------------------------------
  *
  * The first thing anyone sees, because nothing here works before pairing.
@@ -212,7 +238,7 @@ body {
 
 .empty {
     border: 1px solid var(--gold-deep);
-    background: var(--panel);
+    background: var(--section);
     padding: 40px 32px;
     margin-bottom: 24px;
 }
@@ -235,7 +261,7 @@ body {
 
 .panel {
     border: 1px solid var(--gold-deep);
-    background: var(--panel);
+    background: var(--section);
     padding: 24px 28px;
     margin-bottom: 20px;
     text-align: center;
@@ -356,7 +382,7 @@ code {
 .today {
     border: 2px solid var(--gold-deep);
     border-left-width: 6px;
-    background: var(--panel);
+    background: var(--section);
     padding: 22px 26px;
     margin-bottom: 28px;
     text-align: left;
@@ -378,7 +404,7 @@ code {
 
 .stat {
     border: 1px solid var(--gold-deep);
-    background: var(--panel);
+    background: var(--section);
     padding: 20px 14px 16px;
     display: flex;
     flex-direction: column;
@@ -403,7 +429,7 @@ code {
 
 .band {
     border: 1px solid var(--gold-deep);
-    background: var(--panel);
+    background: var(--section);
     padding: 20px 26px;
     margin-bottom: 16px;
     text-align: left;
@@ -681,7 +707,16 @@ code {
     font-variant-numeric: tabular-nums;
 }
 
-.allowance-field { white-space: nowrap; }
+/* A fixed name column, so the two fields' inputs line up when they stack.
+   The extension's .application-field does the same, for the same reason. */
+.allowance-field {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+}
+
+.allowance-field .field-name { min-width: 4.4em; }
 
 .allowance-input {
     width: 4.6em;

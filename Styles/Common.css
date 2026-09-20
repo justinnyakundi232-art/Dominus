@@ -3,8 +3,26 @@
  * Load this BEFORE the page's own stylesheet so a page can still override
  * anything here with a same-specificity rule.
  *
- * Currently holds the "(?)" hover/focus tooltip, used by the victory-rate
- * explainer on Track Your Progress and the task picker on Build Fortress. */
+ * Holds the "(?)" hover/focus tooltip, used by the victory-rate explainer on
+ * Track Your Progress and the task picker on Build Fortress, and the one rule
+ * below that keeps every control in the product's own typeface. */
+
+/* Form controls do not inherit font-family. That is a browser default, not an
+ * oversight anyone made, and it is why a handful of buttons across Dominus
+ * were quietly rendering in the system UI font while everything around them
+ * was Playfair — the ones whose stylesheet happened to say so were right by
+ * accident, and the rest read as someone else's software.
+ *
+ * Said once, here, rather than remembered at every button. An element selector
+ * loses to any class, so a control that genuinely wants something else — the
+ * pairing code's monospace, which has to be unambiguous about O and 0 — keeps
+ * it without needing to fight this. */
+button,
+input,
+select,
+textarea {
+    font-family: inherit;
+}
 
 .info-tip{
     position:relative;

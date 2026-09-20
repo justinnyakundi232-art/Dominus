@@ -83,6 +83,17 @@
     --ground: #000000;
     --panel: #0D0D0D;
 
+    /* The surface a section of a page sits on: the panels on The Fortress, the
+     * bands on The Keep, the blocks on The Seal. A step above --panel rather
+     * than the same value, because these two are doing different jobs — --panel
+     * is an inset (an input, a modal, the rail), and this is a raised plane
+     * with content on it. Two surfaces at the same value would read as one.
+     *
+     * Warmed toward the gold rather than a neutral grey, for the reason --line
+     * is: a lift on black should read as part of the gold the fortress is lit
+     * by, not as a different material laid on top of it. */
+    --section: #14110B;
+
     /* ---- Text ----------------------------------------------------------- */
     --parchment: #E5E5E5;
 

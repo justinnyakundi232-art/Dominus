@@ -36,6 +36,10 @@
 
 .panel{
     border:3px solid var(--gold-deep);
+    /* A surface, not an outline. These were bordered boxes on bare black, which
+       left the page reading as one field with lines drawn on it rather than as
+       sections you could take in separately. See --section in Tokens.css. */
+    background:var(--section);
     width:500px;
     padding:20px;
 }
@@ -403,6 +407,8 @@
 
 .category input[type="checkbox"]{
     appearance:none;
+    margin:0;
+    flex-shrink:0;
     width:24px;
     height:24px;
     border:2px solid var(--gold-deep);
@@ -437,19 +443,32 @@
     margin-bottom:20px;   
 }
 
+/* The permanent option belongs to the category above it, and used to float
+   between two bordered boxes with neither — sitting hard against the row with
+   no gap, indented 11px to the LEFT of the very checkbox it sits under. It read
+   as a stray control rather than as part of its own category.
+   Now it continues the row's box the way .category-detail already does, and its
+   checkbox starts in the same column as the one above it. */
 .category-options{
-    margin-bottom:10px;
+    border:1px solid var(--gold-deep);
+    border-top:none;
+    padding:8px 10px;
+    box-sizing:border-box;
 }
 
 .category-options label{
     display: flex;
     align-items: center;
-    gap: 5px;
+    gap: 10px;
     color: var(--gold-deep);
 }
 
 .category-options input[type="checkbox"]{
     appearance:none;
+    /* Deliberately smaller than the one above: a sub-option, not a second
+       decision of equal weight. Its LEFT EDGE still lines up with it. */
+    margin:0;
+    flex-shrink:0;
     width:16px;
     height:16px;
     border:1px solid var(--gold-deep);
@@ -741,7 +760,19 @@
     color:var(--muted);
 }
 
-.application-field{ white-space:nowrap; }
+/* The two fields stack on a panel this narrow, so their inputs have to line up
+   in one column. A fixed name column is what does that — "Allowed" and "Warn"
+   are different lengths, and with the text alone the boxes sat 18px apart. */
+.application-field{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    white-space:nowrap;
+}
+
+.application-field .field-name{
+    min-width:4.4em;
+}
 
 .application-input{
     width:4.6em;

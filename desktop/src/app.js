@@ -954,7 +954,12 @@ function fieldLabel(before, input, after, help) {
     const label = document.createElement("label");
     label.className = "allowance-field";
     label.title = help;
-    label.append(document.createTextNode(before + " "), input, document.createTextNode(" " + after));
+    // Wrapped rather than a bare text node so the two fields' inputs line up in
+    // one column when they stack. See .field-name.
+    const name = document.createElement("span");
+    name.className = "field-name";
+    name.textContent = before;
+    label.append(name, input, document.createTextNode(" " + after));
     return label;
 }
 
