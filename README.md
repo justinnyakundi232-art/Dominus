@@ -59,6 +59,12 @@ Dominus is one window. The rail stays put; the views change.
 | ![The Campaign](docs/screenshots/The-Campaign.png) | ![The Seal](docs/screenshots/The-Seal.png) |
 | *Streaks, victory rate and a year of history* | *A password on weakening it — and a copy you can keep* |
 
+Programs are blocked too, from 1.12, with a daily allowance if a limit suits
+better than a wall. They are enforced by the desktop app — the browser cannot
+see a program at all — but they are edited from either half:
+
+![Programs](docs/screenshots/Programs.png)
+
 When you meet a blocked site, and while the cooldown runs:
 
 | Blocked page | Cooldown |

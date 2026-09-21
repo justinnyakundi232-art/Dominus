@@ -135,6 +135,30 @@ const service = {
         }
     },
 
+    // Whether Dominus starts with the machine. Asked every time rather than
+    // remembered: the setting lives in the registry, where Task Manager's
+    // Startup tab can switch it off without telling this window.
+    async autostartEnabled() {
+        if (!hasBridge()) return false;
+        try {
+            return (await window.__TAURI__.core.invoke("autostart_enabled")) === true;
+        } catch (error) {
+            return false;
+        }
+    },
+
+    // Answers with what the machine says afterwards, not with what was asked,
+    // so a refusal shows up as the switch going back rather than as a control
+    // that looks set and isn't.
+    async setAutostart(enabled) {
+        if (!hasBridge()) return false;
+        try {
+            return (await window.__TAURI__.core.invoke("set_autostart", { enabled: enabled })) === true;
+        } catch (error) {
+            return false;
+        }
+    },
+
     // What the watcher enforces. See pushEnforcement() below.
     async setEnforced(enforced) {
         if (!hasBridge()) return false;
@@ -354,12 +378,35 @@ function renderStanding(state) {
         ? "From " + total + " " + plural(total, "moment", "moments")
         : "Nothing has tested you yet");
 
+    setRail(s.currentStreak);
+}
+
+// The streak in the rail, from wherever you happen to open the window.
+//
+// It used to be set only as a side effect of The Keep rendering, so opening on
+// The Seal — which is where you land after pairing — left the markup's "not
+// paired" placeholder sitting under a fortress that was paired and thirty-one
+// days held. The rail is visible from every view, so it is filled from every
+// view. The extension's App.js has always done this on init; this is the app
+// catching up.
+function setRail(streak) {
     const rail = document.getElementById("railStreak");
-    const railLabel = document.getElementById("railStreakLabel");
-    if (rail && railLabel) {
-        rail.textContent = s.currentStreak;
-        railLabel.textContent = s.currentStreak === 1 ? "day held" : "days held";
+    const label = document.getElementById("railStreakLabel");
+    if (!rail || !label) return;
+
+    if (streak === null) {
+        rail.textContent = "—";
+        label.textContent = "not paired";
+        return;
     }
+
+    rail.textContent = streak;
+    label.textContent = streak === 1 ? "day held" : "days held";
+}
+
+async function refreshRail() {
+    const { state } = await service.peerState();
+    setRail(state && state.stats ? standing(state).currentStreak : null);
 }
 
 // ---- The Campaign ---------------------------------------------------------
@@ -1360,7 +1407,63 @@ async function refreshSeal() {
 
     refreshBtn.disabled = false;
     renderDevices(status.devices || []);
+    await renderAutostart();
     await issueCode();
+}
+
+// ---- The Seal: starting with the machine ----------------------------------
+//
+// Program blocks are only enforced while this app is running, so a machine that
+// reboots without it is a fortress whose gate is quietly open. That makes this
+// the one setting here that changes whether a defence exists.
+//
+// Read from the machine every time the view is shown. A remembered copy would
+// eventually be a switch that disagrees with Task Manager's Startup tab, and a
+// switch that says ON while the machine says OFF is worse than no switch.
+
+async function renderAutostart() {
+    const field = document.getElementById("autostartField");
+    const toggle = document.getElementById("autostartToggle");
+    const state = document.getElementById("autostartState");
+    const note = document.getElementById("autostartNote");
+    if (!field || !toggle || !state) return;
+
+    const on = await service.autostartEnabled();
+
+    toggle.checked = on;
+    toggle.disabled = !hasBridge();
+    field.classList.toggle("is-on", on);
+    state.textContent = on
+        ? "Starting with this computer."
+        : "Not starting with this computer.";
+
+    if (note) {
+        note.hidden = hasBridge();
+        note.textContent = hasBridge()
+            ? ""
+            : "This window is running outside the app, so there is nothing to start.";
+    }
+}
+
+async function toggleAutostart(event) {
+    const toggle = event.currentTarget;
+    const wanted = toggle.checked;
+    const note = document.getElementById("autostartNote");
+
+    toggle.disabled = true;
+    const actual = await service.setAutostart(wanted);
+    toggle.disabled = false;
+
+    await renderAutostart();
+
+    // Only worth saying when the machine disagreed with the click. Asking for
+    // something and being silently refused is the failure worth surfacing.
+    if (note && actual !== wanted) {
+        note.hidden = false;
+        note.textContent = wanted
+            ? "Windows would not let Dominus add itself to startup. You can add it by hand from the Startup folder."
+            : "Windows would not let Dominus remove itself from startup. Task Manager's Startup tab can switch it off.";
+    }
 }
 
 async function issueCode() {
@@ -1440,6 +1543,9 @@ document.addEventListener("DOMContentLoaded", () => {
     const refreshBtn = document.getElementById("pairRefresh");
     if (refreshBtn) refreshBtn.addEventListener("click", issueCode);
 
+    const autostart = document.getElementById("autostartToggle");
+    if (autostart) autostart.addEventListener("change", toggleAutostart);
+
     const pickerBtn = document.getElementById("pickerToggle");
     if (pickerBtn) pickerBtn.addEventListener("click", togglePicker);
 
@@ -1455,6 +1561,9 @@ document.addEventListener("DOMContentLoaded", () => {
     window.addEventListener("hashchange", () => show(routeFromHash()));
 
     show(routeFromHash());
+
+    // The rail is on screen whichever view that was.
+    refreshRail();
 
     // Whatever view is open, and whether or not the window is ever shown: the
     // watcher is enforcing on the strength of what this sends it.

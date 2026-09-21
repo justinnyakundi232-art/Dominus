@@ -28,6 +28,36 @@ ceiling on that, on purpose: friction is the point, being locked out of your
 own machine is not.
 
 
+PROGRAMS, NOT JUST SITES
+
+A browser extension can never see a program. So there is a desktop app, and
+pairing the two — once, with a six-character code — lets Dominus put a program
+away the same way it stops a site. Open something you have blocked and the
+window is minimized with the same gate in front of it: the same task, the same
+cooldown, counting toward the same streaks.
+
+Nothing is ever force-closed and nothing unsaved is lost. Walk away and
+Dominus asks the program to close, the same way its own X button would — it
+still prompts you about anything unsaved, and it is free to refuse.
+
+Some programs can never be blocked, however you try: File Explorer, Task
+Manager, Settings, and Dominus itself. The way out of anything stays open.
+
+
+OR SO MANY MINUTES A DAY
+
+Not everything is a thing you want gone. Give a program a daily allowance —
+half an hour of a game, an hour of a chat app — and Dominus counts only the
+time it is actually in front of you. Minimized in the background costs you
+nothing.
+
+A reminder in the corner before the time runs out, so the gate is never a
+surprise. When it does run out, it is the same gate as any other block.
+
+Cutting an allowance is always free. Giving yourself more time is taking a
+defence down, and costs what taking a defence down always costs.
+
+
 ONE WINDOW
 
 The Keep opens on where you stand right now — today's standing, your streaks,
@@ -69,11 +99,22 @@ without quite deciding to.
 It is built for someone who chose the constraint. Not for locking down someone
 who is fighting to get out.
 
+Blocking programs is Windows-only for now, and works while the desktop app is
+running — it sits in the tray, and can start with your computer if you ask it
+to. The extension blocks sites on its own and needs none of that.
+
 
 YOUR DATA
 
-Everything stays in your browser. No account, no server, no analytics, nothing
-sent anywhere — which is also why the export exists: a copy you make yourself
-is the only thing that survives a reinstall.
+Everything stays on your machine. No account, no server, no analytics, nothing
+sent anywhere — not even a font, which is why the typeface ships inside the
+extension rather than being fetched from Google.
+
+The desktop app and the extension talk to each other over 127.0.0.1, the
+loopback address, which nothing on your network and nothing on the internet
+can reach.
+
+That is also why the export exists: a copy you make yourself is the only thing
+that survives a reinstall.
 
 Free and open source: github.com/justinnyakundi232-art/Dominus
