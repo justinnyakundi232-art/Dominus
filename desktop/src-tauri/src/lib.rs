@@ -42,6 +42,41 @@ struct ServiceStatus {
     devices: Vec<DeviceView>,
 }
 
+/// Whether Dominus starts with the machine.
+///
+/// Deliberately asked rather than remembered: the setting lives in the
+/// registry on Windows and in a LaunchAgent on macOS, where the user can turn
+/// it off without telling us — through Task Manager's Startup tab, most
+/// obviously. A copy of the answer kept on this side would eventually be a
+/// switch that disagrees with the machine.
+///
+/// A plugin that cannot read it answers `false`. That is the honest reading:
+/// what the toggle promises is "this will start with your computer", and an
+/// answer nobody can verify should not claim that.
+#[tauri::command]
+fn autostart_enabled(app: tauri::AppHandle) -> bool {
+    use tauri_plugin_autostart::ManagerExt;
+    app.autolaunch().is_enabled().unwrap_or(false)
+}
+
+/// Turns it on or off, and answers with what the machine says afterwards
+/// rather than with what was asked for — so a refusal shows up in the window
+/// as the switch going back, instead of as a control that looks set and isn't.
+///
+/// Never called on startup, and never called with `true` by anything but a
+/// click. A discipline tool that adds itself to your startup without asking is
+/// exactly the kind of thing that costs the trust the rest of this product is
+/// trying to earn.
+#[tauri::command]
+fn set_autostart(app: tauri::AppHandle, enabled: bool) -> bool {
+    use tauri_plugin_autostart::ManagerExt;
+
+    let launcher = app.autolaunch();
+    let _ = if enabled { launcher.enable() } else { launcher.disable() };
+
+    launcher.is_enabled().unwrap_or(false)
+}
+
 /// What the window asks for on every visit to The Seal.
 ///
 /// `running: false` is a real answer, not just a not-yet-implemented one —
@@ -348,6 +383,8 @@ pub fn run() {
             pending_gate,
             close_gate,
             close_application,
+            autostart_enabled,
+            set_autostart,
             peer_state,
             put_state
         ])

@@ -354,6 +354,30 @@
               <ul class="device-list" id="deviceList" hidden></ul>
             </section>
 
+            <!-- Program blocks only bite while this app is running, so a
+                 machine that reboots without it is a fortress with its gate
+                 quietly open. Offered rather than switched on: a discipline
+                 tool that adds itself to your startup without asking is the
+                 kind of thing that costs the trust the rest of this is trying
+                 to earn. -->
+            <section class="panel">
+              <h2 class="panel-heading">START WITH THIS COMPUTER</h2>
+              <p class="panel-description">SO THE GATE IS THERE BEFORE YOU ARE</p>
+              <p class="panel-note">
+                Dominus can only put a program away while it is running. Without
+                this, a restart leaves your program blocks switched off until you
+                open the app again — and nothing will tell you they are.
+                Site blocking is unaffected; the extension handles that.
+              </p>
+
+              <label class="switch" id="autostartField">
+                <input type="checkbox" id="autostartToggle">
+                <span id="autostartState">Not starting with this computer.</span>
+              </label>
+
+              <p class="panel-note" id="autostartNote" hidden></p>
+            </section>
+
             <section class="panel">
               <h2 class="panel-heading">WHERE YOUR RECORD LIVES</h2>
               <p class="panel-note">

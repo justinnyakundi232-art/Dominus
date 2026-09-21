@@ -210,11 +210,6 @@ new launch back to. Check for a leftover process before relaunching.
 
 ## Still loose
 
-**Autostart is half-built.** The plugin is registered and never enabled, and
-there is no toggle, so the app does not start with the machine. It wants a
-control on The Seal rather than being switched on silently. It matters more now
-than it did: program blocks are only enforced while this app is running.
-
 **Program blocks are Windows-only.** `watcher.rs` compiles everywhere and does
 nothing off Windows; a second platform needs `foreground()`, `minimize()` and
 `running_applications()`, and nothing else.

@@ -299,6 +299,62 @@ body {
     margin-top: 20px;
 }
 
+/* ---- A switch -----------------------------------------------------------
+ *
+ * One setting, so one switch, built from a checkbox rather than from a library.
+ * The box is square and gold like every other checkbox in Dominus — this is not
+ * a place to introduce a second visual language for the same question. */
+
+.switch {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    margin-top: 18px;
+    font-size: 1rem;
+    color: var(--muted);
+    cursor: pointer;
+}
+
+.switch input[type="checkbox"] {
+    appearance: none;
+    margin: 0;
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--gold-deep);
+    background: var(--ground);
+    position: relative;
+    cursor: pointer;
+}
+
+.switch input[type="checkbox"]:checked {
+    border-color: var(--gold);
+}
+
+/* Drawn, not typed. U+2713 is outside both subsets of Playfair that ship with
+   Dominus, and this window renders the missing glyph as a box with its own
+   codepoint in it rather than falling back to something that has one. Two
+   borders and a rotation need no font at all. */
+.switch input[type="checkbox"]:checked::after {
+    content: "";
+    position: absolute;
+    left: 5px;
+    top: 1px;
+    width: 4px;
+    height: 9px;
+    border: solid var(--gold);
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+}
+
+.switch input[type="checkbox"]:disabled {
+    cursor: not-allowed;
+    border-color: var(--locked-bottom);
+}
+
+.switch.is-on { color: var(--gold); }
+
 /* ---- The pairing code --------------------------------------------------
  *
  * The one thing in the window a person has to read off the screen and retype,
