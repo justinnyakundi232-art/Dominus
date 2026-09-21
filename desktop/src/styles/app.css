@@ -716,7 +716,7 @@ code {
     white-space: nowrap;
 }
 
-.allowance-field .field-name { min-width: 4.4em; }
+.allowance-field .field-name { min-width: 4.4em; text-align: left; }
 
 .allowance-input {
     width: 4.6em;

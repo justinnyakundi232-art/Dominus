@@ -536,6 +536,10 @@
    "Duration" and "Rate" do not push their boxes apart. */
 .cooldown-field > span:first-child{
     min-width:4.4em;
+    /* The column is centred text by inheritance from .fortress-page, which put
+       "Rate" in the middle of its 4.4em while "Duration" filled it — box edges
+       aligned, words not, and the words are the part anyone can see. */
+    text-align:left;
 }
 
 .cooldown-field input[type="number"]{
@@ -794,6 +798,7 @@
 
 .application-field .field-name{
     min-width:4.4em;
+    text-align:left;
 }
 
 .application-input{
