@@ -153,6 +153,15 @@
                 Edits here reach the browser on its next tick, within a minute.
               </p>
 
+              <!-- Said next to it rather than buried in a panel: the two halves
+                   do different jobs, and knowing which does which is the
+                   difference between "this app is broken" and "that part lives
+                   in the other window". -->
+              <p class="page-note" id="fortressDivision">
+                Programs are enforced here. For site blocking, use the Chrome
+                extension — only it can see a navigation and stop it.
+              </p>
+
               <!-- Only ever shown on a sealed fortress. Weakening one asks for
                    the password, and the password prompt lives in the extension —
                    an app that let you around it would make the seal cheaper to
@@ -164,7 +173,23 @@
                 lives in the extension. Open The Fortress in Chrome to do it.
               </p>
 
-              <section class="panel">
+              <!-- Shown in place of the two site panels when nothing is paired.
+                   Sites are the extension's to enforce, so with no extension
+                   there is nothing here to show and nothing to edit — where the
+                   programs below carry on exactly as before. -->
+              <section class="panel panel-soon" id="fortressSitesUnpaired" hidden>
+                <h2 class="panel-heading">SITE BLOCKING</h2>
+                <p class="panel-note">
+                  Pair with the Chrome extension for site blocking. It is the only
+                  thing that can see a navigation and stop one, so what it blocks
+                  is edited there — this window shows it once the two are paired.
+                </p>
+                <div class="panel-actions">
+                  <button type="button" class="btn" data-route="seal">PAIR THIS APP</button>
+                </div>
+              </section>
+
+              <section class="panel" id="fortressCategories">
                 <h2 class="panel-heading">CATEGORIES</h2>
                 <p class="panel-note" id="categoriesEmpty" hidden>
                   No categories yet. The fortress has no walls.
@@ -172,7 +197,7 @@
                 <ul class="category-list" id="categoryList"></ul>
               </section>
 
-              <section class="panel">
+              <section class="panel" id="fortressManual">
                 <h2 class="panel-heading">BLOCKED BY HAND</h2>
                 <p class="panel-note" id="manualNote">
                   Sites blocked one at a time from the extension's popup.

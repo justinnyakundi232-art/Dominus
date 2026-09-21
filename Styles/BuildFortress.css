@@ -754,6 +754,21 @@
 
 .application-row.is-down .application-name{ color:var(--muted); }
 
+/* Parked: kept, but nothing is enforcing it, because no app is paired. Dimmed
+   rather than hidden or disabled — the entries are still real and still
+   editable, and what has gone is the enforcement, not the record. The note
+   above the list says which. */
+.application-row.is-parked{
+    border-color:var(--locked-bottom);
+    opacity:0.55;
+}
+
+.application-pair{
+    display:block;
+    margin:14px auto 0;
+    cursor:pointer;
+}
+
 .application-exe{
     font-size:0.85rem;
     color:var(--muted);

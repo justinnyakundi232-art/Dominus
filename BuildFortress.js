@@ -883,22 +883,39 @@ const PROGRAM_HELP = {
     used: "As of the desktop app's last sync. The app counts the live figure."
 };
 
-function renderApplicationsPanel(applications, message, usage) {
+function renderApplicationsPanel(applications, message, usage, paired) {
     const list = document.getElementById("applicationList");
     const note = document.getElementById("applicationsNote");
     if (!list || !note) return;
 
     list.textContent = "";
 
-    note.textContent = message || (applications.length
-        ? "Put away by the desktop app when opened. Standing one down or removing it"
-            + " here takes effect there on the next sync, within a minute."
-        : "No programs blocked. Programs are added from The Fortress in the desktop"
-            + " app, which can see what is running — this browser cannot.");
+    // Parked, not gone. Only the desktop app can put a program away, so with no
+    // app paired there is nothing enforcing any of these — and a list that says
+    // BLOCKED while nothing is blocking is a lie the user acts on.
+    //
+    // They are kept rather than deleted, and that is deliberate twice over. The
+    // extension is the record holder for applications, so this is the copy that
+    // survives the app being reinstalled; and "forget the app" is a button with
+    // no seal on it, which must not become the cheap way past one.
+    const parked = !paired && applications.length > 0;
+
+    note.textContent = message || (parked
+        ? "Not being enforced — the desktop app is not paired. These are kept, and"
+            + " start working again the moment you pair."
+        : applications.length
+            ? "Put away by the desktop app when opened. Standing one down or removing it"
+                + " here takes effect there on the next sync, within a minute."
+            : "No programs blocked. Programs are added from The Fortress in the desktop"
+                + " app, which can see what is running — this browser cannot.");
+
+    renderPairInvitation(list.parentElement, paired);
 
     applications.forEach((application) => {
         const row = document.createElement("li");
-        row.className = "application-row" + (application.enabled ? "" : " is-down");
+        row.className = "application-row"
+            + (application.enabled ? "" : " is-down")
+            + (parked ? " is-parked" : "");
 
         const label = document.createElement("span");
         label.className = "application-label";
@@ -970,10 +987,40 @@ let applicationsMessage = null;
 
 function refreshApplicationsPanel(message) {
     if (message !== undefined) applicationsMessage = message;
-    return Promise.all([loadApplications(), getEventLogRaw()]).then(([applications, events]) => {
-        renderApplicationsPanel(applications, applicationsMessage, deriveUsage(events, todayLocal()));
+    return Promise.all([
+        loadApplications(),
+        getEventLogRaw(),
+        // Whether anything is on the other end. localPeerStatus() is the same
+        // reading the pairing panel shows, so the two cannot disagree about
+        // whether there is an app.
+        typeof localPeerStatus === "function"
+            ? localPeerStatus().catch(() => ({ paired: false }))
+            : Promise.resolve({ paired: true })
+    ]).then(([applications, events, peer]) => {
+        renderApplicationsPanel(
+            applications, applicationsMessage, deriveUsage(events, todayLocal()), peer.paired);
         return applications;
     });
+}
+
+// The way out of the parked state, put where the problem is rather than left
+// for the user to go looking for on another page.
+function renderPairInvitation(panel, paired) {
+    if (!panel) return;
+
+    const existing = panel.querySelector(".application-pair");
+    if (existing) existing.remove();
+    if (paired) return;
+
+    const invite = document.createElement("button");
+    invite.type = "button";
+    invite.className = "task-btn application-pair";
+    invite.textContent = "PAIR THE APP →";
+    // data-route rather than a click handler: App.js delegates one listener for
+    // every route link in the document, and a second way of navigating would be
+    // a second thing to keep in step.
+    invite.dataset.route = "seal";
+    panel.appendChild(invite);
 }
 
 // Allowance and reminder, edited in place and saved with their own button so a

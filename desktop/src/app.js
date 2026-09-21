@@ -545,6 +545,8 @@ async function refreshFortress() {
     fortressRev = peer.stateRev;
     fortressDevice = peer.device;
 
+    // Never synced with anything: there is genuinely nothing to show, and no
+    // fortress to add a program to either.
     if (!fortressState || !fortressState.fortress) {
         empty.hidden = false;
         content.hidden = true;
@@ -560,6 +562,34 @@ async function refreshFortress() {
     renderCategories(fortressState.fortress.categories || []);
     renderManualSites(fortressState.fortress.manualSites || []);
     renderApplications(fortressState.fortress.applications || []);
+
+    await renderSiteAvailability();
+}
+
+// Sites are the extension's to enforce; programs are this app's. So when
+// nothing is paired, the two site panels are replaced by an invitation to pair
+// and the programs below carry on untouched — this window enforces those on its
+// own and needs nobody's permission to.
+//
+// Showing the last-synced site list with no extension behind it would be the
+// same lie the extension's programs panel used to tell in the other direction:
+// a list that says BLOCKED while nothing is blocking.
+async function renderSiteAvailability() {
+    const unpaired = document.getElementById("fortressSitesUnpaired");
+    const categories = document.getElementById("fortressCategories");
+    const manual = document.getElementById("fortressManual");
+    const crossing = document.getElementById("fortressCrossing");
+    if (!unpaired || !categories || !manual) return;
+
+    const { paired } = await service.status();
+
+    unpaired.hidden = paired;
+    categories.hidden = !paired;
+    manual.hidden = !paired;
+
+    // Nothing crosses to a browser that is not listening, so the line promising
+    // it would within a minute has to go with them.
+    if (crossing) crossing.hidden = !paired;
 }
 
 // ---- What the controls mean ----------------------------------------------
@@ -1414,9 +1444,12 @@ document.addEventListener("DOMContentLoaded", () => {
     if (pickerBtn) pickerBtn.addEventListener("click", togglePicker);
 
     // Coming back to this window is the usual moment the list is stale — the
-    // user has just been off opening the program they want to block.
+    // user has just been off opening the program they want to block. It is
+    // also the usual moment a pairing has changed, because forgetting the app
+    // is done over in the browser.
     window.addEventListener("focus", () => {
         if (pickerIsVisible()) renderPicker();
+        renderSiteAvailability();
     });
 
     window.addEventListener("hashchange", () => show(routeFromHash()));
@@ -1433,4 +1466,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // The "used today" lines, while The Fortress is on screen.
     setInterval(() => refreshUsageLines(), USAGE_REFRESH_MS);
+
+    // And whether there is still an extension on the other end. The one thing
+    // this window must never do is the thing it did before: go on showing a
+    // fortress nobody is updating as though it were live. Cheap — a local
+    // call, no network — and it rides the interval that already exists.
+    setInterval(() => renderSiteAvailability(), ENFORCEMENT_INTERVAL_MS);
 });

@@ -178,8 +178,35 @@ function pairWithLocalPeer(code) {
     });
 }
 
-// Forgets the app. The app keeps its own device list; this is only this side.
+// Forgets the app, and tells it so.
+//
+// This used to be one-sided, and that was the bug: the browser dropped its
+// token and the app carried on believing it was paired, showing a fortress
+// nobody was updating any more. A window that looks live and is not is worse
+// than one that says it is on its own.
+//
+// The telling is best effort and deliberately cannot fail this function. If the
+// app is closed, or has moved ports, or refuses, the extension still forgets —
+// the user asked this side to let go, and a peer that could not be reached has
+// no business keeping them paired. The app covers that case from its end by
+// saying how long it has been since the extension last spoke.
+//
+// This is also the one place a 401 is a success: it means the app had already
+// forgotten us, which is exactly the state being asked for.
 function unpairLocalPeer() {
+    return loadLocalPeer()
+        .then((peer) => {
+            if (!peer.token || !peer.port) return null;
+            return peerPost(peer.port, "unpair", peer.token, {});
+        })
+        .catch(() => null)
+        .then(() => forgetLocalPeer());
+}
+
+// Drops the credential without telling anyone. For the case where the app has
+// already forgotten US — answering 401 — where posting "forget me" to a service
+// that just said it has never heard of us is a round trip to say nothing.
+function forgetLocalPeer() {
     return saveLocalPeer({ port: null, token: null, protocol: null, pairedAt: 0 });
 }
 
@@ -240,8 +267,9 @@ function localPeerTransport(mine) {
             if (result.status === 401) {
                 // The app no longer recognises us — revoked, or its store was
                 // reset. Drop the token rather than retrying a credential that
-                // is gone; the user pairs again when they choose to.
-                return unpairLocalPeer().then(() => null);
+                // is gone; the user pairs again when they choose to. Quietly:
+                // there is nobody left to tell.
+                return forgetLocalPeer().then(() => null);
             }
 
             const body = (result.status === 200 && result.body) ? result.body : null;

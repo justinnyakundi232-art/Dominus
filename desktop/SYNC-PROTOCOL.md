@@ -168,6 +168,46 @@ Requires `X-Dominus-Token`.
 merge was being computed. Nothing is written. The extension does not retry
 inside the tick; the next one reads the newer state and merges against that.
 
+### `POST /unpair`
+
+Requires `X-Dominus-Token`. Empty body — `{}` — which still has to be JSON, for
+the reason every other write does.
+
+→ `200` `{ "forgotten": true }`
+→ `401` — the app had already forgotten this device, which is the state being
+asked for anyway. The extension treats it as success.
+
+The extension calls this as the user presses FORGET THE APP. It removes **only
+the calling device**: a second browser paired with the same app has nothing to
+do with this one leaving. The mirrored fortress is deliberately **kept** — the
+app goes on enforcing the programs it was enforcing a moment ago, because
+forgetting the app to stop it syncing is not asking for your programs to be
+unblocked.
+
+**Best effort, by construction.** If the app is closed when the button is
+pressed, nothing arrives and nothing can. The extension forgets regardless —
+the user asked this side to let go, and a peer that could not be reached has no
+business keeping them paired.
+
+*Why it exists:* forgetting used to be one-sided. The extension dropped its
+token and the app carried on believing it was paired, showing a fortress nobody
+was updating any more. A window that looks live and is not is worse than one
+that says it is on its own.
+
+### What each side shows with nothing on the other end
+
+Neither half pretends to enforce what it cannot:
+
+- **The extension's Programs panel** keeps its entries and says they are *not
+  being enforced*, greyed, with a way to pair. They are kept rather than
+  deleted for two reasons: this is the record holder's copy, the one that
+  survives the app being reinstalled; and FORGET THE APP has no seal on it, so
+  deleting there would make it the cheap way past one.
+- **The app's Fortress** replaces its two site panels with an invitation to
+  pair, and drops the line promising edits reach the browser within a minute —
+  nothing crosses to a browser that is not listening. Programs stay fully
+  editable: this app enforces those alone and needs nobody's permission to.
+
 ---
 
 ## Where the merge runs, and why only in one place
