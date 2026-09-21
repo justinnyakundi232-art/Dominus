@@ -510,6 +510,19 @@
     letter-spacing:1px;
 }
 
+/* The heading stays centred in the block; the three rows under it do not.
+   Centring each one independently left three different left edges stacked on
+   top of each other — "Duration", the escalate checkbox and "Rate" each began
+   somewhere slightly different, which is the sort of raggedness you feel before
+   you can name it. They share an edge now, and the group as a whole is still
+   centred, so the block reads the same from a distance. */
+.cooldown-rows{
+    display:flex;
+    flex-direction:column;
+    align-items:flex-start;
+    gap:10px;
+}
+
 .cooldown-field,
 .cooldown-toggle{
     display:flex;
@@ -517,6 +530,12 @@
     gap:8px;
     color:var(--gold-deep);
     font-size:0.95rem;
+}
+
+/* And within the two that have one, the input sits in its own column, so
+   "Duration" and "Rate" do not push their boxes apart. */
+.cooldown-field > span:first-child{
+    min-width:4.4em;
 }
 
 .cooldown-field input[type="number"]{
@@ -537,6 +556,9 @@
 
 .cooldown-toggle input[type="checkbox"]{
     appearance:none;
+    /* Zeroed, or the user-agent's 4px left margin sets this row in from the
+       two beside it — the same 4px that the permanent-block checkbox had. */
+    margin:0;
     width:16px;
     height:16px;
     border:1px solid var(--gold-deep);

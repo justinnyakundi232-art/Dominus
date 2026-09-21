@@ -184,6 +184,7 @@ function renderCooldownBlock(container, scope, cooldown, heading) {
             <span class="info-tip" tabindex="0" role="button" aria-label="What is the cooldown?">(?)<span class="info-tooltip" role="tooltip">Time you must sit on the blocked page before UNLOCK SITE becomes clickable. The countdown pauses if you switch away from the tab, so it only runs while you are actually looking at it.</span></span>
         </p>
 
+        <div class="cooldown-rows">
         <label class="cooldown-field">
             <span>Duration</span>
             <input type="number" id="${scopedId(scope, "cooldownMinutes")}" min="1" step="1" value="${Math.max(1, Math.round(settings.seconds / 60))}">
@@ -203,6 +204,7 @@ function renderCooldownBlock(container, scope, cooldown, heading) {
             <input type="number" id="${scopedId(scope, "cooldownFactor")}" min="${MIN_ESCALATION_FACTOR}" step="0.05" value="${settings.factor}">
             <span>&times; per unlock</span>
         </label>
+        </div>
     `;
 
     document.getElementById(scopedId(scope, "cooldownEscalate"))
