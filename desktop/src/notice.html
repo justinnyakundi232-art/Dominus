@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dominus</title>
+
+    <link rel="stylesheet" href="styles/tokens.css" />
+    <link rel="stylesheet" href="styles/notice.css" />
+  </head>
+
+  <!-- The allowance reminder. Shown in the corner without taking focus, so it
+       never pulls anyone out of what they are doing; closes itself. See
+       "The warning" in ../APP-LIMITS.md. -->
+  <body class="notice-body">
+    <main class="notice" id="notice" role="status" aria-live="polite">
+      <img src="assets/crest.png" class="notice-crest" alt="" onerror="this.remove()">
+      <div class="notice-text">
+        <p class="notice-title" id="noticeTitle">Time is nearly up</p>
+        <p class="notice-line" id="noticeLine"></p>
+      </div>
+      <button type="button" class="notice-close" id="noticeClose" aria-label="Dismiss" title="Dismiss">&times;</button>
+    </main>
+
+    <script src="shared/tasks.js"></script>
+    <script src="shared/categories.js"></script>
+    <script src="shared/applications.js"></script>
+    <script src="shared/sync.js"></script>
+    <script src="notice.js"></script>
+  </body>
+</html>

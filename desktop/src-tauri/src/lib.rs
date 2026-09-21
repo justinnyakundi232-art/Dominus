@@ -24,7 +24,7 @@ use tauri::{
 };
 
 use service::{PairingCode, Shared};
-use watcher::{Enforced, PendingGate, Watch, WatchInner, POLL_INTERVAL_MS};
+use watcher::{Enforced, Notice, PendingGate, UsageSlice, Watch, WatchInner, POLL_INTERVAL_MS};
 
 #[derive(Serialize)]
 struct DeviceView {
@@ -179,6 +179,105 @@ fn close_gate(app: tauri::AppHandle, watch: tauri::State<Watch>) {
     }
 }
 
+/// Asks a program to close, because the user walked away from it.
+///
+/// Minimizing is what keeps a gate honest while it is being answered, and it is
+/// the wrong thing to be left with afterwards: a program that is only ever
+/// minimized is one the user cannot get back to in order to close, and clicking
+/// it in the taskbar just minimizes it again. That loop is escapable — hover the
+/// taskbar, close it from the preview — but only if you already know, and
+/// nobody in the middle of being told no is in the mood to work it out.
+///
+/// A request, never a kill. See `watcher::close_windows()`.
+#[tauri::command]
+fn close_application(exe: String, watch: tauri::State<Watch>) -> usize {
+    // The grace is marked first. A program with unsaved work answers WM_CLOSE
+    // with a question, and the poll that would minimize that question can land
+    // before this function has returned.
+    if let Ok(mut guard) = watch.lock() {
+        guard.mark_closing(&exe, service::now_ms());
+    }
+    watcher::close_windows(&exe)
+}
+
+/// Everything counted since the window last asked, for it to write into the
+/// day's usage event. Rust never writes a record; see "Spending" in
+/// ../APP-LIMITS.md.
+#[tauri::command]
+fn take_usage(watch: tauri::State<Watch>) -> Vec<UsageSlice> {
+    watch.lock().map(|mut guard| guard.take_usage()).unwrap_or_default()
+}
+
+/// The window took time and could not write it. Counted again next time.
+#[tauri::command]
+fn restore_usage(watch: tauri::State<Watch>, slices: Vec<UsageSlice>) {
+    if let Ok(mut guard) = watch.lock() {
+        guard.restore_usage(slices);
+    }
+}
+
+/// Seconds spent today by every program with an allowance, including time the
+/// window has not collected yet — what The Fortress shows as "used today".
+#[tauri::command]
+fn usage_today(watch: tauri::State<Watch>) -> std::collections::HashMap<String, u64> {
+    watch.lock().map(|guard| guard.spent_today()).unwrap_or_default()
+}
+
+/// The reminder currently showing, for the reminder window to read on load.
+#[tauri::command]
+fn pending_notice(watch: tauri::State<Watch>) -> Option<Notice> {
+    watch.lock().ok().and_then(|guard| guard.notice.clone())
+}
+
+#[tauri::command]
+fn close_notice(app: tauri::AppHandle, watch: tauri::State<Watch>) {
+    if let Ok(mut guard) = watch.lock() {
+        guard.close_notice();
+    }
+    if let Some(window) = app.get_webview_window("notice") {
+        let _ = window.hide();
+    }
+}
+
+/// Shows the reminder in the corner without taking focus from what the user
+/// is doing — see `watcher::show_without_focus`.
+fn raise_notice(app: &tauri::AppHandle, notice: &Notice) {
+    let Some(window) = app.get_webview_window("notice") else {
+        return;
+    };
+
+    let _ = app.emit("notice-raised", notice.clone());
+
+    // Bottom right of the monitor the user is on, clear of the taskbar.
+    if let Ok(Some(monitor)) = window.current_monitor().or_else(|_| window.primary_monitor()) {
+        let area = monitor.work_area();
+        if let Ok(size) = window.outer_size() {
+            let margin = (16.0 * monitor.scale_factor()) as i32;
+            let x = area.position.x + area.size.width as i32 - size.width as i32 - margin;
+            let y = area.position.y + area.size.height as i32 - size.height as i32 - margin;
+            let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
+        }
+    }
+
+    // Shown through Tauri, so the webview knows it is on screen and draws —
+    // the window is built unfocusable, which is what keeps this from taking
+    // the keyboard. Then pinned topmost without activation, as a second line.
+    let _ = window.show();
+
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(hwnd) = window.hwnd() {
+            watcher::show_without_focus(hwnd.0 as isize);
+        }
+    }
+}
+
+fn hide_notice(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("notice") {
+        let _ = window.hide();
+    }
+}
+
 fn raise_gate(app: &tauri::AppHandle, pending: &PendingGate) {
     let Some(gate) = app.get_webview_window("gate") else {
         return;
@@ -241,8 +340,14 @@ pub fn run() {
             new_pairing_code,
             set_enforced,
             running_applications,
+            take_usage,
+            restore_usage,
+            usage_today,
+            pending_notice,
+            close_notice,
             pending_gate,
             close_gate,
+            close_application,
             peer_state,
             put_state
         ])
@@ -338,6 +443,32 @@ pub fn run() {
                 }
             });
 
+            // The allowance reminder: small, in the corner, never focused, and
+            // never in the taskbar. Built once and hidden, like the gate.
+            let notice = WebviewWindowBuilder::new(app, "notice", WebviewUrl::App("notice.html".into()))
+                .title("Dominus")
+                .inner_size(360.0, 124.0)
+                .resizable(false)
+                .always_on_top(true)
+                .skip_taskbar(true)
+                .decorations(false)
+                // Never the active window: WS_EX_NOACTIVATE, so neither showing
+                // it nor clicking it takes the keyboard from what the user is
+                // doing. The dismiss button still works — clicks reach a
+                // window that is not activated.
+                .focusable(false)
+                .focused(false)
+                .visible(false)
+                .build()?;
+
+            let dismissing = app.handle().clone();
+            notice.on_window_event(move |event| {
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    hide_notice(&dismissing);
+                }
+            });
+
             // The watch itself. A thread rather than an async task because it
             // is a blocking Win32 call on a fixed cadence with nothing to await
             // — and because it must keep its rhythm whatever the async runtime
@@ -350,30 +481,31 @@ pub fn run() {
                 let seen = watcher::foreground();
                 let now = service::now_ms();
 
-                let raised = match ticking.lock() {
+                let (gate, notice) = match ticking.lock() {
                     Ok(mut guard) => {
                         let exe = seen.as_ref().map(|(name, _)| name.as_str());
-                        if guard.observe(exe, now) {
-                            guard.pending.clone()
-                        } else {
-                            None
-                        }
+                        let verdict = guard.observe(exe, now);
+                        let gate = if verdict.raise_gate { guard.pending.clone() } else { None };
+                        (gate, verdict.notice)
                     }
                     // A poisoned lock means another thread panicked while
                     // holding it. Enforcing nothing is the safe reading: the
                     // alternative is a gate raised against a list nobody can
                     // vouch for.
-                    Err(_) => None,
+                    Err(_) => (None, None),
                 };
 
-                if let Some(pending) = raised {
+                if let Some(pending) = gate {
                     // Minimize first. The gate appearing over a program that is
                     // still there reads as a suggestion; the program going away
                     // is what makes it a decision.
                     if let Some((_, hwnd)) = seen {
                         watcher::minimize(hwnd);
                     }
+                    hide_notice(&handle);
                     raise_gate(&handle, &pending);
+                } else if let Some(notice) = notice {
+                    raise_notice(&handle, &notice);
                 }
             });
 

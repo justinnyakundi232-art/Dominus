@@ -237,6 +237,48 @@ async function run() {
         eq(store.blockedSites, [], "something is still being enforced that both sides took down");
     });
 
+    await it("an app too old to know what an allowance is cannot wipe one", async () => {
+        // The failure this guard exists for, through the real wire. A desktop
+        // app from before 1.12 rewrites the whole application list through its
+        // own normaliser whenever the user touches any program in its window,
+        // and that normaliser drops a field it has never heard of. Read as a
+        // zero, it is the strongest possible answer, so strengthen-wins would
+        // hand the argument to the peer that knows least — once a minute,
+        // forever, until the user's limit is gone.
+        const app = createApp();
+        const { scope, store } = await browser(app, {});
+
+        store.applications = [{
+            id: "app:steam.exe", exe: "steam.exe", name: "Steam",
+            enabled: true, permanent: false, allowanceMinutes: 45, warnMinutes: 7
+        }];
+
+        await scope.syncNow();
+        eq(app.state.fortress.applications[0].allowanceMinutes, 45, "the limit never reached the app");
+
+        // The user stands a program down in the old app's window. It rewrites
+        // the list, and Steam's allowance falls off the back of it.
+        const held = app.state.fortress.applications.map((entry) => ({
+            id: entry.id, exe: entry.exe, name: entry.name,
+            enabled: entry.enabled, permanent: entry.permanent
+        }));
+        app.state = Object.assign({}, app.state, {
+            fortress: Object.assign({}, app.state.fortress, { applications: held }),
+            fortressRev: app.state.fortressRev + 1
+        });
+        app.stateRev += 1;
+
+        await scope.syncNow();
+
+        eq(store.applications[0].allowanceMinutes, 45, "an old app zeroed a limit it could not read");
+        eq(store.applications[0].warnMinutes, 7, "an old app reset a reminder it could not read");
+        eq(app.state.fortress.applications[0].allowanceMinutes, 45, "the limit was not put back on the wire");
+
+        // And it stays put, tick after tick, with the app still silent.
+        await scope.syncNow();
+        eq(store.applications[0].allowanceMinutes, 45, "it drifted on the second tick");
+    });
+
 // ===========================================================================
     describe("When the exchange goes wrong");
 

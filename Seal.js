@@ -571,6 +571,17 @@ function describeApplicationChanges(before, after, lines) {
         if (was.permanent && !now.permanent) {
             lines.push(`Permanent block lifted on ${now.name}.`);
         }
+
+        // Read through the normaliser: an entry from before allowances has no
+        // field, and that means blocked outright, not "unknown".
+        const wasMinutes = normalizeApplication(was) ? normalizeApplication(was).allowanceMinutes : 0;
+        const nowMinutes = normalizeApplication(now) ? normalizeApplication(now).allowanceMinutes : 0;
+
+        if (nowMinutes > wasMinutes) {
+            lines.push(wasMinutes === 0
+                ? `${now.name} gets ${formatAllowance(nowMinutes)} a day — it was blocked outright.`
+                : `${now.name}'s allowance raised from ${formatAllowance(wasMinutes)} to ${formatAllowance(nowMinutes)} a day.`);
+        }
     });
 }
 

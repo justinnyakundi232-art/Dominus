@@ -36,6 +36,10 @@
 
 .panel{
     border:3px solid var(--gold-deep);
+    /* A surface, not an outline. These were bordered boxes on bare black, which
+       left the page reading as one field with lines drawn on it rather than as
+       sections you could take in separately. See --section in Tokens.css. */
+    background:var(--section);
     width:500px;
     padding:20px;
 }
@@ -403,6 +407,8 @@
 
 .category input[type="checkbox"]{
     appearance:none;
+    margin:0;
+    flex-shrink:0;
     width:24px;
     height:24px;
     border:2px solid var(--gold-deep);
@@ -437,19 +443,32 @@
     margin-bottom:20px;   
 }
 
+/* The permanent option belongs to the category above it, and used to float
+   between two bordered boxes with neither — sitting hard against the row with
+   no gap, indented 11px to the LEFT of the very checkbox it sits under. It read
+   as a stray control rather than as part of its own category.
+   Now it continues the row's box the way .category-detail already does, and its
+   checkbox starts in the same column as the one above it. */
 .category-options{
-    margin-bottom:10px;
+    border:1px solid var(--gold-deep);
+    border-top:none;
+    padding:8px 10px;
+    box-sizing:border-box;
 }
 
 .category-options label{
     display: flex;
     align-items: center;
-    gap: 5px;
+    gap: 10px;
     color: var(--gold-deep);
 }
 
 .category-options input[type="checkbox"]{
     appearance:none;
+    /* Deliberately smaller than the one above: a sub-option, not a second
+       decision of equal weight. Its LEFT EDGE still lines up with it. */
+    margin:0;
+    flex-shrink:0;
     width:16px;
     height:16px;
     border:1px solid var(--gold-deep);
@@ -491,6 +510,19 @@
     letter-spacing:1px;
 }
 
+/* The heading stays centred in the block; the three rows under it do not.
+   Centring each one independently left three different left edges stacked on
+   top of each other — "Duration", the escalate checkbox and "Rate" each began
+   somewhere slightly different, which is the sort of raggedness you feel before
+   you can name it. They share an edge now, and the group as a whole is still
+   centred, so the block reads the same from a distance. */
+.cooldown-rows{
+    display:flex;
+    flex-direction:column;
+    align-items:flex-start;
+    gap:10px;
+}
+
 .cooldown-field,
 .cooldown-toggle{
     display:flex;
@@ -498,6 +530,16 @@
     gap:8px;
     color:var(--gold-deep);
     font-size:0.95rem;
+}
+
+/* And within the two that have one, the input sits in its own column, so
+   "Duration" and "Rate" do not push their boxes apart. */
+.cooldown-field > span:first-child{
+    min-width:4.4em;
+    /* The column is centred text by inheritance from .fortress-page, which put
+       "Rate" in the middle of its 4.4em while "Duration" filled it — box edges
+       aligned, words not, and the words are the part anyone can see. */
+    text-align:left;
 }
 
 .cooldown-field input[type="number"]{
@@ -518,6 +560,9 @@
 
 .cooldown-toggle input[type="checkbox"]{
     appearance:none;
+    /* Zeroed, or the user-agent's 4px left margin sets this row in from the
+       two beside it — the same 4px that the permanent-block checkbox had. */
+    margin:0;
     width:16px;
     height:16px;
     border:1px solid var(--gold-deep);
@@ -709,6 +754,21 @@
 
 .application-row.is-down .application-name{ color:var(--muted); }
 
+/* Parked: kept, but nothing is enforcing it, because no app is paired. Dimmed
+   rather than hidden or disabled — the entries are still real and still
+   editable, and what has gone is the enforcement, not the record. The note
+   above the list says which. */
+.application-row.is-parked{
+    border-color:var(--locked-bottom);
+    opacity:0.55;
+}
+
+.application-pair{
+    display:block;
+    margin:14px auto 0;
+    cursor:pointer;
+}
+
 .application-exe{
     font-size:0.85rem;
     color:var(--muted);
@@ -723,4 +783,55 @@
 .application-actions .task-btn{
     padding:6px 12px;
     cursor:pointer;
+}
+
+.application-used{
+    font-size:0.85rem;
+    color:var(--parchment);
+    margin-top:2px;
+}
+
+.application-allowance{
+    display:flex;
+    flex-wrap:wrap;
+    align-items:center;
+    gap:6px 14px;
+    margin-top:6px;
+    font-size:0.85rem;
+    color:var(--muted);
+}
+
+/* The two fields stack on a panel this narrow, so their inputs have to line up
+   in one column. A fixed name column is what does that — "Allowed" and "Warn"
+   are different lengths, and with the text alone the boxes sat 18px apart. */
+.application-field{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    white-space:nowrap;
+}
+
+.application-field .field-name{
+    min-width:4.4em;
+    text-align:left;
+}
+
+.application-input{
+    width:4.6em;
+    padding:2px 6px;
+    background:black;
+    color:var(--parchment);
+    border:1px solid var(--gold-deep);
+    font-family:inherit;
+    font-size:0.9rem;
+}
+
+.application-allowance .task-btn{
+    padding:3px 10px;
+    cursor:pointer;
+}
+
+.application-allowance .task-btn:disabled{
+    opacity:0.45;
+    cursor:default;
 }

@@ -70,6 +70,17 @@ const native = {
         }
     },
 
+    async closeProgram(exe) {
+        if (!hasBridge() || !exe) return 0;
+        try {
+            return await window.__TAURI__.core.invoke("close_application", { exe: exe });
+        } catch (error) {
+            // A program that cannot be asked is a program that stays open and
+            // stays gated, which is where this started. Nothing escalates.
+            return 0;
+        }
+    },
+
     async setEnforced(enforced) {
         if (!hasBridge()) return;
         try {
@@ -99,6 +110,18 @@ const native = {
 function applicationFor(exe) {
     const fortress = (peer.state && peer.state.fortress) || {};
     return findApplication(fortress.applications, exe);
+}
+
+// Why the gate is up, in one line. A program with an allowance was not blocked
+// by the user so much as given so long — and saying "you blocked this" when
+// they had an hour and used it would be telling them something untrue.
+function gateReason(exe) {
+    const application = applicationFor(exe);
+    const entry = application ? normalizeApplication(application) : null;
+    const minutes = entry ? entry.allowanceMinutes : 0;
+    return minutes > 0
+        ? `You've used today's ${formatAllowance(minutes)}. Dominus has put it away.`
+        : "You blocked this. Dominus has put it away.";
 }
 
 function displayName(exe) {
@@ -135,15 +158,50 @@ async function load(next) {
 
     programEl.textContent = displayName(exe);
     heading.textContent = "HALT.";
-    lineEl.textContent = "You blocked this. Dominus has put it away.";
+    lineEl.textContent = gateReason(exe);
     taskArea.innerHTML = "";
     noteEl.textContent = "";
     actions.hidden = false;
+    labelWalkAway(walkBtn, exe);
     walkBtn.disabled = false;
     unlockBtn.disabled = false;
 }
 
 // ---- Walking away ---------------------------------------------------------
+
+// Labels a walk-away button with what it actually does, naming the program.
+//
+// "WALK AWAY" on its own reads as "leave it where it is" — and where it is, is
+// minimized, which is the one state the user cannot get out of. Clicking it in
+// the taskbar minimizes it again; the way out is to hover the taskbar and close
+// it from the preview, which is escapable only if you already know. So the
+// button says it closes the program, and closing the program is what it now
+// does.
+function labelWalkAway(button, exe) {
+    const name = displayName(exe);
+
+    button.textContent = "";
+    const line = document.createElement("span");
+    line.className = "btn-line";
+    line.textContent = "WALK AWAY";
+    const sub = document.createElement("span");
+    sub.className = "btn-sub";
+    // Built as nodes, not markup: the name is the one the user typed.
+    sub.textContent = "and close " + name;
+    button.append(line, sub);
+
+    button.title = "Records a stand and asks " + name + " to close. It is a request,"
+        + " not a kill — anything unsaved still prompts you, and a program that"
+        + " refuses stays open and stays gated.";
+}
+
+// Every walk-away button: the one in the markup and the ones the task and
+// countdown views build for themselves. All three are the same decision.
+function wireWalkAway(button) {
+    if (!button) return;
+    labelWalkAway(button, (pending && pending.exe) || "");
+    button.addEventListener("click", walkAway);
+}
 
 // The good outcome, and the one the whole product is arranged around. It is a
 // stand, and it counts exactly as a stand in the browser counts.
@@ -159,6 +217,12 @@ async function walkAway() {
     unlockBtn.disabled = true;
 
     await record({ type: "stand" });
+
+    // Walking away means the program goes away. Asked before the gate closes,
+    // because the grace that keeps a "save changes?" prompt from being
+    // minimized is marked by the same call.
+    await native.closeProgram((pending && pending.exe) || "");
+
     await native.closeGate();
 }
 
@@ -241,7 +305,7 @@ function typingChallenge({ instruction, target, carryToHeading }) {
     blockPasteOn(input);
     input.focus();
 
-    document.getElementById("taskBack").addEventListener("click", walkAway);
+    wireWalkAway(document.getElementById("taskBack"));
     document.getElementById("taskConfirm").addEventListener("click", () => {
         if (input.value.trim() !== String(target).trim()) {
             document.getElementById("taskError").textContent = "That does not match. Try again.";
@@ -266,7 +330,7 @@ function codeChallenge(code) {
     blockPasteOn(input);
     input.focus();
 
-    document.getElementById("taskBack").addEventListener("click", walkAway);
+    wireWalkAway(document.getElementById("taskBack"));
     document.getElementById("taskConfirm").addEventListener("click", () => {
         if (input.value.trim().toUpperCase() !== String(code).trim().toUpperCase()) {
             document.getElementById("taskError").textContent = "That is not the code.";
@@ -311,7 +375,7 @@ function countdown(totalSeconds, headingMessage, note) {
 
     const clock = document.getElementById("countdownClock");
     const unlock = document.getElementById("taskUnlock");
-    document.getElementById("taskBack").addEventListener("click", walkAway);
+    wireWalkAway(document.getElementById("taskBack"));
 
     let left = totalSeconds;
     clock.textContent = formatClock(left);
@@ -428,18 +492,13 @@ async function record({ type, domain, expiry }) {
 
 // Hands Rust the list and the expiries, derived from the state this window is
 // holding. Nothing on the Rust side works any of this out for itself.
+//
+// Built by enforcementFor() in the shared layer, the same function the main
+// window uses. This used to be a hand-built copy of the old shape, and sending
+// that after an unlock would have wiped every allowance from the watcher.
 async function pushEnforced() {
-    const fortress = (peer.state && peer.state.fortress) || {};
-    const unlocks = (peer.state && peer.state.tempUnlocks) || {};
-
-    const blocked = blockedExecutables(fortress.applications);
-    const until = {};
-    blocked.forEach((exe) => {
-        const expiry = Number(unlocks[exe]) || 0;
-        if (expiry > Date.now()) until[exe] = expiry;
-    });
-
-    await native.setEnforced({ blocked: blocked, unlocked_until: until });
+    if (!peer.state) return;
+    await native.setEnforced(enforcementFor(peer.state, localDateString(new Date())));
 }
 
 // ---- Wiring ---------------------------------------------------------------

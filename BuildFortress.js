@@ -184,6 +184,7 @@ function renderCooldownBlock(container, scope, cooldown, heading) {
             <span class="info-tip" tabindex="0" role="button" aria-label="What is the cooldown?">(?)<span class="info-tooltip" role="tooltip">Time you must sit on the blocked page before UNLOCK SITE becomes clickable. The countdown pauses if you switch away from the tab, so it only runs while you are actually looking at it.</span></span>
         </p>
 
+        <div class="cooldown-rows">
         <label class="cooldown-field">
             <span>Duration</span>
             <input type="number" id="${scopedId(scope, "cooldownMinutes")}" min="1" step="1" value="${Math.max(1, Math.round(settings.seconds / 60))}">
@@ -203,6 +204,7 @@ function renderCooldownBlock(container, scope, cooldown, heading) {
             <input type="number" id="${scopedId(scope, "cooldownFactor")}" min="${MIN_ESCALATION_FACTOR}" step="0.05" value="${settings.factor}">
             <span>&times; per unlock</span>
         </label>
+        </div>
     `;
 
     document.getElementById(scopedId(scope, "cooldownEscalate"))
@@ -872,25 +874,48 @@ const PROGRAM_HELP = {
         + " again, add it from The Fortress in the desktop app.",
     stoodDown: "Stood down: switched off for now, not deleted. Take it up again to"
         + " resume blocking it.",
-    permanent: "Permanent: this program cannot be removed. It can still be stood down."
+    permanent: "Permanent: this program cannot be removed. It can still be stood down.",
+    allowance: "Minutes a day this program can be the window in front before the desktop"
+        + " app puts it away. 0 blocks it outright. Lowering it is free; raising it asks"
+        + " for your seal, or holds for ten seconds on an open fortress.",
+    warn: "How many minutes before today's time runs out the desktop app shows a"
+        + " reminder. 0 for none.",
+    used: "As of the desktop app's last sync. The app counts the live figure."
 };
 
-function renderApplicationsPanel(applications, message) {
+function renderApplicationsPanel(applications, message, usage, paired) {
     const list = document.getElementById("applicationList");
     const note = document.getElementById("applicationsNote");
     if (!list || !note) return;
 
     list.textContent = "";
 
-    note.textContent = message || (applications.length
-        ? "Put away by the desktop app when opened. Standing one down or removing it"
-            + " here takes effect there on the next sync, within a minute."
-        : "No programs blocked. Programs are added from The Fortress in the desktop"
-            + " app, which can see what is running — this browser cannot.");
+    // Parked, not gone. Only the desktop app can put a program away, so with no
+    // app paired there is nothing enforcing any of these — and a list that says
+    // BLOCKED while nothing is blocking is a lie the user acts on.
+    //
+    // They are kept rather than deleted, and that is deliberate twice over. The
+    // extension is the record holder for applications, so this is the copy that
+    // survives the app being reinstalled; and "forget the app" is a button with
+    // no seal on it, which must not become the cheap way past one.
+    const parked = !paired && applications.length > 0;
+
+    note.textContent = message || (parked
+        ? "Not being enforced — the desktop app is not paired. These are kept, and"
+            + " start working again the moment you pair."
+        : applications.length
+            ? "Put away by the desktop app when opened. Standing one down or removing it"
+                + " here takes effect there on the next sync, within a minute."
+            : "No programs blocked. Programs are added from The Fortress in the desktop"
+                + " app, which can see what is running — this browser cannot.");
+
+    renderPairInvitation(list.parentElement, paired);
 
     applications.forEach((application) => {
         const row = document.createElement("li");
-        row.className = "application-row" + (application.enabled ? "" : " is-down");
+        row.className = "application-row"
+            + (application.enabled ? "" : " is-down")
+            + (parked ? " is-parked" : "");
 
         const label = document.createElement("span");
         label.className = "application-label";
@@ -900,15 +925,32 @@ function renderApplicationsPanel(applications, message) {
         // A name the user chose, arriving from another device. Text, never markup.
         name.textContent = application.name || application.exe;
 
+        const minutes = application.allowanceMinutes;
         const exe = document.createElement("span");
         exe.className = "application-exe";
         exe.textContent = application.enabled
-            ? application.exe + (application.permanent ? " · permanent" : "")
+            ? application.exe
+                + (minutes > 0 ? " · " + formatAllowance(minutes) + " a day" : " · blocked")
+                + (application.permanent ? " · permanent" : "")
             : application.exe + " · stood down";
         if (!application.enabled) exe.title = PROGRAM_HELP.stoodDown;
         else if (application.permanent) exe.title = PROGRAM_HELP.permanent;
 
         label.append(name, exe);
+
+        if (application.enabled && minutes > 0) {
+            const used = document.createElement("span");
+            used.className = "application-used";
+            const seconds = (usage && usage[application.exe]) || 0;
+            const spent = Math.min(minutes, Math.floor(seconds / 60));
+            used.textContent = spent >= minutes
+                ? `Today's ${formatAllowance(minutes)} is used up.`
+                : `${formatAllowance(spent)} of ${formatAllowance(minutes)} used today.`;
+            used.title = PROGRAM_HELP.used;
+            label.appendChild(used);
+        }
+
+        label.appendChild(renderAllowanceEditor(application));
         row.appendChild(label);
 
         const actions = document.createElement("span");
@@ -945,30 +987,144 @@ let applicationsMessage = null;
 
 function refreshApplicationsPanel(message) {
     if (message !== undefined) applicationsMessage = message;
-    return loadApplications().then((applications) => {
-        renderApplicationsPanel(applications, applicationsMessage);
+    return Promise.all([
+        loadApplications(),
+        getEventLogRaw(),
+        // Whether anything is on the other end. localPeerStatus() is the same
+        // reading the pairing panel shows, so the two cannot disagree about
+        // whether there is an app.
+        typeof localPeerStatus === "function"
+            ? localPeerStatus().catch(() => ({ paired: false }))
+            : Promise.resolve({ paired: true })
+    ]).then(([applications, events, peer]) => {
+        renderApplicationsPanel(
+            applications, applicationsMessage, deriveUsage(events, todayLocal()), peer.paired);
         return applications;
     });
+}
+
+// The way out of the parked state, put where the problem is rather than left
+// for the user to go looking for on another page.
+function renderPairInvitation(panel, paired) {
+    if (!panel) return;
+
+    const existing = panel.querySelector(".application-pair");
+    if (existing) existing.remove();
+    if (paired) return;
+
+    const invite = document.createElement("button");
+    invite.type = "button";
+    invite.className = "task-btn application-pair";
+    invite.textContent = "PAIR THE APP →";
+    // data-route rather than a click handler: App.js delegates one listener for
+    // every route link in the document, and a second way of navigating would be
+    // a second thing to keep in step.
+    invite.dataset.route = "seal";
+    panel.appendChild(invite);
+}
+
+// Allowance and reminder, edited in place and saved with their own button so a
+// half-typed number is never committed. The browser cannot count use; it can
+// set the rule the desktop app counts against.
+function renderAllowanceEditor(application) {
+    const row = document.createElement("span");
+    row.className = "application-allowance";
+
+    const field = (value, max, step, help) => {
+        const input = document.createElement("input");
+        input.type = "number";
+        input.min = "0";
+        input.max = String(max);
+        input.step = String(step);
+        input.value = String(value);
+        input.title = help;
+        input.className = "application-input";
+        return input;
+    };
+
+    const minutes = field(application.allowanceMinutes, 1440, 5, PROGRAM_HELP.allowance);
+    const warn = field(application.warnMinutes, 60, 1, PROGRAM_HELP.warn);
+
+    const save = document.createElement("button");
+    save.type = "button";
+    save.className = "task-btn";
+    save.textContent = "Save";
+    save.disabled = true;
+
+    const changed = () => {
+        save.disabled = Number(minutes.value) === application.allowanceMinutes
+            && Number(warn.value) === application.warnMinutes;
+    };
+    minutes.addEventListener("input", changed);
+    warn.addEventListener("input", changed);
+
+    const submit = () => {
+        if (save.disabled) return;
+        requestApplicationChange(application, "allowance", {
+            minutes: Number(minutes.value),
+            warn: Number(warn.value)
+        });
+    };
+    save.addEventListener("click", submit);
+    [minutes, warn].forEach((input) => input.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") submit();
+    }));
+
+    const labelled = (before, input, after, help) => {
+        const label = document.createElement("label");
+        label.className = "application-field";
+        label.title = help;
+        // Wrapped rather than a bare text node so the two fields' inputs can
+        // line up in one column when they stack. See .field-name.
+        const name = document.createElement("span");
+        name.className = "field-name";
+        name.textContent = before;
+        label.append(name, input, document.createTextNode(" " + after));
+        return label;
+    };
+
+    row.append(
+        labelled("Allowed", minutes, "min a day", PROGRAM_HELP.allowance),
+        labelled("Warn", warn, "min before", PROGRAM_HELP.warn),
+        save
+    );
+    return row;
 }
 
 // Same shape as Remove Task: taking a program back up is strengthening and
 // saves at once; giving one up passes the ten-second gate on an open fortress,
 // or goes straight to the seal prompt on a sealed one — which names the program
 // itself, so a second gate on top would only be friction paid twice.
-function requestApplicationChange(application, kind) {
-    // Removing or standing down a program that is switched on gives ground.
-    // Anything done to one already stood down does not — the same test
-    // describeApplicationChanges() applies before the seal prompt says a word.
-    const weakening = application.enabled;
+function requestApplicationChange(application, kind, values) {
+    const setting = kind === "allowance" ? normalizeApplication(Object.assign({}, application, {
+        allowanceMinutes: values.minutes,
+        warnMinutes: values.warn
+    })) : null;
+
+    // Removing or standing down a program that is switched on gives ground, and
+    // so does giving one more time. Anything done to one already stood down
+    // does not — the same test describeApplicationChanges() applies before the
+    // seal prompt says a word.
+    const weakening = application.enabled && (kind !== "allowance"
+        || setting.allowanceMinutes > application.allowanceMinutes);
 
     const apply = () => loadApplications().then((current) => {
         const next = kind === "remove"
             ? current.filter((entry) => entry.id !== application.id)
-            : current.map((entry) => entry.id !== application.id ? entry : Object.assign({}, entry, {
-                enabled: !entry.enabled,
-                // Permanence cannot outlive being switched off.
-                permanent: entry.enabled ? false : entry.permanent
-            }));
+            : current.map((entry) => {
+                if (entry.id !== application.id) return entry;
+                if (kind === "allowance") {
+                    return Object.assign({}, entry, {
+                        allowanceMinutes: setting.allowanceMinutes,
+                        warnMinutes: setting.warnMinutes
+                    });
+                }
+                return Object.assign({}, entry, {
+                    enabled: !entry.enabled,
+                    // Permanence cannot outlive being switched off.
+                    permanent: entry.enabled ? false : entry.permanent
+                });
+            });
 
         return commitFortress({ applications: next }).then((outcome) => {
             if (!outcome.saved) {
@@ -976,7 +1132,11 @@ function requestApplicationChange(application, kind) {
             }
             const done = kind === "remove"
                 ? `${application.name} removed.`
-                : `${application.name} ${application.enabled ? "stood down" : "taken up"}.`;
+                : kind === "allowance"
+                    ? `${application.name} now ${setting.allowanceMinutes > 0
+                        ? "gets " + formatAllowance(setting.allowanceMinutes) + " a day"
+                        : "is blocked outright"}.`
+                    : `${application.name} ${application.enabled ? "stood down" : "taken up"}.`;
             return refreshApplicationsPanel(`${done} The desktop app applies it on the next sync, within a minute.`);
         });
     });
@@ -990,12 +1150,18 @@ function requestApplicationChange(application, kind) {
             null,
             kind === "remove"
                 ? `Remove ${application.name}? The desktop app will stop putting it away when you open it.`
-                : `Stand ${application.name} down? It stays in the list, but opening it will no longer be stopped.`,
+                : kind === "allowance"
+                    ? (application.allowanceMinutes === 0
+                        ? `Give ${application.name} ${formatAllowance(setting.allowanceMinutes)} a day? It is blocked outright now.`
+                        : `Raise ${application.name} from ${formatAllowance(application.allowanceMinutes)} to ${formatAllowance(setting.allowanceMinutes)} a day?`)
+                    : `Stand ${application.name} down? It stays in the list, but opening it will no longer be stopped.`,
             apply,
             null,
             kind === "remove"
                 ? { title: "REMOVE THIS PROGRAM?", confirm: "REMOVE PROGRAM" }
-                : { title: "STAND THIS PROGRAM DOWN?", confirm: "STAND DOWN" }
+                : kind === "allowance"
+                    ? { title: "MORE TIME FOR THIS PROGRAM?", confirm: "ALLOW MORE" }
+                    : { title: "STAND THIS PROGRAM DOWN?", confirm: "STAND DOWN" }
         );
     });
 }

@@ -267,6 +267,17 @@ impl Inner {
         self.devices.iter_mut().find(|d| d.token == token)
     }
 
+    /// Drops the device holding `token`. Only that one: another browser paired
+    /// with this app has nothing to do with this one leaving.
+    ///
+    /// The mirrored state is deliberately kept. It is what this window shows
+    /// and what the watcher is enforcing, and a user who forgets the app to
+    /// stop it syncing has not asked for their programs to stop being blocked.
+    fn forget_device(&mut self, token: &str) {
+        self.devices.retain(|d| d.token != token);
+        self.persist();
+    }
+
     /// This app's device id, minted on first use.
     pub fn device_id(&mut self) -> String {
         if let Some(id) = &self.device {
@@ -342,6 +353,49 @@ async fn pair(
         // guesser which of those it was is telling it how to guess better.
         None => (StatusCode::FORBIDDEN, Json(json!({ "error": "bad-code" }))),
     }
+}
+
+/// The extension saying it has forgotten this app.
+///
+/// Forgetting used to be one-sided: the extension dropped its token and this
+/// app carried on believing it was paired, showing a fortress nobody was
+/// updating any more. That is the worst of both readings — the window looked
+/// live and was not.
+///
+/// Best-effort by nature. If the app is closed when the user presses the
+/// button, nothing arrives and nothing can; the window says how long it has
+/// been since it last heard from the extension for exactly that case. So this
+/// never reports failure in a way the extension is expected to act on — it is
+/// a courtesy, not a handshake.
+///
+/// Authenticated like any other write: a caller has to hold a device token to
+/// remove that device. It removes only its own entry, never the whole list,
+/// because a second browser paired with this app has nothing to do with the
+/// first one leaving.
+async fn unpair(
+    State(state): State<Shared>,
+    headers: HeaderMap,
+    // Parsed and dropped, for the reason sync() gives: it forces the JSON
+    // content type, and with it the preflight.
+    Json(_incoming): Json<Value>,
+) -> (StatusCode, Json<Value>) {
+    let token = headers
+        .get("x-dominus-token")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_string();
+
+    let mut guard = match state.lock() {
+        Ok(g) => g,
+        Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({"error":"busy"}))),
+    };
+
+    if guard.device_for_token(&token).is_none() {
+        return (StatusCode::UNAUTHORIZED, Json(json!({ "error": "unpaired" })));
+    }
+
+    guard.forget_device(&token);
+    (StatusCode::OK, Json(json!({ "forgotten": true })))
 }
 
 async fn sync(
@@ -478,6 +532,7 @@ fn router(state: Shared) -> Router {
         .route("/dominus/v1/pair", post(pair))
         .route("/dominus/v1/sync", post(sync))
         .route("/dominus/v1/commit", post(commit))
+        .route("/dominus/v1/unpair", post(unpair))
         .layer(cors)
         .with_state(state)
 }
@@ -612,6 +667,73 @@ mod tests {
         // watching the screen for.
         let (status, _) = call(&state, post("pair", None, json!({ "code": code, "device": "b" }))).await;
         assert_eq!(status, StatusCode::FORBIDDEN, "a spent code paired a second device");
+    }
+
+    #[tokio::test]
+    async fn forgetting_drops_the_device_and_keeps_the_fortress() {
+        // The extension says it has forgotten this app. The pairing goes; what
+        // this app is enforcing does not — forgetting the app to stop it
+        // syncing is not asking for your programs to be unblocked.
+        let state = shared();
+        let token = paired(&state).await;
+
+        let (status, _) = call(
+            &state,
+            post("commit", Some(&token), json!({ "stateRev": 0, "state": { "fortress": { "applications": [] } } })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+
+        let (status, body) = call(&state, post("unpair", Some(&token), json!({}))).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body["forgotten"], true);
+
+        assert!(state.lock().unwrap().devices.is_empty(), "the device was kept");
+        assert!(
+            state.lock().unwrap().state.is_some(),
+            "forgetting the pairing threw away the fortress with it"
+        );
+
+        // And the token is spent: the same credential cannot go on syncing.
+        let (status, _) = call(&state, post("sync", Some(&token), json!({}))).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "a forgotten device still synced");
+    }
+
+    #[tokio::test]
+    async fn forgetting_takes_only_the_device_that_asked() {
+        // A second browser paired with this app has nothing to do with the
+        // first one leaving.
+        let state = shared();
+        let first = paired(&state).await;
+
+        let code = state.lock().unwrap().issue_code().code;
+        let (status, body) = call(
+            &state,
+            post("pair", None, json!({ "code": code, "device": "other", "name": "Other" })),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        let second = body["token"].as_str().unwrap().to_string();
+
+        let (status, _) = call(&state, post("unpair", Some(&first), json!({}))).await;
+        assert_eq!(status, StatusCode::OK);
+
+        assert_eq!(state.lock().unwrap().devices.len(), 1, "both devices went");
+        let (status, _) = call(&state, post("sync", Some(&second), json!({}))).await;
+        assert_eq!(status, StatusCode::OK, "an unrelated device lost its pairing");
+    }
+
+    #[tokio::test]
+    async fn a_made_up_token_cannot_forget_anybody() {
+        let state = shared();
+        let token = paired(&state).await;
+
+        let (status, _) = call(&state, post("unpair", Some("made-up"), json!({}))).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        assert_eq!(state.lock().unwrap().devices.len(), 1, "an unauthenticated caller unpaired a device");
+
+        let (status, _) = call(&state, post("sync", Some(&token), json!({}))).await;
+        assert_eq!(status, StatusCode::OK, "the real device lost its pairing");
     }
 
     #[tokio::test]

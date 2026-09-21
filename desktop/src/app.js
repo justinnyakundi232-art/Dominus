@@ -104,6 +104,37 @@ const service = {
         }
     },
 
+    // Counted time, for collectUsage() below; and back again if it could not
+    // be written.
+    async takeUsage() {
+        if (!hasBridge()) return [];
+        try {
+            return (await window.__TAURI__.core.invoke("take_usage")) || [];
+        } catch (error) {
+            return [];
+        }
+    },
+
+    async restoreUsage(slices) {
+        if (!hasBridge() || !slices.length) return;
+        try {
+            await window.__TAURI__.core.invoke("restore_usage", { slices: slices });
+        } catch (error) {
+            /* the watcher keeps enforcing on what it had */
+        }
+    },
+
+    // Seconds used today per program with an allowance, including time not yet
+    // collected — what each row shows.
+    async usageToday() {
+        if (!hasBridge()) return {};
+        try {
+            return (await window.__TAURI__.core.invoke("usage_today")) || {};
+        } catch (error) {
+            return {};
+        }
+    },
+
     // What the watcher enforces. See pushEnforcement() below.
     async setEnforced(enforced) {
         if (!hasBridge()) return false;
@@ -118,47 +149,94 @@ const service = {
 
 // ---- Telling the watcher what to enforce ----------------------------------
 //
-// Rust holds a list of executables and a map of expiries, and nothing else; this
-// window is the only thing that works them out, from the same state it shows.
+// Rust holds a list of executables, the allowances, today's spend and the live
+// unlocks, and nothing else; this window is the only thing that works them out,
+// from the same state it shows, with enforcementFor() from the shared layer.
 // See ../APP-LIMITS.md, "Enforcement, and where it runs".
 //
 // Pushed on load, after every edit, and on a timer — the timer is what carries a
 // change that arrived from the extension while nobody was looking at this
-// window. The extension reconciles once a minute, so a timer faster than that
-// only ever re-sends what the watcher already has, and that is skipped.
+// window, and what notices midnight. An unchanged picture is not re-sent,
+// except after collecting time, when the push is what tells the watcher that
+// what it handed over has been written.
 
 const ENFORCEMENT_INTERVAL_MS = 20 * 1000;
 let lastEnforced = "";
 
-function enforcementFor(state) {
-    const fortress = (state && state.fortress) || {};
-    const unlocks = (state && state.tempUnlocks) || {};
-    const now = Date.now();
-
-    const blocked = blockedExecutables(fortress.applications);
-    const until = {};
-    blocked.forEach((exe) => {
-        const expiry = Number(unlocks[exe]) || 0;
-        if (expiry > now) until[exe] = expiry;
-    });
-
-    return { blocked: blocked, unlocked_until: until };
-}
-
-async function pushEnforcement(state) {
+async function pushEnforcement(state, force) {
     let source = state;
-    if (source === undefined) source = (await service.peerState()).state;
+    if (source === undefined || source === null) source = (await service.peerState()).state;
 
     // No state means never synced. Saying nothing leaves whatever the watcher
     // loaded from disk in force, which is the stricter of the two choices —
     // an empty push here would switch every block off on a fresh window.
     if (!source) return;
 
-    const enforced = enforcementFor(source);
+    const enforced = enforcementFor(source, todayLocal());
     const key = JSON.stringify(enforced);
-    if (key === lastEnforced) return;
+    if (key === lastEnforced && !force) return;
 
     if (await service.setEnforced(enforced)) lastEnforced = key;
+}
+
+// ---- Collecting counted time ----------------------------------------------
+//
+// The watcher counts how long each program with an allowance is in front. Once
+// a minute this window takes that time, writes it into the day's usage event —
+// addUsage() in Sync.js, one running total per device, program and day — and
+// pushes the new totals back. The extension merges the usage events like any
+// others, so every device's time counts against one allowance.
+//
+// If the write fails twice, the time goes back to the watcher and is collected
+// again next minute rather than lost. See "Counting, and who does it" in
+// ../APP-LIMITS.md.
+
+const USAGE_INTERVAL_MS = 60 * 1000;
+let collecting = false;
+
+async function collectUsage() {
+    if (collecting || !hasBridge()) return;
+    collecting = true;
+
+    try {
+        const slices = await service.takeUsage();
+        if (!slices.length) return;
+
+        const write = async () => {
+            const peer = await service.peerState();
+            if (!peer.state) return null;
+
+            let events = peer.state.events || [];
+            const now = Date.now();
+            slices.forEach((slice) => {
+                events = addUsage(events, peer.device, slice.exe, slice.day, slice.seconds, now);
+            });
+
+            const next = Object.assign({}, peer.state, { events: events });
+            const written = await service.putState(peer.stateRev, next);
+            return written === null ? null : { state: next, rev: written };
+        };
+
+        // Twice, because the likeliest reason for a refusal is a sync landing
+        // at the same moment, and the second attempt reads what it brought.
+        const saved = (await write()) || (await write());
+
+        if (!saved) {
+            await service.restoreUsage(slices);
+            return;
+        }
+
+        // The Fortress view holds the state and revision it will write against.
+        // Left alone, its next edit would be refused as if a sync had landed —
+        // so it is handed what this just wrote.
+        if (fortressState) {
+            fortressState = saved.state;
+            fortressRev = saved.rev;
+        }
+        await pushEnforcement(saved.state, true);
+    } finally {
+        collecting = false;
+    }
 }
 
 // ---- Routing --------------------------------------------------------------
@@ -467,6 +545,8 @@ async function refreshFortress() {
     fortressRev = peer.stateRev;
     fortressDevice = peer.device;
 
+    // Never synced with anything: there is genuinely nothing to show, and no
+    // fortress to add a program to either.
     if (!fortressState || !fortressState.fortress) {
         empty.hidden = false;
         content.hidden = true;
@@ -482,6 +562,34 @@ async function refreshFortress() {
     renderCategories(fortressState.fortress.categories || []);
     renderManualSites(fortressState.fortress.manualSites || []);
     renderApplications(fortressState.fortress.applications || []);
+
+    await renderSiteAvailability();
+}
+
+// Sites are the extension's to enforce; programs are this app's. So when
+// nothing is paired, the two site panels are replaced by an invitation to pair
+// and the programs below carry on untouched — this window enforces those on its
+// own and needs nobody's permission to.
+//
+// Showing the last-synced site list with no extension behind it would be the
+// same lie the extension's programs panel used to tell in the other direction:
+// a list that says BLOCKED while nothing is blocking.
+async function renderSiteAvailability() {
+    const unpaired = document.getElementById("fortressSitesUnpaired");
+    const categories = document.getElementById("fortressCategories");
+    const manual = document.getElementById("fortressManual");
+    const crossing = document.getElementById("fortressCrossing");
+    if (!unpaired || !categories || !manual) return;
+
+    const { paired } = await service.status();
+
+    unpaired.hidden = paired;
+    categories.hidden = !paired;
+    manual.hidden = !paired;
+
+    // Nothing crosses to a browser that is not listening, so the line promising
+    // it would within a minute has to go with them.
+    if (crossing) crossing.hidden = !paired;
 }
 
 // ---- What the controls mean ----------------------------------------------
@@ -508,7 +616,13 @@ const HELP = {
         remove: "Remove: take this program out of your fortress entirely. To block it"
             + " again, add it from Block a program.",
         stoodDown: "Stood down: switched off for now, not deleted. Take it up again to"
-            + " resume blocking it."
+            + " resume blocking it.",
+        allowance: "Minutes a day this program can be the window in front before Dominus"
+            + " puts it away. 0 blocks it outright. Lowering it is always free; raising it"
+            + " takes the seal on a sealed fortress.",
+        warn: "How many minutes before today's time runs out to show a reminder in the"
+            + " corner. 0 for no reminder.",
+        pickerMinutes: "Minutes a day. Leave it empty to block the program outright."
     },
     site: (site) => "Stop blocking " + site + ". It is removed from this category.",
     sealed: "Sealed — taking a defence down needs your password, and that prompt is"
@@ -531,6 +645,13 @@ function holdForSeal(button) {
     button.setAttribute("aria-disabled", "true");
     button.classList.add("is-sealed");
     button.title = (button.title ? button.title + "\n\n" : "") + HELP.sealed;
+}
+
+// The other way: a control that was held and no longer needs to be.
+function releaseSeal(button, title) {
+    button.removeAttribute("aria-disabled");
+    button.classList.remove("is-sealed");
+    button.title = title;
 }
 
 // Wires a click, unless the control is held for the seal.
@@ -744,17 +865,23 @@ function renderApplications(applications) {
         name.className = "category-name";
         name.textContent = application.name || application.exe;
 
+        const entry = normalizeApplication(application) || application;
+
         // The executable, because it is what is actually matched and the name
-        // is only a label the user chose.
+        // is only a label the user chose — and the rule it is under.
         const exe = document.createElement("span");
         exe.className = "category-count";
         exe.textContent = application.enabled
-            ? application.exe + (application.permanent ? " · permanent" : "")
+            ? application.exe
+                + (entry.allowanceMinutes > 0 ? " · " + formatAllowance(entry.allowanceMinutes) + " a day" : " · blocked")
+                + (application.permanent ? " · permanent" : "")
             : "stood down";
         if (!application.enabled) exe.title = HELP.application.stoodDown;
 
         head.append(glyph, name, exe);
         item.appendChild(head);
+
+        item.appendChild(renderAllowance(entry));
 
         const actions = document.createElement("div");
         actions.className = "category-actions";
@@ -782,6 +909,132 @@ function renderApplications(applications) {
         item.appendChild(actions);
         list.appendChild(item);
     });
+}
+
+// How long a program may be in front each day, how much of that is gone, and
+// when to be reminded. Edited in place and saved with its own button, so a
+// half-typed number is never committed.
+function renderAllowance(entry) {
+    const row = document.createElement("div");
+    row.className = "allowance";
+
+    if (entry.enabled && entry.allowanceMinutes > 0) {
+        const used = document.createElement("span");
+        used.className = "allowance-used";
+        used.dataset.usageExe = entry.exe;
+        used.dataset.allowanceMinutes = String(entry.allowanceMinutes);
+        used.textContent = usedLine(savedUsage(entry.exe), entry.allowanceMinutes);
+        row.appendChild(used);
+    }
+
+    const minutes = numberField(entry.allowanceMinutes, 0, 1440, 5, HELP.application.allowance);
+    const warn = numberField(entry.warnMinutes, 0, 60, 1, HELP.application.warn);
+
+    const save = document.createElement("button");
+    save.type = "button";
+    save.className = "btn-quiet";
+    save.textContent = "SAVE";
+    save.title = "Save the allowance and the reminder for this program.";
+    save.disabled = true;
+
+    const changed = () => {
+        save.disabled = Number(minutes.value) === entry.allowanceMinutes
+            && Number(warn.value) === entry.warnMinutes;
+
+        // More time is a weakening. On a sealed fortress say so as it is
+        // typed, not after the click — the same held look and hover text as
+        // every other control that needs the extension.
+        releaseSeal(save, "Save the allowance and the reminder for this program.");
+        if (fortressIsSealed() && Number(minutes.value) > entry.allowanceMinutes) holdForSeal(save);
+    };
+    minutes.addEventListener("input", changed);
+    warn.addEventListener("input", changed);
+
+    const submit = () => {
+        if (save.disabled) return;
+        if (save.getAttribute("aria-disabled") === "true") return fortressSays(HELP.sealed, true);
+        setAllowance(entry.id, minutes.value, warn.value);
+    };
+    save.addEventListener("click", submit);
+    [minutes, warn].forEach((field) => field.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") submit();
+    }));
+
+    row.append(
+        fieldLabel("Allowed", minutes, "min a day", HELP.application.allowance),
+        fieldLabel("Warn", warn, "min before", HELP.application.warn),
+        save
+    );
+    return row;
+}
+
+function numberField(value, min, max, step, help) {
+    const input = document.createElement("input");
+    input.type = "number";
+    input.min = String(min);
+    input.max = String(max);
+    input.step = String(step);
+    input.value = String(value);
+    input.title = help;
+    input.className = "allowance-input";
+    return input;
+}
+
+function fieldLabel(before, input, after, help) {
+    const label = document.createElement("label");
+    label.className = "allowance-field";
+    label.title = help;
+    // Wrapped rather than a bare text node so the two fields' inputs line up in
+    // one column when they stack. See .field-name.
+    const name = document.createElement("span");
+    name.className = "field-name";
+    name.textContent = before;
+    label.append(name, input, document.createTextNode(" " + after));
+    return label;
+}
+
+// Today's use as last written to the event log — every device's time, and this
+// one's up to the last collection. The live figure replaces it within seconds.
+function savedUsage(exe) {
+    const events = (fortressState && fortressState.events) || [];
+    return deriveUsage(events, todayLocal())[exe] || 0;
+}
+
+function usedLine(seconds, allowanceMinutes) {
+    const used = Math.min(allowanceMinutes, Math.floor(seconds / 60));
+    return used >= allowanceMinutes
+        ? "Today's " + formatAllowance(allowanceMinutes) + " is used up."
+        : formatAllowance(used) + " of " + formatAllowance(allowanceMinutes) + " used today.";
+}
+
+// The figures on screen, kept current from what the watcher is counting. Only
+// the text of each "used today" line changes, so a number being typed is left
+// alone.
+const USAGE_REFRESH_MS = 5000;
+
+async function refreshUsageLines() {
+    const view = document.getElementById("view-fortress");
+    if (!view || !view.classList.contains("is-active") || document.hidden) return;
+
+    const lines = document.querySelectorAll("[data-usage-exe]");
+    if (!lines.length) return;
+
+    const live = await service.usageToday();
+    lines.forEach((line) => {
+        const exe = line.dataset.usageExe;
+        const seconds = exe in live ? live[exe] : savedUsage(exe);
+        line.textContent = usedLine(seconds, Number(line.dataset.allowanceMinutes));
+    });
+}
+
+function setAllowance(id, minutesRaw, warnRaw) {
+    const next = applicationsWith(id, (application) => Object.assign({}, application, {
+        allowanceMinutes: Number(minutesRaw),
+        warnMinutes: Number(warnRaw)
+    }));
+    // Read back through the normaliser, so what is saved is what will be
+    // enforced — a typed 7.5 becomes 8, a typed 5000 a whole day.
+    commitEdit({ applications: normalizeApplicationList(next) });
 }
 
 async function togglePicker() {
@@ -885,15 +1138,44 @@ async function renderPicker() {
 
         label.append(name, detail);
 
-        const already = Boolean(findApplication(held, entry.exe));
+        const inFortress = findApplication(held, entry.exe);
+        const already = Boolean(inFortress && inFortress.enabled);
+
+        const actions = document.createElement("span");
+        actions.className = "picker-actions";
+
+        // Minutes a day, set as the program is added. Adding one with time
+        // already allowed is not a weakening — it was not in the fortress
+        // before — where adding it blocked and then raising it would ask for
+        // the seal on a sealed fortress.
+        const minutes = document.createElement("input");
+        minutes.type = "number";
+        minutes.min = "0";
+        minutes.max = "1440";
+        minutes.step = "5";
+        minutes.placeholder = "min/day";
+        minutes.className = "allowance-input";
+        minutes.title = HELP.application.pickerMinutes;
+        minutes.setAttribute("aria-label", "Minutes a day for " + applicationDisplayName(entry.exe));
+        minutes.hidden = already;
+
         const add = document.createElement("button");
         add.type = "button";
         add.className = "btn-quiet";
-        add.textContent = already ? "BLOCKED" : "BLOCK";
+        add.textContent = already ? "ADDED" : "BLOCK";
         add.disabled = already;
-        add.addEventListener("click", () => addApplication(entry.exe));
 
-        item.append(label, add);
+        minutes.addEventListener("input", () => {
+            add.textContent = Number(minutes.value) > 0 ? "LIMIT" : "BLOCK";
+        });
+        const submit = () => addApplication(entry.exe, minutes.value);
+        add.addEventListener("click", submit);
+        minutes.addEventListener("keydown", (event) => {
+            if (event.key === "Enter") submit();
+        });
+
+        actions.append(minutes, add);
+        item.append(label, actions);
         list.appendChild(item);
     });
 }
@@ -904,16 +1186,18 @@ function applicationsWith(id, change) {
     ));
 }
 
-function addApplication(exe) {
-    const entry = normalizeApplication({ exe: exe, enabled: true });
+function addApplication(exe, minutesRaw) {
+    const entry = normalizeApplication({ exe: exe, enabled: true, allowanceMinutes: Number(minutesRaw) || 0 });
     if (!entry) return fortressSays("Dominus will not block that program.", true);
 
     const held = fortressState.fortress.applications || [];
     const existing = findApplication(held, exe);
 
     // Already there but stood down: taking it back up is what the user meant.
+    // Its allowance is left as it was — changing that is its own edit on the
+    // row, and raising it may need the seal.
     if (existing) {
-        if (existing.enabled) return fortressSays(existing.name + " is already blocked.");
+        if (existing.enabled) return fortressSays(existing.name + " is already in the fortress.");
         return commitEdit({ applications: applicationsWith(existing.id, (a) => Object.assign({}, a, { enabled: true })) });
     }
 
@@ -1044,6 +1328,7 @@ function describeEdit(authored) {
     if (Object.keys(authored.sitesRemoved).length) given.push("a site unblocked");
     if (authored.applicationsRemoved.length) given.push("a program removed");
     if (authored.applicationsDisabled.length) given.push("a program stood down");
+    if (Object.keys(authored.allowancesRaised || {}).length) given.push("a program given more time");
 
     return given.length
         ? "Saved \u2014 " + given.join(", ") + "."
@@ -1159,9 +1444,12 @@ document.addEventListener("DOMContentLoaded", () => {
     if (pickerBtn) pickerBtn.addEventListener("click", togglePicker);
 
     // Coming back to this window is the usual moment the list is stale — the
-    // user has just been off opening the program they want to block.
+    // user has just been off opening the program they want to block. It is
+    // also the usual moment a pairing has changed, because forgetting the app
+    // is done over in the browser.
     window.addEventListener("focus", () => {
         if (pickerIsVisible()) renderPicker();
+        renderSiteAvailability();
     });
 
     window.addEventListener("hashchange", () => show(routeFromHash()));
@@ -1172,4 +1460,16 @@ document.addEventListener("DOMContentLoaded", () => {
     // watcher is enforcing on the strength of what this sends it.
     pushEnforcement();
     setInterval(() => pushEnforcement(), ENFORCEMENT_INTERVAL_MS);
+
+    // And the time it counts is collected, whether or not anyone is looking.
+    setInterval(() => collectUsage(), USAGE_INTERVAL_MS);
+
+    // The "used today" lines, while The Fortress is on screen.
+    setInterval(() => refreshUsageLines(), USAGE_REFRESH_MS);
+
+    // And whether there is still an extension on the other end. The one thing
+    // this window must never do is the thing it did before: go on showing a
+    // fortress nobody is updating as though it were live. Cheap — a local
+    // call, no network — and it rides the interval that already exists.
+    setInterval(() => renderSiteAvailability(), ENFORCEMENT_INTERVAL_MS);
 });

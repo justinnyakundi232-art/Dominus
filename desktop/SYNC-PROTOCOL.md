@@ -168,6 +168,46 @@ Requires `X-Dominus-Token`.
 merge was being computed. Nothing is written. The extension does not retry
 inside the tick; the next one reads the newer state and merges against that.
 
+### `POST /unpair`
+
+Requires `X-Dominus-Token`. Empty body — `{}` — which still has to be JSON, for
+the reason every other write does.
+
+→ `200` `{ "forgotten": true }`
+→ `401` — the app had already forgotten this device, which is the state being
+asked for anyway. The extension treats it as success.
+
+The extension calls this as the user presses FORGET THE APP. It removes **only
+the calling device**: a second browser paired with the same app has nothing to
+do with this one leaving. The mirrored fortress is deliberately **kept** — the
+app goes on enforcing the programs it was enforcing a moment ago, because
+forgetting the app to stop it syncing is not asking for your programs to be
+unblocked.
+
+**Best effort, by construction.** If the app is closed when the button is
+pressed, nothing arrives and nothing can. The extension forgets regardless —
+the user asked this side to let go, and a peer that could not be reached has no
+business keeping them paired.
+
+*Why it exists:* forgetting used to be one-sided. The extension dropped its
+token and the app carried on believing it was paired, showing a fortress nobody
+was updating any more. A window that looks live and is not is worse than one
+that says it is on its own.
+
+### What each side shows with nothing on the other end
+
+Neither half pretends to enforce what it cannot:
+
+- **The extension's Programs panel** keeps its entries and says they are *not
+  being enforced*, greyed, with a way to pair. They are kept rather than
+  deleted for two reasons: this is the record holder's copy, the one that
+  survives the app being reinstalled; and FORGET THE APP has no seal on it, so
+  deleting there would make it the cheap way past one.
+- **The app's Fortress** replaces its two site panels with an invitation to
+  pair, and drops the line promising edits reach the browser within a minute —
+  nothing crosses to a browser that is not listening. Programs stay fully
+  editable: this app enforces those alone and needs nobody's permission to.
+
 ---
 
 ## Where the merge runs, and why only in one place
@@ -268,3 +308,39 @@ Protocol 1 answered `/sync` with `{ accepted: true }` and had no `/commit`. An
 extension still speaking 1 is refused at pairing with a message naming which
 side is behind, which is the whole reason the number is in `hello` rather than
 discovered halfway through an exchange.
+
+### Optional fields are not free
+
+"Adding optional fields does not bump it" is true of the wire and a trap for
+the merge, and 1.12 walked into it.
+
+The two halves update independently, so an older peer is a normal condition
+rather than a migration window. An older peer does not merely ignore a field it
+has never heard of — it **drops** it, because its own normaliser rebuilds every
+object from the keys it knows. What comes back is the same record with a hole
+in it.
+
+That is harmless until the merge has a strengthen-wins rule for the missing
+field, and then it is the opposite of harmless: the hole reads as whatever the
+"safe" default is, the safe default is by construction the strongest value, and
+the peer that understands least wins every tick. `allowanceMinutes` did exactly
+this to a real fortress — see [A peer that cannot
+say](APP-LIMITS.md#a-peer-that-cannot-say) for the full account and the fix.
+
+So, for any new field the merge resolves toward stricter:
+
+- Decide what **silence** means before deciding what a missing value defaults
+  to. They are usually not the same answer, and the difference only shows up
+  after a round trip.
+- Check for the key itself (`hasOwnProperty` on the raw object, before
+  normalisation), not for a falsy value.
+- Let silence yield to what the holder already knows — over the *peer's* copy,
+  never over your own, because your own missing field is genuinely an upgrade
+  from a version that did not have it.
+- Remember the authored records too. A stripped field also looks like a
+  *later, stricter decision*, which retires the very record that would have
+  repaired it.
+
+Bumping the protocol is the wrong instrument here. It gates the endpoints, and
+refusing to sync at all would take down event history, stands and the seal to
+protect one number.

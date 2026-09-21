@@ -83,12 +83,30 @@
     --ground: #000000;
     --panel: #0D0D0D;
 
+    /* The surface a section of a page sits on: the panels on The Fortress, the
+     * bands on The Keep, the blocks on The Seal. A step above --panel rather
+     * than the same value, because these two are doing different jobs — --panel
+     * is an inset (an input, a modal, the rail), and this is a raised plane
+     * with content on it. Two surfaces at the same value would read as one.
+     *
+     * Warmed toward the gold rather than a neutral grey, for the reason --line
+     * is: a lift on black should read as part of the gold the fortress is lit
+     * by, not as a different material laid on top of it. */
+    --section: #14110B;
+
     /* ---- Text ----------------------------------------------------------- */
     --parchment: #E5E5E5;
 
     /* Slate, for text that must be findable without competing — the "Forgot
      * your seal?" link is the case this was chosen for. */
     --muted: #8B95A3;
+
+    /* Hairlines: borders on quiet controls, and the rules between rows. Warm
+     * rather than grey, so a line on black reads as part of the gold rather
+     * than as a different material. The desktop app named these before they
+     * were defined here, and every border that did so simply did not draw. */
+    --line: #2C2519;
+    --line-soft: #1E1A14;
 
     /* ---- Breach ---------------------------------------------------------
      * Everything that says a defence is coming down: the streak-at-stake line

@@ -21,6 +21,24 @@ const APPLICATIONS_KEY = "applications";
 // to keep a note.
 const MAX_APPLICATION_NAME_LENGTH = 40;
 
+// A day's allowance, in whole minutes. 0 means blocked outright — which is also
+// what every entry written before allowances existed means, so a missing field
+// changes nothing about a fortress that already has programs in it. A whole day
+// is the ceiling: an allowance above it could never run out and would only be a
+// block pretending to be one. See "Daily allowances" in APP-LIMITS.md.
+const MAX_ALLOWANCE_MINUTES = 24 * 60;
+
+// How long before the allowance runs out the reminder appears. 0 is no
+// reminder. An hour is plenty of notice for anything a reminder is for.
+const DEFAULT_WARN_MINUTES = 5;
+const MAX_WARN_MINUTES = 60;
+
+function clampWholeMinutes(raw, max, fallback) {
+    const n = Number(raw);
+    if (!Number.isFinite(n)) return fallback;
+    return Math.max(0, Math.min(max, Math.round(n)));
+}
+
 // Programs Dominus will never stand in front of, whoever asks.
 //
 // Not a preference list — a floor. Each of these is here because blocking it
@@ -152,7 +170,11 @@ function normalizeApplication(raw) {
         name: String(source.name || applicationDisplayName(exe))
             .slice(0, MAX_APPLICATION_NAME_LENGTH),
         enabled: source.enabled === true,
-        permanent: source.permanent === true
+        permanent: source.permanent === true,
+        // Anything unreadable reads as 0 — blocked outright — because the safe
+        // wrong answer about a defence is the stronger one.
+        allowanceMinutes: clampWholeMinutes(source.allowanceMinutes, MAX_ALLOWANCE_MINUTES, 0),
+        warnMinutes: clampWholeMinutes(source.warnMinutes, MAX_WARN_MINUTES, DEFAULT_WARN_MINUTES)
     };
 }
 
@@ -179,9 +201,13 @@ function normalizeApplicationList(raw) {
         if (held) {
             held.enabled = held.enabled || application.enabled;
             held.permanent = held.permanent || application.permanent;
-            // The later entry's name wins, matching the merge rule, where a
-            // name is cosmetic and follows the newer commit.
+            // The smaller allowance is the stronger one, and 0 — blocked — is
+            // the smallest of all.
+            held.allowanceMinutes = Math.min(held.allowanceMinutes, application.allowanceMinutes);
+            // The later entry's name and warning win, matching the merge rule:
+            // neither defends anything, so neither has a stronger direction.
             held.name = application.name;
+            held.warnMinutes = application.warnMinutes;
         } else {
             byId.set(application.id, application);
         }
@@ -193,6 +219,71 @@ function normalizeApplicationList(raw) {
     });
 
     return out;
+}
+
+// ---- What a peer is able to say -------------------------------------------
+//
+// Absence and zero are the same thing to normalizeApplication(), and they have
+// to be: a fortress upgrading from 1.11 holds entries with no allowance at all,
+// and reading those as "blocked outright" is what makes the upgrade silent.
+//
+// Across the wire they are not the same thing at all. A peer running a build
+// from before allowances existed rewrites the whole list through its own
+// normaliser whenever the user touches any program in it, and that normaliser
+// drops a field it has never heard of. What arrives is not a fortress asking
+// for every program to be blocked. It is a fortress that cannot pronounce the
+// question — and read as a zero, it is the strongest possible answer, so
+// strengthen-wins hands the argument to the peer that knows least, on every
+// tick, forever.
+//
+// So the merge asks a different question of an incoming entry than storage
+// does: not "what is the allowance" but "was this written by something that
+// could have said". These two functions are that question. They are the only
+// place in Dominus where a missing field means anything other than zero.
+
+// Whether this entry, as it arrived, is in a position to have an opinion about
+// an allowance. Read off the raw object, before normalisation fills the field
+// in — which is why nothing here may be handed a normalized entry.
+function carriesAllowance(entry) {
+    return Boolean(entry)
+        && typeof entry === "object"
+        && Object.prototype.hasOwnProperty.call(entry, "allowanceMinutes");
+}
+
+// `raw` as it arrived, with every silent entry given the allowance `held`
+// already has for it. Silence yields to what the holder knows; it does not
+// overwrite it.
+//
+// The asymmetry is deliberate and only runs one way — over a peer's list,
+// never over our own. Our own silent entries are a 1.11 fortress on first
+// read, where blocked outright is the true and intended meaning, and filling
+// those in from a peer would quietly unblock something nobody unblocked. A
+// peer's silence is a build that cannot speak, which is a different thing.
+//
+// A program only the silent peer has is left exactly as it sent it. There is
+// nothing held to fill it from, and a peer that can only block is a peer that
+// meant to block.
+function withHeldAllowances(raw, held) {
+    if (!Array.isArray(raw)) return [];
+
+    const mine = new Map(normalizeApplicationList(held).map((entry) => [entry.id, entry]));
+
+    return raw.map((entry) => {
+        if (carriesAllowance(entry)) return entry;
+
+        const application = normalizeApplication(entry);
+        const ours = application && mine.get(application.id);
+        if (!ours) return entry;
+
+        // The reminder travels with the allowance it belongs to. A peer that
+        // could not say one could not say the other either, and letting a
+        // silent newer commit win the warning would reset it to the default
+        // every time the two sides spoke.
+        return Object.assign({}, entry, {
+            allowanceMinutes: ours.allowanceMinutes,
+            warnMinutes: ours.warnMinutes
+        });
+    });
 }
 
 // ---- Reading -------------------------------------------------------------
@@ -211,8 +302,71 @@ function findApplication(applications, exe) {
 // permanent, or anything else it might be tempted to make a decision with.
 function blockedExecutables(applications) {
     return normalizeApplicationList(applications)
-        .filter((entry) => entry.enabled)
+        .filter((entry) => entry.enabled && entry.allowanceMinutes === 0)
         .map((entry) => entry.exe);
+}
+
+// The programs that are allowed some time a day, keyed by executable, in the
+// units the watcher counts in. Enabled entries only, and never a blocked one —
+// those are in blockedExecutables() instead, so no program is in both.
+function allowancesFor(applications) {
+    const out = {};
+    normalizeApplicationList(applications)
+        .filter((entry) => entry.enabled && entry.allowanceMinutes > 0)
+        .forEach((entry) => {
+            out[entry.exe] = {
+                allowance_secs: entry.allowanceMinutes * 60,
+                // Never at or past the allowance itself: a warning that arrives
+                // with the gate is not a warning.
+                warn_secs: Math.min(entry.warnMinutes, entry.allowanceMinutes - 1) * 60
+            };
+        });
+    return out;
+}
+
+// Everything the desktop watcher is told, from a synced state, for `today`.
+//
+// One function, because two windows send it — the main window on every change,
+// the gate after an unlock — and a second hand-built copy is how the gate once
+// stood to wipe every allowance by sending the old shape. Names and fields
+// match `watcher::Enforced` in the desktop app.
+//
+// Needs deriveUsage() from Sync.js at call time, which every window that calls
+// this has loaded.
+function enforcementFor(state, today) {
+    const fortress = (state && state.fortress) || {};
+    const unlocks = (state && state.tempUnlocks) || {};
+    const now = Date.now();
+
+    const blocked = blockedExecutables(fortress.applications);
+    const allowances = allowancesFor(fortress.applications);
+
+    const until = {};
+    blocked.concat(Object.keys(allowances)).forEach((exe) => {
+        const expiry = Number(unlocks[exe]) || 0;
+        if (expiry > now) until[exe] = expiry;
+    });
+
+    const used = deriveUsage((state && state.events) || [], today);
+    const spent = {};
+    Object.keys(allowances).forEach((exe) => { spent[exe] = used[exe] || 0; });
+
+    return {
+        blocked: blocked,
+        unlocked_until: until,
+        allowances: allowances,
+        spent: spent,
+        day: today
+    };
+}
+
+// "45 min", "1 h", "1 h 30 min". Whole minutes are all an allowance is set in.
+function formatAllowance(minutes) {
+    const m = Math.max(0, Math.round(Number(minutes) || 0));
+    const h = Math.floor(m / 60);
+    const rest = m % 60;
+    if (!h) return rest + " min";
+    return rest ? h + " h " + rest + " min" : h + " h";
 }
 
 function isPermanentApplication(applications, exe) {
@@ -250,8 +404,13 @@ if (typeof module !== "undefined" && module.exports) {
         isProtectedExecutable,
         normalizeApplication,
         normalizeApplicationList,
+        carriesAllowance,
+        withHeldAllowances,
         findApplication,
         blockedExecutables,
+        allowancesFor,
+        enforcementFor,
+        formatAllowance,
         isPermanentApplication
     });
 }

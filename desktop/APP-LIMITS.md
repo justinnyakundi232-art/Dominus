@@ -257,8 +257,10 @@ unlock task, and it looks like `Blocked.html` because it is the same gate.
 
 Three ways out:
 
-- **Walk away.** Closes the gate, records a **stand**, and the app stays
-  minimized. Same event the browser records, same effect on both streaks.
+- **Walk away.** Closes the gate, records a **stand**, and asks the program to
+  close. Same event the browser records, same effect on both streaks. The
+  button says so on a second line — "and close Notepad" — because the whole
+  point is that you should not have to already know.
 - **Unlock.** The task, then the cooldown, then a temporary window. Records an
   **unlock** with `domain` set to the exe.
 - **Nothing.** The gate stays. It is not modal to the system and it does not
@@ -268,6 +270,39 @@ Three ways out:
 An unlock opens the program for fifteen minutes. The expiry goes into
 `tempUnlocks` beside the site ones, keyed by executable, and into what Rust
 enforces — so the gate returns on its own when the window closes.
+
+### Why walking away closes the program
+
+*Reported by the user, 18 Sep 2026.*
+
+Minimizing is the right thing while the gate is being answered and the wrong
+thing to be left with afterwards. A program that is only minimized is still
+there, and clicking it in the taskbar to close it just minimizes it again —
+so the obvious way to get rid of it is the one thing that cannot work. There
+**is** a way out: hover the taskbar and close it from the preview. It only
+helps if you already know it, and nobody in the middle of being told no is in
+the mood to work it out.
+
+So walking away now asks the program to close, and the button says it does.
+
+- **`WM_CLOSE`, never `TerminateProcess`.** The same message the X button
+  sends: the program runs its own shutdown, saves, prompts about unsaved work,
+  and is free to refuse. A discipline tool that destroys work is a tool nobody
+  can afford to trust, and walking away from a game is not a reason to lose an
+  unsaved document. A program that refuses stays open and stays gated, which is
+  where this started — no worse than before, and never escalated to.
+- **Matched by executable**, so a program running as several processes is
+  asked as a whole. That is what "close it" means to the person who asked.
+- **A 30-second grace** (`CLOSE_GRACE_MS`) during which the gate stands aside
+  for that program. A program asked to close usually has a question — *save
+  changes?* — and that question is a window belonging to the same executable,
+  so without this the next poll would minimize it. That is the same trap
+  wearing a different hat, and worse, because now it is the user's own work
+  being held hostage.
+
+The grace is **not an unlock**: nothing is recorded, no allowance is handed
+back, and when it lapses the program is gated again exactly as before — once,
+on the next arrival, because `mark_closing()` re-arms `was_gated`.
 
 *Changed in building:* the gate learns what it is guarding from a `gate-raised`
 event, and the gate window was missing from the capability that permits
@@ -337,21 +372,175 @@ in the status line rather than doing nothing.
 
 ---
 
-## What a budget would need, when it arrives
+## Daily allowances
 
-Written down now while the reasoning is fresh, so 1.13 does not rediscover it.
+*Changed in building:* this section was "what a budget would need, when it
+arrives" and parked for 1.13. Allowances were pulled into 1.12. The reasoning
+below replaces that sketch, which got the storage wrong — see *Spending*.
 
-A budget is **spent**, and spending is the one thing strengthen-wins cannot
-merge. Two devices that each saw twenty minutes of a thirty-minute budget have
-not seen forty minutes and have not seen twenty; the truth depends on whether it
-was the same twenty. Taking the maximum under-counts, summing over-counts, and
-neither is idempotent — which is the property the whole tick depends on.
+A program can be **blocked outright**, as above, or given **an allowance**: so
+many minutes a day, after which it is blocked for the rest of the day like any
+other. The choices, all the user's:
 
-The shape that works is the one Channel A already uses: **do not merge the
-number, derive it.** Spend arrives as events (`app-used`, with a duration and a
-device), the union is by id, and the day's spend is the sum over distinct
-events. Idempotent by construction, exactly like the stand and unlock counters.
+| Question | Answer |
+|---|---|
+| What counts as use? | Only time the program is the **foreground** window. A launcher left minimized or a chat app behind other windows costs nothing. |
+| When it runs out? | **The usual gate.** Unlocking grants the normal fifteen minutes. There is no mode with no way through; a future settings tab may let the user choose how hard Dominus pushes back. |
+| Is running out a slip? | **No.** Using time you gave yourself is what the allowance is for. Unlocking after it runs out is a slip, exactly like unlocking a blocked site. Walking away is a stand. |
+| A warning? | **Per program**, "warn me N minutes before", default 5, and 0 for none. |
+| When does it reset? | Local midnight, like every other day in Dominus. |
 
-The open question is not the merge; it is what a budget *running out* does, and
-whether exhausting it is a slip. That is the settings page, and it is why the
-settings page is part of the same release.
+### The data
+
+Two fields on an application:
+
+```js
+{ id: "app:steam.exe", exe: "steam.exe", name: "Steam", enabled: true,
+  permanent: false, allowanceMinutes: 60, warnMinutes: 5 }
+```
+
+`allowanceMinutes: 0` means **blocked outright** — which is what every entry
+written before allowances already means, so a missing field reads as 0 and
+nothing already in a fortress changes meaning.
+
+### Merging an allowance
+
+Strengthen-wins still holds, because a smaller allowance is a stronger one and
+**0 is the strongest of all**:
+
+| field | rule |
+|---|---|
+| `allowanceMinutes` | the **smaller** of the two, 0 winning over any number |
+| `warnMinutes` | newer commit — a warning defends nothing, so it has no stronger direction |
+
+Both rules assume the peer can *represent* an allowance. When it cannot, see
+[A peer that cannot say](#a-peer-that-cannot-say) below — a missing field is
+not a zero once it has been over the wire.
+
+Raising an allowance, or giving a blocked program one, is a **weakening**. It
+travels as an authored record carrying the value — `allowancesRaised:
+{ "app:steam.exe": 60 }` — for the reason `cooldownLowered` carries its value:
+a peer told only that an allowance went up has nothing to raise it *to*,
+because the merge it is undoing already took the smaller.
+
+It applies by the same rule as a lowered cooldown: unless a holder of the
+record has since made the allowance stricter than the recorded value, which is
+the later decision and wins.
+
+Adding a program with an allowance already set is **not** a weakening: it was
+not in the fortress before, so nothing came down. That matters on a sealed
+fortress — adding Steam blocked and then giving it an hour would ask for the
+password, where adding it with the hour does not.
+
+#### A peer that cannot say
+
+*Found the hard way, 18 Sep 2026, on a real fortress.*
+
+Reading a missing field as 0 is right for storage and wrong on the wire.
+
+The extension and the app update on their own schedules — one from the Web
+Store, one by hand — so a 1.12 extension paired with a 1.11 app is not an edge
+case, it is a Tuesday. The old app has no idea `allowanceMinutes` exists, and
+it rewrites the *whole* application list through its own normaliser the moment
+the user touches any program in its window. The field falls off every entry.
+
+Read as a zero, that is the strongest possible answer to a question the peer
+never heard. Strengthen-wins then hands the argument to whichever side knows
+least, once a minute, forever — and rule 4 finishes the job, because the
+stripped 0 also looks "stricter than the recorded value", so the authored
+record that could have put the allowance back is retired as superseded. The
+limit is gone and there is no way to set it again that survives a tick.
+
+So the merge asks an incoming entry a different question than storage does: not
+*what is the allowance* but **was this written by something that could have
+said**. `carriesAllowance()` is that question — a plain `hasOwnProperty` on the
+raw entry, read before normalisation fills the field in — and it is the only
+place in Dominus where a missing field means anything but zero.
+
+Two rules follow:
+
+- `withHeldAllowances(theirs, mine)` runs over a peer's list before it is
+  normalized, giving every silent entry the allowance we already hold for it.
+  Silence yields to what the holder knows rather than overwriting it.
+- A holder whose entry is silent is **not evidence** of a stricter decision, so
+  it cannot retire a raise it never disagreed with.
+
+The asymmetry is deliberate: this runs over a peer's list and **never over our
+own**. Our own silent entries are a 1.11 fortress on first read, where blocked
+outright is the true and intended meaning — filling those in from a peer would
+quietly unblock something nobody unblocked. A program only the silent peer has
+is left exactly as it arrived, at 0: there is nothing held to fill it from, and
+a peer that can only block is a peer that meant to block.
+
+A protocol bump was the other option and it is worse. The protocol version
+gates the *endpoints*, and refusing to sync at all over one unknown field would
+take down event history, stands and the seal to protect a number. The guard
+belongs at the level of the thing it protects.
+
+### Spending
+
+The parked sketch said: one event per stretch of use, summed. That is correct
+and it is the wrong size. The event log syncs whole, every minute, for four
+hundred days; an hour of a game a day at one event a minute is twenty-two
+thousand events a year for one program on one device.
+
+Instead, **one `usage` event per device, per program, per day**, whose id is
+the triple — `usage:<device>:<exe>:<date>` — and whose `seconds` only ever grow.
+Two copies of the same id merge by the **larger** `seconds`. That is still
+idempotent (a maximum of a maximum is itself) and a device can never lower
+another's figure. A day's spend is the sum over devices of that day's events.
+The log grows by one small event per program per day of use.
+
+This is the one event whose content changes after it is written, and it is
+marked as such in `mergeEventLogs()`. Every other event is still immutable and
+still merges by keeping the first copy.
+
+### Counting, and who does it
+
+The watcher already looks at the foreground once a second, so it counts:
+each tick with a program in front adds the time since the last tick — capped,
+so a laptop waking from sleep does not bill the hours it was asleep.
+
+It counts into its own **pending** figure, tagged with the day it was counted
+on. The window collects pending time about once a minute (`take_usage`),
+writes it into the day's `usage` event, and pushes the new total back as part
+of what to enforce. Rust therefore decides with:
+
+```
+spent = what the window last pushed + taken but not yet pushed + still pending
+```
+
+— so nothing is counted twice, and nothing is forgotten in the gap between the
+window taking time and pushing the total that includes it. Pending time is
+kept in `enforced.json`, so a restart loses at most one tick.
+
+The day is the window's to name, because "what day is it here" is answered in
+one place in this project and that place is `Tasks.js`. Rust only notices that
+the day it was told has changed.
+
+### When it runs out
+
+A blocked program is gated when it **arrives** in front. A program with an
+allowance can run out while it is already there, with no arrival to notice —
+so the watcher also raises the gate the moment a program in front becomes
+gated. Walking away does not re-raise it: the program is still gated, but it
+was already gated a moment ago, and only a change raises the gate.
+
+### The warning
+
+A small notice in the corner, **never focused** — raising a window that takes
+the keyboard away from a game or a document would be the interruption the
+warning exists to prevent. It is shown with `SW_SHOWNOACTIVATE`, so it appears
+without becoming the active window, and closes itself after a few seconds. It
+is shown once per program per day; changing the warning or the allowance arms
+it again.
+
+A fullscreen game may draw over it. That is a known limit, not a bug to chase:
+the gate still arrives on time.
+
+### In the extension
+
+The Programs panel shows each allowance and today's use, and lets it be
+changed — raising it asks for the seal there, for the same reason standing a
+program down does. The browser cannot count use; it shows what the app last
+synced.
