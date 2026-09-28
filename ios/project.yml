@@ -1,0 +1,65 @@
+# project.yml — the iOS app's project, described rather than stored.
+#
+#     cd ios && "$HOME/xcodegen/bin/xcodegen"
+#
+# XcodeGen turns this into Dominus.xcodeproj on the Mac. The .xcodeproj, the
+# Info.plist and the entitlements file are all generated from here and are
+# gitignored: a .pbxproj cannot be reviewed or merged by hand, and this is
+# edited from Windows while it is built on a rented Mac. Change this file,
+# never the generated project — the next generate throws those edits away.
+
+name: Dominus
+
+options:
+  bundleIdPrefix: com.aj7developments
+  deploymentTarget:
+    # Family Controls for the device's own user — .individual rather than a
+    # parent authorizing a child — arrived in iOS 16.
+    iOS: "16.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    # The Apple Developer Team ID: ten characters, from developer.apple.com →
+    # Account → Membership details. Not a secret — it is inside every app the
+    # team signs. Empty until filled in, and Xcode refuses to sign without it.
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Automatic
+    MARKETING_VERSION: "0.1.0"
+    # Every TestFlight upload needs a higher build number than the last. The
+    # Distribute App flow in Xcode offers to raise it for you; let it.
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "5.0"
+
+targets:
+  Dominus:
+    type: application
+    platform: iOS
+    sources:
+      - path: Dominus
+    info:
+      path: Dominus/Info.plist
+      properties:
+        CFBundleDisplayName: Dominus
+        # Present and empty is what makes the app full-screen on modern
+        # iPhones rather than letterboxed.
+        UILaunchScreen: {}
+        UIUserInterfaceStyle: Dark
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        # Only Apple's own networking, if any — so TestFlight stops asking
+        # about export compliance on every upload.
+        ITSAppUsesNonExemptEncryption: false
+    entitlements:
+      path: Dominus/Dominus.entitlements
+      properties:
+        # Granted to the account for distribution on 25 September 2026. Every
+        # extension added later needs this same line, and Family Controls
+        # ticked on its own App ID.
+        com.apple.developer.family-controls: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.aj7developments.dominus
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        # iPhone only for now.
+        TARGETED_DEVICE_FAMILY: "1"

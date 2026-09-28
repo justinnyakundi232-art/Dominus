@@ -25,3 +25,12 @@ desktop/src/styles/common.css
 desktop/src/styles/fonts/
 desktop/src/assets/
 desktop/src/shared/
+
+# iOS app: the Xcode project, Info.plist and entitlements are generated from
+# ios/project.yml by XcodeGen on the Mac, and never edited by hand
+ios/*.xcodeproj/
+ios/Dominus/Info.plist
+ios/Dominus/Dominus.entitlements
+ios/build/
+xcuserdata/
+DerivedData/
