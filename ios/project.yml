@@ -22,8 +22,8 @@ settings:
   base:
     # The Apple Developer Team ID: ten characters, from developer.apple.com →
     # Account → Membership details. Not a secret — it is inside every app the
-    # team signs. Empty until filled in, and Xcode refuses to sign without it.
-    DEVELOPMENT_TEAM: ""
+    # team signs, and Xcode refuses to sign without it.
+    DEVELOPMENT_TEAM: NBHM4MC3CR
     CODE_SIGN_STYLE: Automatic
     MARKETING_VERSION: "0.1.0"
     # Every TestFlight upload needs a higher build number than the last. The

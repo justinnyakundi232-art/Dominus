@@ -58,4 +58,6 @@ Then in Xcode:
 - The **Family Controls** capability on every App ID — the app's and, later,
   each extension's. Distribution was granted to the account on 25 September
   2026.
-- The Team ID in `project.yml` (`DEVELOPMENT_TEAM`).
+- The Team ID in `project.yml` (`DEVELOPMENT_TEAM`, `NBHM4MC3CR`).
+- The app record in App Store Connect, created 28 September 2026 with SKU
+  `dominus-ios`. The SKU and bundle ID are permanent; the name is not.
