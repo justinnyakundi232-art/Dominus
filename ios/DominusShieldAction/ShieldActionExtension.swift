@@ -36,7 +36,9 @@ final class ShieldActionExtension: ShieldActionDelegate {
             // screen, where it is certain to be seen, instead of over a shield
             // that is still standing.
             notify { completionHandler(.close) }
-        @unknown default:
+        default:
+            // Newer SDKs name more actions than these two buttons. None of
+            // them is a stand or an unlock request, so they only close.
             completionHandler(.close)
         }
     }

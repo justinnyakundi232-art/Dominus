@@ -70,6 +70,9 @@ targets:
         UIUserInterfaceStyle: Dark
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
+        # Portrait only is allowed for an app that always runs full screen,
+        # which on an iPhone-only app changes nothing else.
+        UIRequiresFullScreen: true
         # Only Apple's own networking, if any — so TestFlight stops asking
         # about export compliance on every upload.
         ITSAppUsesNonExemptEncryption: false
