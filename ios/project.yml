@@ -3,10 +3,13 @@
 #     cd ios && "$HOME/xcodegen/bin/xcodegen"
 #
 # XcodeGen turns this into Dominus.xcodeproj on the Mac. The .xcodeproj, the
-# Info.plist and the entitlements file are all generated from here and are
+# Info.plists and the entitlements files are all generated from here and are
 # gitignored: a .pbxproj cannot be reviewed or merged by hand, and this is
 # edited from Windows while it is built on a rented Mac. Change this file,
 # never the generated project — the next generate throws those edits away.
+#
+# Quit Xcode before generating. An open Xcode keeps building the project it
+# already loaded, and new files show up as "Cannot find … in scope".
 
 name: Dominus
 
@@ -25,11 +28,16 @@ settings:
     # team signs, and Xcode refuses to sign without it.
     DEVELOPMENT_TEAM: NBHM4MC3CR
     CODE_SIGN_STYLE: Automatic
-    MARKETING_VERSION: "0.2.0"
+    MARKETING_VERSION: "0.3.0"
     # Every TestFlight upload needs a higher build number than the last. The
     # Distribute App flow in Xcode offers to raise it for you; let it.
     CURRENT_PROJECT_VERSION: "1"
     SWIFT_VERSION: "5.0"
+    # iPhone only — and not offered on a Mac or Vision Pro as an iPhone app
+    # either, since Screen Time blocking only exists on iPhone.
+    TARGETED_DEVICE_FAMILY: "1"
+    SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: "NO"
+    SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD: "NO"
 
 targets:
   Dominus:
@@ -37,15 +45,24 @@ targets:
     platform: iOS
     sources:
       - path: Dominus
+      - path: Shared
       # The extension's own rules, bundled from the repository root as they
       # are — referenced, not copied, so there is still only one of each.
       # Loaded at run time by SharedRules.swift through JavaScriptCore.
       - path: ../Categories.js
-        group: Shared
+        group: Extension rules
         buildPhase: resources
+    dependencies:
+      # App extensions are embedded in the app by default.
+      - target: DominusShield
+      - target: DominusShieldAction
     info:
       path: Dominus/Info.plist
       properties:
+        # From the build settings above, in every target: an extension whose
+        # version differs from the app's is rejected on upload.
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         CFBundleDisplayName: Dominus
         # Present and empty is what makes the app full-screen on modern
         # iPhones rather than letterboxed.
@@ -60,15 +77,67 @@ targets:
       path: Dominus/Dominus.entitlements
       properties:
         # Granted to the account for distribution on 25 September 2026. Every
-        # extension added later needs this same line, and Family Controls
-        # ticked on its own App ID.
+        # extension needs this same line, and Family Controls on its App ID.
         com.apple.developer.family-controls: true
+        # Where the block screen leaves notes for the app. See Shared/Gate.swift.
+        com.apple.security.application-groups:
+          - group.com.aj7developments.dominus
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.aj7developments.dominus
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-        # iPhone only for now — and not offered on a Mac or Vision Pro as an
-        # iPhone app either, since Screen Time blocking only exists on iPhone.
-        TARGETED_DEVICE_FAMILY: "1"
-        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: "NO"
-        SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD: "NO"
+
+  # Draws the block screen. Not named ShieldConfiguration: the target's name
+  # becomes its module's, and a module called ShieldConfiguration would hide
+  # the ManagedSettingsUI type of the same name from its own code.
+  DominusShield:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: DominusShield
+      # The extension's shield emblem, from the repository root as it is.
+      - path: ../Assets/SHIELDICON.png
+        group: Extension assets
+        buildPhase: resources
+    info:
+      path: DominusShield/Info.plist
+      properties:
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleDisplayName: Dominus Shield
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.ManagedSettingsUI.shield-configuration-service
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShieldConfigurationExtension
+    entitlements:
+      path: DominusShield/DominusShield.entitlements
+      properties:
+        com.apple.developer.family-controls: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.aj7developments.dominus.shield
+
+  # Handles the block screen's two buttons.
+  DominusShieldAction:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: DominusShieldAction
+      - path: Shared
+    info:
+      path: DominusShieldAction/Info.plist
+      properties:
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleDisplayName: Dominus Shield Action
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.ManagedSettings.shield-action-service
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShieldActionExtension
+    entitlements:
+      path: DominusShieldAction/DominusShieldAction.entitlements
+      properties:
+        com.apple.developer.family-controls: true
+        com.apple.security.application-groups:
+          - group.com.aj7developments.dominus
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.aj7developments.dominus.shieldaction

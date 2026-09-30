@@ -41,11 +41,18 @@ account. On the iPhone, install TestFlight.
 
 ### Every build
 
+**Quit Xcode first** (⌘Q, not just the window). An open Xcode keeps building
+the project it already loaded, and new files then fail as "Cannot find … in
+scope".
+
 ```sh
 cd "$HOME/Dominus" && git pull
 cd ios && "$HOME/xcodegen/bin/xcodegen"
 open Dominus.xcodeproj
 ```
+
+XcodeGen should end with `Created project at …`; anything else is an error
+worth reading before opening Xcode.
 
 Then in Xcode:
 
@@ -57,12 +64,28 @@ Then in Xcode:
    **TestFlight → Internal Testing**: add yourself to a group once. New builds
    then appear in the TestFlight app on the phone.
 
+## The targets
+
+| Target | Bundle ID | What it is |
+|---|---|---|
+| `Dominus` | `com.aj7developments.dominus` | The app |
+| `DominusShield` | `….dominus.shield` | Draws the block screen |
+| `DominusShieldAction` | `….dominus.shieldaction` | Handles its two buttons |
+
+The block screen can't open the app. Its Unlock button leaves a request in the
+App Group `group.com.aj7developments.dominus` and posts a notification; the
+app reads the request when it comes to the front. See `Shared/Gate.swift`.
+
+A site typed by name never reaches the block screen: it is stopped by the web
+content filter, which draws its own page with no buttons. Those are unlocked
+from inside the app.
+
 ## Requirements
 
 - iOS 16 or later on the phone (`.individual` Screen Time authorization).
-- The **Family Controls** capability on every App ID — the app's and, later,
-  each extension's. Distribution was granted to the account on 25 September
-  2026.
+- The **Family Controls** capability on every App ID — the app's and each
+  extension's. Distribution was granted to the account on 25 September 2026.
+- The App Group on the app's and the shield action's App IDs.
 - The Team ID in `project.yml` (`DEVELOPMENT_TEAM`, `NBHM4MC3CR`).
 - The app record in App Store Connect, created 28 September 2026 with SKU
   `dominus-ios`. The SKU and bundle ID are permanent; the name is not.

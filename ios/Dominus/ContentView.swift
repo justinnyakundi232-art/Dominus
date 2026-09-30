@@ -1,17 +1,25 @@
 import SwiftUI
 import FamilyControls
+import UserNotifications
 
-// Build 2: block what is chosen, and find out how a site typed by name is
-// blocked compared with one picked in Apple's picker. Still a test bench
-// rather than Dominus — one screen, no friction on taking anything down.
+// Build 3: the block screen is Dominus's own, and its Unlock button finds a
+// way back here. Still a test bench rather than Dominus — one screen, and an
+// unlock request is only shown, not yet acted on.
 
 struct ContentView: View {
+    @Environment(\.scenePhase) private var scenePhase
     @ObservedObject private var center = AuthorizationCenter.shared
     @StateObject private var fortress = Fortress()
     @State private var pickerShown = false
     @State private var typed = ""
     @State private var typedRejected: String?
     @State private var failure: String?
+
+    // Written by the block screen's extension, read here. Refreshed whenever
+    // the app comes to the front, since that is how a request arrives.
+    @State private var pending: Gate.UnlockRequest?
+    @State private var stands = 0
+    @State private var notifications: UNAuthorizationStatus = .notDetermined
 
     private let rules = SharedRules.shared
 
@@ -21,8 +29,12 @@ struct ContentView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 28) {
                     header
+                    if let pending {
+                        unlockRequested(pending)
+                    }
                     permission
                     if center.authorizationStatus == .approved {
+                        notificationPermission
                         standing
                         picked
                         byName
@@ -34,6 +46,59 @@ struct ContentView: View {
             }
         }
         .familyActivityPicker(isPresented: $pickerShown, selection: $fortress.selection)
+        .onAppear(perform: refresh)
+        .onChange(of: scenePhase) { phase in
+            if phase == .active {
+                refresh()
+            }
+        }
+    }
+
+    // What the Unlock button on the block screen leads to. The cooldown, the
+    // task and the fifteen minutes are the next build; this one proves the
+    // way here.
+    private func unlockRequested(_ request: Gate.UnlockRequest) -> some View {
+        section("Unlock requested") {
+            label(for: request.target)
+                .foregroundStyle(Theme.parchment)
+            (Text("Asked ") + Text(request.at, style: .relative) + Text(" ago from the block screen."))
+                .font(.footnote)
+                .foregroundStyle(Theme.goldDim)
+            Text("Next build: the cooldown and the task run here, and then it opens for fifteen minutes. For now this only proves the block screen can send you here.")
+                .foregroundStyle(Theme.parchment)
+            button("Dismiss", secondary: true) {
+                Gate.clearUnlock()
+                pending = nil
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func label(for target: Gate.UnlockRequest.Target) -> some View {
+        switch target {
+        case .application(let token): Label(token)
+        case .webDomain(let token): Label(token)
+        case .category(let token): Label(token)
+        }
+    }
+
+    // An extension cannot open its app, so the block screen's Unlock button
+    // posts a notification instead — which shows nothing without this.
+    private var notificationPermission: some View {
+        section("Notifications") {
+            switch notifications {
+            case .authorized, .provisional, .ephemeral:
+                Text("Allowed. Unlock on the block screen will send a notification that opens Dominus.")
+                    .foregroundStyle(Theme.parchment)
+            case .denied:
+                Text("Turned off. Unlock on the block screen can't reach you. Turn them on in Settings → Notifications → Dominus.")
+                    .foregroundStyle(Theme.parchment)
+            default:
+                Text("Unlock on the block screen reaches you through a notification, since the block screen can't open Dominus itself.")
+                    .foregroundStyle(Theme.parchment)
+                button("Allow notifications", action: allowNotifications)
+            }
+        }
     }
 
     private var header: some View {
@@ -42,7 +107,7 @@ struct ContentView: View {
                 .font(.system(.largeTitle, design: .serif).weight(.bold))
                 .tracking(4)
                 .foregroundStyle(Theme.gold)
-            Text("Build 2. Blocks what you choose.")
+            Text("Build 3. The block screen is Dominus's.")
                 .font(.footnote)
                 .foregroundStyle(Theme.goldDim)
         }
@@ -87,6 +152,9 @@ struct ContentView: View {
                     .foregroundStyle(Theme.parchment)
                 button("Raise it") { fortress.raise() }
             }
+            Text(stands == 1 ? "1 stand at the block screen." : "\(stands) stands at the block screen.")
+                .font(.footnote)
+                .foregroundStyle(Theme.goldDim)
         }
     }
 
@@ -184,14 +252,40 @@ struct ContentView: View {
         }
     }
 
-    // Whether the phone is really running the extension's JavaScript is one
-    // of the things this build exists to find out, so it says so.
+    // The plumbing each build depends on, stated rather than assumed: the
+    // extension's JavaScript, the storage shared with the block screen, and
+    // whether the block screen's last notification got through.
     private var footer: some View {
-        Text(rules.isLoaded
-             ? "Shared rules: the extension's Categories.js is running on this phone."
-             : "Shared rules failed to load: \(rules.failure ?? "unknown error")")
-            .font(.caption)
-            .foregroundStyle(rules.isLoaded ? Theme.goldDim : .red)
+        VStack(alignment: .leading, spacing: 6) {
+            Text(rules.isLoaded
+                 ? "Shared rules: the extension's Categories.js is running on this phone."
+                 : "Shared rules failed to load: \(rules.failure ?? "unknown error")")
+                .foregroundStyle(rules.isLoaded ? Theme.goldDim : .red)
+            Text(Gate.defaults != nil
+                 ? "Shared storage: the block screen and the app can reach each other."
+                 : "Shared storage is missing: the App Group isn't set up, so the block screen can't reach the app.")
+                .foregroundStyle(Gate.defaults != nil ? Theme.goldDim : .red)
+            if let notificationFailure = Gate.notificationFailure {
+                Text("The block screen's last notification failed: \(notificationFailure)")
+                    .foregroundStyle(.red)
+            }
+        }
+        .font(.caption)
+    }
+
+    private func refresh() {
+        pending = Gate.pendingUnlock
+        stands = Gate.stands.count
+        Task {
+            notifications = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
+        }
+    }
+
+    private func allowNotifications() {
+        Task {
+            _ = try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])
+            notifications = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
+        }
     }
 
     private func addTyped() {
