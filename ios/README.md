@@ -20,6 +20,11 @@ internal testing only, which needs no review.
 from it. The generated project is gitignored — edit `project.yml`, never the
 project.
 
+The extension's shared scripts are bundled from the repository root as they
+are (`Categories.js` so far) and run through JavaScriptCore by
+`SharedRules.swift`, so the whole repository has to be checked out on the
+Mac, not just `ios/`.
+
 ### Once, on the Mac
 
 XcodeGen without Homebrew (the rented plan has no admin rights):
