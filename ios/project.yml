@@ -29,11 +29,13 @@ settings:
     DEVELOPMENT_TEAM: NBHM4MC3CR
     CODE_SIGN_STYLE: Automatic
     MARKETING_VERSION: "0.3.0"
-    # Every upload needs a build number App Store Connect hasn't seen for this
-    # version — including one that failed validation, which still uses its
-    # number up (0.3.0 build 1 did). Raised here with every push meant for
-    # TestFlight, and back to 1 when MARKETING_VERSION moves on.
-    CURRENT_PROJECT_VERSION: "2"
+    # Every upload needs a build number App Store Connect has never seen for
+    # this app — under any version, not just this one, and including uploads
+    # that were refused. The first two builds went up as "1.0 (1)" and
+    # "1.0 (2)", before the Info.plists stated a version, so 0.3.0 was turned
+    # away at 1 and at 2. Raised with every push meant for TestFlight, and
+    # never reset.
+    CURRENT_PROJECT_VERSION: "3"
     SWIFT_VERSION: "5.0"
     # Not offered on a Mac or Vision Pro as an iPhone app, since Screen Time
     # blocking only exists on iPhone. iPhone-only itself is set per target,

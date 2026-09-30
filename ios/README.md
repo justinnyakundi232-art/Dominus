@@ -59,10 +59,13 @@ Then in Xcode:
 1. Pick **Any iOS Device (arm64)** as the destination, next to the scheme.
 2. **Product → Archive.**
 3. In the Organizer that opens: **Distribute App → TestFlight Internal Only.**
-   Each upload needs a build number App Store Connect hasn't seen for that
-   version, even after a refused upload; it is `CURRENT_PROJECT_VERSION` in
-   `project.yml`, raised with every push meant for TestFlight. A "Redundant
-   Binary Upload" error means it wasn't.
+   Archive the **Dominus** scheme, not an extension's — it builds both
+   extensions and embeds them.
+   Each upload needs a build number App Store Connect has never seen for the
+   app, under any version, even after a refused upload. It is
+   `CURRENT_PROJECT_VERSION` in `project.yml`, raised with every push meant
+   for TestFlight and never reset. A "Redundant Binary Upload" error means it
+   wasn't.
 4. After processing (10–20 minutes), App Store Connect → the app →
    **TestFlight → Internal Testing**: add yourself to a group once. New builds
    then appear in the TestFlight app on the phone.
