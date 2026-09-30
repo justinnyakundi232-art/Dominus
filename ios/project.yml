@@ -33,9 +33,11 @@ settings:
     # Distribute App flow in Xcode offers to raise it for you; let it.
     CURRENT_PROJECT_VERSION: "1"
     SWIFT_VERSION: "5.0"
-    # iPhone only — and not offered on a Mac or Vision Pro as an iPhone app
-    # either, since Screen Time blocking only exists on iPhone.
-    TARGETED_DEVICE_FAMILY: "1"
+    # Not offered on a Mac or Vision Pro as an iPhone app, since Screen Time
+    # blocking only exists on iPhone. iPhone-only itself is set per target,
+    # below: XcodeGen gives every iOS target its own "1,2" (iPhone and iPad),
+    # which overrides anything set here — and an iPad-capable portrait-only
+    # app is refused on upload (error 90474).
     SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: "NO"
     SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD: "NO"
 
@@ -70,9 +72,6 @@ targets:
         UIUserInterfaceStyle: Dark
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
-        # Portrait only is allowed for an app that always runs full screen,
-        # which on an iPhone-only app changes nothing else.
-        UIRequiresFullScreen: true
         # Only Apple's own networking, if any — so TestFlight stops asking
         # about export compliance on every upload.
         ITSAppUsesNonExemptEncryption: false
@@ -88,6 +87,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.aj7developments.dominus
+        TARGETED_DEVICE_FAMILY: "1"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
 
   # Draws the block screen. Not named ShieldConfiguration: the target's name
@@ -118,6 +118,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.aj7developments.dominus.shield
+        TARGETED_DEVICE_FAMILY: "1"
 
   # Handles the block screen's two buttons.
   DominusShieldAction:
@@ -144,3 +145,4 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.aj7developments.dominus.shieldaction
+        TARGETED_DEVICE_FAMILY: "1"
