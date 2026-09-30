@@ -23,7 +23,7 @@ final class ShieldActionExtension: ShieldActionDelegate {
 
     private func respond(
         to action: ShieldAction,
-        target: Gate.UnlockRequest.Target,
+        target: LockTarget,
         completionHandler: @escaping (ShieldActionResponse) -> Void
     ) {
         switch action {

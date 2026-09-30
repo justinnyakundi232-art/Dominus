@@ -2,9 +2,10 @@ import SwiftUI
 import FamilyControls
 import UserNotifications
 
-// Build 3: the block screen is Dominus's own, and its Unlock button finds a
-// way back here. Still a test bench rather than Dominus — one screen, and an
-// unlock request is only shown, not yet acted on.
+// Build 4: an unlock costs what it costs in Chrome — the task, the cooldown,
+// a slip — opens one thing for its window, and the block comes back on its
+// own. Still a test bench rather than Dominus: one screen, and taking the
+// whole fortress down, or a site off it, is still free.
 
 struct ContentView: View {
     @Environment(\.scenePhase) private var scenePhase
@@ -21,7 +22,17 @@ struct ContentView: View {
     @State private var stands = 0
     @State private var notifications: UNAuthorizationStatus = .notDetermined
 
+    // The unlock being run, if any. `fromRequest` clears the block screen's
+    // request once it has been answered either way.
+    private struct Unlocking: Identifiable {
+        let id = UUID()
+        let target: LockTarget
+        let fromRequest: Bool
+    }
+    @State private var unlocking: Unlocking?
+
     private let rules = SharedRules.shared
+    private let tick = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
 
     var body: some View {
         ZStack {
@@ -46,7 +57,19 @@ struct ContentView: View {
             }
         }
         .familyActivityPicker(isPresented: $pickerShown, selection: $fortress.selection)
+        .fullScreenCover(item: $unlocking) { item in
+            UnlockFlow(target: item.target, fortress: fortress) {
+                if item.fromRequest {
+                    Gate.clearUnlock()
+                }
+                unlocking = nil
+                refresh()
+            }
+        }
         .onAppear(perform: refresh)
+        .onReceive(tick) { _ in
+            fortress.refreshIfAnyEnded()
+        }
         .onChange(of: scenePhase) { phase in
             if phase == .active {
                 refresh()
@@ -54,31 +77,31 @@ struct ContentView: View {
         }
     }
 
-    // What the Unlock button on the block screen leads to. The cooldown, the
-    // task and the fifteen minutes are the next build; this one proves the
-    // way here.
+    // What the Unlock button on the block screen leads to.
     private func unlockRequested(_ request: Gate.UnlockRequest) -> some View {
         section("Unlock requested") {
-            label(for: request.target)
+            TargetLabel(target: request.target)
                 .foregroundStyle(Theme.parchment)
             (Text("Asked ") + Text(request.at, style: .relative) + Text(" ago from the block screen."))
                 .font(.footnote)
                 .foregroundStyle(Theme.goldDim)
-            Text("Next build: the cooldown and the task run here, and then it opens for fifteen minutes. For now this only proves the block screen can send you here.")
-                .foregroundStyle(Theme.parchment)
-            button("Dismiss", secondary: true) {
-                Gate.clearUnlock()
-                pending = nil
+            if fortress.isOpen(request.target) {
+                Text("Already open.")
+                    .foregroundStyle(Theme.parchment)
+                button("Dismiss", secondary: true) {
+                    Gate.clearUnlock()
+                    pending = nil
+                }
+            } else {
+                button("Begin unlock") {
+                    unlocking = Unlocking(target: request.target, fromRequest: true)
+                }
+                button("Stay focused", secondary: true) {
+                    Gate.recordStand()
+                    Gate.clearUnlock()
+                    refresh()
+                }
             }
-        }
-    }
-
-    @ViewBuilder
-    private func label(for target: Gate.UnlockRequest.Target) -> some View {
-        switch target {
-        case .application(let token): Label(token)
-        case .webDomain(let token): Label(token)
-        case .category(let token): Label(token)
         }
     }
 
@@ -107,7 +130,7 @@ struct ContentView: View {
                 .font(.system(.largeTitle, design: .serif).weight(.bold))
                 .tracking(4)
                 .foregroundStyle(Theme.gold)
-            Text("Build 3. The block screen is Dominus's.")
+            Text("Build 4. Unlocking costs what it costs in Chrome.")
                 .font(.footnote)
                 .foregroundStyle(Theme.goldDim)
         }
@@ -152,7 +175,31 @@ struct ContentView: View {
                     .foregroundStyle(Theme.parchment)
                 button("Raise it") { fortress.raise() }
             }
-            Text(stands == 1 ? "1 stand at the block screen." : "\(stands) stands at the block screen.")
+            if !fortress.openUnlocks.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("OPEN FOR NOW")
+                        .font(.caption.monospaced())
+                        .tracking(2)
+                        .foregroundStyle(Theme.goldDim)
+                    ForEach(fortress.openUnlocks) { unlock in
+                        HStack(alignment: .firstTextBaseline) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                TargetLabel(target: unlock.target)
+                                    .foregroundStyle(Theme.parchment)
+                                (Text("Blocked again in ") + Text(unlock.until, style: .relative))
+                                    .font(.footnote)
+                                    .foregroundStyle(Theme.goldDim)
+                            }
+                            Spacer()
+                            // Closing early is strengthening, so it is free.
+                            Button("Close now") { fortress.close(unlock) }
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(Theme.gold)
+                        }
+                    }
+                }
+            }
+            Text("Today: \(fortress.slipsToday) \(fortress.slipsToday == 1 ? "slip" : "slips"). All time: \(stands) \(stands == 1 ? "stand" : "stands").")
                 .font(.footnote)
                 .foregroundStyle(Theme.goldDim)
         }
@@ -234,10 +281,25 @@ struct ContentView: View {
             } else {
                 VStack(alignment: .leading, spacing: 8) {
                     ForEach(fortress.sites, id: \.self) { site in
-                        HStack {
+                        HStack(spacing: 16) {
                             Text(site)
                                 .foregroundStyle(Theme.parchment)
                             Spacer()
+                            // The filter's page for a site typed by name has
+                            // no buttons, so this is the only way to unlock one.
+                            if fortress.isStanding {
+                                if fortress.isOpen(.site(site)) {
+                                    Text("Open")
+                                        .font(.footnote)
+                                        .foregroundStyle(Theme.goldDim)
+                                } else {
+                                    Button("Unlock") {
+                                        unlocking = Unlocking(target: .site(site), fromRequest: false)
+                                    }
+                                    .font(.footnote.weight(.semibold))
+                                    .foregroundStyle(Theme.gold)
+                                }
+                            }
                             Button {
                                 fortress.removeSite(site)
                             } label: {
@@ -274,6 +336,7 @@ struct ContentView: View {
     }
 
     private func refresh() {
+        fortress.refresh()
         pending = Gate.pendingUnlock
         stands = Gate.stands.count
         Task {

@@ -21,9 +21,10 @@ from it. The generated project is gitignored — edit `project.yml`, never the
 project.
 
 The extension's shared scripts are bundled from the repository root as they
-are (`Categories.js` so far) and run through JavaScriptCore by
+are (`Categories.js` and `Tasks.js` so far) and run through JavaScriptCore by
 `SharedRules.swift`, so the whole repository has to be checked out on the
-Mac, not just `ios/`.
+Mac, not just `ios/`. The one browser API they need, `crypto.getRandomValues`,
+is supplied from Swift.
 
 ### Once, on the Mac
 
@@ -77,21 +78,33 @@ Then in Xcode:
 | `Dominus` | `com.aj7developments.dominus` | The app |
 | `DominusShield` | `….dominus.shield` | Draws the block screen |
 | `DominusShieldAction` | `….dominus.shieldaction` | Handles its two buttons |
+| `DominusMonitor` | `….dominus.monitor` | Puts a block back when an unlock runs out |
+
+The fortress lives in the App Group `group.com.aj7developments.dominus`
+(`Shared/FortressState.swift`), because the app isn't the only thing that acts
+on it.
 
 The block screen can't open the app. Its Unlock button leaves a request in the
-App Group `group.com.aj7developments.dominus` and posts a notification; the
-app reads the request when it comes to the front. See `Shared/Gate.swift`.
+App Group and posts a notification; the app reads the request when it comes to
+the front. See `Shared/Gate.swift`.
 
 A site typed by name never reaches the block screen: it is stopped by the web
 content filter, which draws its own page with no buttons. Those are unlocked
-from inside the app.
+from their entry in the app.
+
+An unlock runs as the extension's blocked page does — Random Passage, then the
+cooldown from `Tasks.js` (starting over if you leave Dominus), then a last
+confirmation — and opens one thing for 15 minutes (an app) or an hour (a site).
+It starts a DeviceActivity timer of the same length, and `DominusMonitor`
+re-applies the fortress when it ends. DeviceActivity refuses intervals under
+15 minutes, so the timer's end is rounded up to the next whole minute.
 
 ## Requirements
 
 - iOS 16 or later on the phone (`.individual` Screen Time authorization).
 - The **Family Controls** capability on every App ID — the app's and each
   extension's. Distribution was granted to the account on 25 September 2026.
-- The App Group on the app's and the shield action's App IDs.
+- The App Group on the app's, the shield action's and the monitor's App IDs.
 - The Team ID in `project.yml` (`DEVELOPMENT_TEAM`, `NBHM4MC3CR`).
 - The app record in App Store Connect, created 28 September 2026 with SKU
   `dominus-ios`. The SKU and bundle ID are permanent; the name is not.

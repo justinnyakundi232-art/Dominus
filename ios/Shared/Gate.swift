@@ -30,20 +30,17 @@ enum Gate {
         static let notificationFailure = "gate.notificationFailure"
     }
 
+    // Only ever a picked app, site or category: a site typed by name is
+    // stopped by the web content filter, whose page has no buttons, so it is
+    // unlocked from inside the app and never arrives here.
     struct UnlockRequest: Codable {
-        enum Target: Codable {
-            case application(ApplicationToken)
-            case webDomain(WebDomainToken)
-            case category(ActivityCategoryToken)
-        }
-
-        let target: Target
+        let target: LockTarget
         let at: Date
     }
 
     // One request at a time: a newer one replaces an older, since only the
     // latest thing someone asked for is the thing they are waiting on.
-    static func requestUnlock(_ target: UnlockRequest.Target) {
+    static func requestUnlock(_ target: LockTarget) {
         let request = UnlockRequest(target: target, at: Date())
         if let data = try? JSONEncoder().encode(request) {
             defaults?.set(data, forKey: Key.unlock)

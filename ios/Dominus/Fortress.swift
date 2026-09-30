@@ -1,63 +1,86 @@
 import Foundation
+import DeviceActivity
 import FamilyControls
 import ManagedSettings
 
-// What is chosen, what is typed, and whether it is standing.
+// The app's handle on FortressState: what is chosen, what is typed, whether it
+// is standing, and what is open for now.
 //
-// Build 2 has two ways of naming a site on purpose, because they block
-// differently and the difference decides how the extension's categories reach
-// the phone:
+// Picked things are shielded and reach Dominus's block screen; sites typed by
+// name are stopped by the web content filter, whose page has no buttons, so
+// they are unlocked from here. Either way the unlock itself runs in the app,
+// and DominusMonitor puts the block back when its time is up.
 //
-//   - picked in Apple's picker — a token. Shielded, which means the Screen
-//     Time screen with a button, and later a Dominus screen of our own.
-//   - typed by name — a WebDomain. Blocked by the web content filter, which
-//     is what a category's site list would have to use, since those are names
-//     and never tokens.
-//
-// Nothing here costs anything to take down yet. The cooldown, the task and the
-// seal come once blocking itself is proven.
+// Taking the whole fortress down is still free. The cost is on opening one
+// thing while the rest stands, which is the moment the extension guards too.
 @MainActor
 final class Fortress: ObservableObject {
-    @Published var selection: FamilyActivitySelection {
-        didSet { changed() }
-    }
-    @Published private(set) var sites: [String] {
-        didSet { changed() }
-    }
-    @Published private(set) var isStanding: Bool
+    @Published private var state: FortressState
 
     private let store = ManagedSettingsStore()
-    private let defaults = UserDefaults.standard
-
-    private enum Key {
-        static let selection = "fortress.selection"
-        static let sites = "fortress.sites"
-    }
 
     init() {
-        let saved = UserDefaults.standard.data(forKey: Key.selection)
-            .flatMap { try? JSONDecoder().decode(FamilyActivitySelection.self, from: $0) }
-        _selection = Published(initialValue: saved ?? FamilyActivitySelection())
-        _sites = Published(initialValue: UserDefaults.standard.stringArray(forKey: Key.sites) ?? [])
+        state = FortressState.load() ?? Fortress.fromBuild3()
+        refresh()
+    }
 
-        // The system holds the settings, not this app: they survive the app
-        // being closed and the phone restarting. So whether the fortress is
-        // standing is read back from the store rather than remembered
-        // separately, where the two could disagree.
+    // Builds 2 and 3 kept the choices in the app's own storage and read
+    // "standing" back from the store. Carried over once, so an update does not
+    // quietly empty a fortress that was up.
+    private static func fromBuild3() -> FortressState {
+        let old = UserDefaults.standard
+        var state = FortressState()
+        if let data = old.data(forKey: "fortress.selection"),
+           let selection = try? JSONDecoder().decode(FamilyActivitySelection.self, from: data) {
+            state.selection = selection
+        }
+        state.sites = old.stringArray(forKey: "fortress.sites") ?? []
         let store = ManagedSettingsStore()
-        _isStanding = Published(initialValue:
-            store.shield.applications != nil
+        state.raised = store.shield.applications != nil
             || store.shield.applicationCategories != nil
             || store.shield.webDomains != nil
             || store.webContent.blockedByFilter != nil
-        )
+        state.save()
+        return state
     }
 
+    // Re-read, since DominusMonitor may have changed it while the app was
+    // away, drop whatever has run out, and enforce the result. Called when the
+    // app comes to the front, so an unlock never outlives its time just
+    // because a timer was late.
+    func refresh() {
+        state = FortressState.load() ?? state
+        let ended = state.pruneExpired(at: Date())
+        commit()
+        stopTimers(for: ended)
+    }
+
+    // For a clock tick while the app is open: an unlock that runs out in
+    // front of you ends in front of you, not whenever the timer lands.
+    func refreshIfAnyEnded() {
+        if state.unlocks.contains(where: { $0.until <= Date() }) {
+            refresh()
+        }
+    }
+
+    // MARK: - What is held
+
+    var selection: FamilyActivitySelection {
+        get { state.selection }
+        set {
+            state.selection = newValue
+            commit()
+        }
+    }
+
+    var sites: [String] { state.sites }
+    var isStanding: Bool { state.raised }
+
     var isEmpty: Bool {
-        selection.applicationTokens.isEmpty
-            && selection.categoryTokens.isEmpty
-            && selection.webDomainTokens.isEmpty
-            && sites.isEmpty
+        state.selection.applicationTokens.isEmpty
+            && state.selection.categoryTokens.isEmpty
+            && state.selection.webDomainTokens.isEmpty
+            && state.sites.isEmpty
     }
 
     // Returns the domain as stored, or nil if it could not be a site.
@@ -65,70 +88,138 @@ final class Fortress: ObservableObject {
     func addSite(_ raw: String) -> String? {
         let domain = SharedRules.shared.normalizeDomain(raw)
         guard !domain.isEmpty else { return nil }
-        if !sites.contains(domain) {
-            sites.append(domain)
+        if !state.sites.contains(domain) {
+            state.sites.append(domain)
+            commit()
         }
         return domain
     }
 
-    // Built up and assigned once, so a whole category is one save and one
+    // Built up and committed once, so a whole category is one save and one
     // apply rather than one per site.
     func addSites(_ list: [String]) {
-        var next = sites
+        var next = state.sites
         for raw in list {
             let domain = SharedRules.shared.normalizeDomain(raw)
             if !domain.isEmpty && !next.contains(domain) {
                 next.append(domain)
             }
         }
-        if next != sites {
-            sites = next
+        if next != state.sites {
+            state.sites = next
+            commit()
         }
     }
 
     func removeSite(_ domain: String) {
-        sites.removeAll { $0 == domain }
+        state.sites.removeAll { $0 == domain }
+        let ended = state.unlocks.filter { $0.target == .site(domain) }
+        state.unlocks.removeAll { $0.target == .site(domain) }
+        commit()
+        stopTimers(for: ended)
     }
 
     func raise() {
-        apply()
-        isStanding = true
+        state.raised = true
+        commit()
     }
 
+    // Also closes anything open: a fortress raised again later starts whole.
     func standDown() {
-        store.clearAllSettings()
-        isStanding = false
+        let ended = state.unlocks
+        state.raised = false
+        state.unlocks = []
+        commit()
+        stopTimers(for: ended)
     }
 
-    private func changed() {
-        save()
-        if isStanding {
-            apply()
+    // MARK: - What is open
+
+    var openUnlocks: [FortressState.Unlock] {
+        state.liveUnlocks(at: Date())
+    }
+
+    func isOpen(_ target: LockTarget) -> Bool {
+        openUnlocks.contains { $0.target == target }
+    }
+
+    func unlocksToday(of target: LockTarget) -> Int {
+        state.unlocksToday(of: target)
+    }
+
+    var slipsToday: Int {
+        state.slips.filter { Calendar.current.isDateInToday($0.at) }.count
+    }
+
+    enum UnlockError: LocalizedError {
+        case timer(Error)
+
+        var errorDescription: String? {
+            switch self {
+            case .timer(let error):
+                return "Dominus couldn't set the timer that puts the block back, so nothing was unlocked. \(error.localizedDescription)"
+            }
         }
     }
 
-    private func save() {
-        if let data = try? JSONEncoder().encode(selection) {
-            defaults.set(data, forKey: Key.selection)
+    // Opens one thing for its window and records the slip. The timer that
+    // ends it is started first: an unlock with nothing to close it would be a
+    // block quietly gone for good, so if the timer cannot be set, nothing
+    // opens.
+    func unlock(_ target: LockTarget) throws {
+        let now = Date()
+        let until = now.addingTimeInterval(target.window)
+        let id = "unlock.\(UUID().uuidString)"
+
+        do {
+            try startTimer(named: id, from: now, until: until)
+        } catch {
+            throw UnlockError.timer(error)
         }
-        defaults.set(sites, forKey: Key.sites)
+
+        state.unlocks.removeAll { $0.target == target }
+        state.unlocks.append(FortressState.Unlock(id: id, target: target, until: until))
+        state.slips.append(FortressState.Slip(key: target.key, at: now))
+        commit()
     }
 
-    // Empty sets are written as nil rather than as empty: nil is "no rule",
-    // and it keeps isStanding's read-back honest.
-    private func apply() {
-        let apps = selection.applicationTokens
-        let categories = selection.categoryTokens
-        let domains = selection.webDomainTokens
+    // Closing early is strengthening, so it is free.
+    func close(_ unlock: FortressState.Unlock) {
+        state.unlocks.removeAll { $0.id == unlock.id }
+        commit()
+        stopTimers(for: [unlock])
+    }
 
-        store.shield.applications = apps.isEmpty ? nil : apps
-        store.shield.applicationCategories = categories.isEmpty ? nil : .specific(categories)
-        store.shield.webDomains = domains.isEmpty ? nil : domains
-        // A category picked in the picker covers its websites as well as its
-        // apps, the way a category in the extension covers every site in it.
-        store.shield.webDomainCategories = categories.isEmpty ? nil : .specific(categories)
-        store.webContent.blockedByFilter = sites.isEmpty
-            ? nil
-            : .specific(Set(sites.map { WebDomain(domain: $0) }))
+    // MARK: - Enforcement
+
+    private func commit() {
+        state.save()
+        state.apply(to: store)
+    }
+
+    // DeviceActivity refuses intervals under 15 minutes, and an app's window
+    // is exactly 15, so the end is rounded up to the next whole minute rather
+    // than risked a second short. The block comes back within a minute of the
+    // time shown; opening Dominus before then re-blocks on the spot.
+    private func startTimer(named id: String, from start: Date, until end: Date) throws {
+        let calendar = Calendar.current
+        let roundedEnd = calendar.nextDate(
+            after: end,
+            matching: DateComponents(second: 0),
+            matchingPolicy: .nextTime
+        ) ?? end.addingTimeInterval(60)
+        let parts: Set<Calendar.Component> = [.year, .month, .day, .hour, .minute, .second]
+
+        let schedule = DeviceActivitySchedule(
+            intervalStart: calendar.dateComponents(parts, from: start),
+            intervalEnd: calendar.dateComponents(parts, from: roundedEnd),
+            repeats: false
+        )
+        try DeviceActivityCenter().startMonitoring(DeviceActivityName(id), during: schedule)
+    }
+
+    private func stopTimers(for unlocks: [FortressState.Unlock]) {
+        guard !unlocks.isEmpty else { return }
+        DeviceActivityCenter().stopMonitoring(unlocks.map { DeviceActivityName($0.id) })
     }
 }
