@@ -59,7 +59,10 @@ Then in Xcode:
 1. Pick **Any iOS Device (arm64)** as the destination, next to the scheme.
 2. **Product → Archive.**
 3. In the Organizer that opens: **Distribute App → TestFlight Internal Only.**
-   Let it manage the build number — each upload needs a higher one.
+   Each upload needs a build number App Store Connect hasn't seen for that
+   version, even after a refused upload; it is `CURRENT_PROJECT_VERSION` in
+   `project.yml`, raised with every push meant for TestFlight. A "Redundant
+   Binary Upload" error means it wasn't.
 4. After processing (10–20 minutes), App Store Connect → the app →
    **TestFlight → Internal Testing**: add yourself to a group once. New builds
    then appear in the TestFlight app on the phone.
