@@ -1,0 +1,161 @@
+import SwiftUI
+import FamilyControls
+
+// The pieces every tab is built from.
+
+// A titled block on the raised plane — Tokens.css's --section.
+//
+// `glowing` is for the one thing on a screen that has just changed and that
+// the user came here for: an unlock request from the block screen, a timer
+// that has just started. In build 4 the timer appeared two sections away from
+// the site that had been unlocked, and went unnoticed. Whatever just changed
+// has to draw the eye.
+struct Panel<Content: View>: View {
+    private let title: String
+    private let glowing: Bool
+    private let content: Content
+
+    init(_ title: String, glowing: Bool = false, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.glowing = glowing
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(title.uppercased())
+                .font(.caption.monospaced())
+                .tracking(2)
+                .foregroundStyle(glowing ? Theme.gold : Theme.goldDim)
+            content
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.section)
+        .overlay(Rectangle().stroke(Theme.goldDim.opacity(0.4), lineWidth: 1))
+        .modifier(Glow(active: glowing))
+    }
+}
+
+// A gold border that breathes. Held steady and bright for anyone who has
+// asked the phone to reduce motion: the point is to be noticed, and that does
+// not need movement.
+struct Glow: ViewModifier {
+    let active: Bool
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var bright = false
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if active {
+            content
+                .overlay(
+                    Rectangle()
+                        .stroke(Theme.gold, lineWidth: 2)
+                        .opacity(reduceMotion || bright ? 1 : 0.35)
+                )
+                .shadow(color: Theme.gold.opacity(reduceMotion || bright ? 0.5 : 0.12), radius: 14)
+                .onAppear {
+                    guard !reduceMotion else { return }
+                    withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) {
+                        bright = true
+                    }
+                }
+        } else {
+            content
+        }
+    }
+}
+
+// Gold on black for the thing to do; outlined for the thing you may do instead.
+struct GoldButton: View {
+    private let title: String
+    private let secondary: Bool
+    private let action: () -> Void
+
+    init(_ title: String, secondary: Bool = false, action: @escaping () -> Void) {
+        self.title = title
+        self.secondary = secondary
+        self.action = action
+    }
+
+    var body: some View {
+        Button(action: action) {
+            Text(title.uppercased())
+                .font(.subheadline.weight(.semibold))
+                .tracking(1.5)
+                .foregroundStyle(secondary ? Theme.gold : Theme.ground)
+                .padding(.vertical, 12)
+                .frame(maxWidth: .infinity)
+                .background(secondary ? Color.clear : Theme.gold)
+                .overlay(Rectangle().stroke(Theme.gold, lineWidth: secondary ? 1 : 0))
+        }
+    }
+}
+
+// The scrolling black page each tab sits on, under its name.
+struct Page<Content: View>: View {
+    private let title: String
+    private let subtitle: String?
+    private let content: Content
+
+    init(_ title: String, subtitle: String? = nil, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.subtitle = subtitle
+        self.content = content()
+    }
+
+    var body: some View {
+        ZStack {
+            Theme.ground.ignoresSafeArea()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(title.uppercased())
+                            .font(.system(.largeTitle, design: .serif).weight(.bold))
+                            .tracking(3)
+                            .foregroundStyle(Theme.gold)
+                        if let subtitle {
+                            Text(subtitle)
+                                .font(.footnote)
+                                .foregroundStyle(Theme.goldDim)
+                        }
+                    }
+                    content
+                }
+                .padding(24)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+}
+
+// Whatever a LockTarget names, drawn the way the app draws it everywhere.
+struct TargetLabel: View {
+    let target: LockTarget
+
+    var body: some View {
+        switch target {
+        case .application(let token): Label(token)
+        case .webDomain(let token): Label(token)
+        case .category(let token): Label(token)
+        case .site(let domain): Label(domain, systemImage: "globe")
+        }
+    }
+}
+
+// A tab that is on the plan and not built yet, saying so plainly.
+struct ComingView: View {
+    let title: String
+    let what: String
+
+    var body: some View {
+        Page(title) {
+            Panel("Not built yet") {
+                Text(what)
+                    .foregroundStyle(Theme.parchment)
+            }
+        }
+    }
+}

@@ -1,21 +1,20 @@
 import Foundation
 import JavaScriptCore
 
-// The extension's own Categories.js and Tasks.js, run on the phone through
-// JavaScriptCore.
+// The extension's own Categories.js, Tasks.js and Stats.js, run on the phone
+// through JavaScriptCore.
 //
 // The files are bundled from the repository root as they are, not copied or
 // translated. A second copy of a rule is a rule that will eventually differ —
 // the whole reason the desktop app runs the extension's Sync.js rather than a
-// Rust one. Sync.js and Stats.js follow the same path when there is something
-// for them to do.
+// Rust one. Sync.js follows the same path when the phone has a peer.
 //
-// Both are classic scripts that declare everything at the top level and touch
+// They are classic scripts that declare everything at the top level and touch
 // chrome.* and the DOM only inside functions, so evaluating them has no side
-// effects. The one browser API they reach for is crypto.getRandomValues, in
-// Tasks.js's randomInt(); JavaScriptCore has no crypto, so it is supplied
-// below from the system's secure generator. That stands in for the platform,
-// not for a rule.
+// effects. What they need from a browser — crypto, chrome.storage.local — is
+// supplied by ../Bridge.js, loaded first, which in turn rests on the three
+// native functions set up below. All of that stands in for the platform, not
+// for a rule. Tests/bridge.test.js loads the same files in the same order.
 final class SharedRules {
     static let shared = SharedRules()
 
@@ -25,29 +24,52 @@ final class SharedRules {
         var id: String { name }
     }
 
+    // One stand or slip to hand to Stats.js. With no `at` it is recorded as
+    // now; with one, at the moment it actually happened.
+    struct Event {
+        enum Kind: String {
+            case stand, slip
+        }
+
+        let kind: Kind
+        var at: Date?
+        var domain: String?
+    }
+
     private let context: JSContext
     private(set) var failure: String?
 
     var isLoaded: Bool { failure == nil }
 
+    // Where Stats.js's chrome.storage.local lands: the App Group, one JSON
+    // string per key, under a prefix that keeps the extension's keys apart
+    // from the app's own.
+    private static var storage: UserDefaults { Gate.defaults ?? .standard }
+    private static let storagePrefix = "extension."
+
     private init() {
         context = JSContext()
         context.exceptionHandler = { [weak self] _, exception in
-            self?.failure = exception?.toString() ?? "A shared script threw while loading."
+            self?.failure = exception?.toString() ?? "A shared script threw."
         }
 
         let random: @convention(block) () -> UInt32 = { UInt32.random(in: .min ... .max) }
+        // A missing key is JavaScript's null, which Bridge.js reads as "not
+        // stored yet".
+        let read: @convention(block) (String) -> Any = { key in
+            if let json = SharedRules.storage.string(forKey: SharedRules.storagePrefix + key) {
+                return json
+            }
+            return NSNull()
+        }
+        let write: @convention(block) (String, String) -> Void = { key, json in
+            SharedRules.storage.set(json, forKey: SharedRules.storagePrefix + key)
+        }
         context.setObject(random, forKeyedSubscript: "__dominusRandomUInt32" as NSString)
-        context.evaluateScript("""
-            var crypto = {
-                getRandomValues: function (array) {
-                    for (var i = 0; i < array.length; i++) array[i] = __dominusRandomUInt32();
-                    return array;
-                }
-            };
-            """)
+        context.setObject(read, forKeyedSubscript: "__dominusStorageRead" as NSString)
+        context.setObject(write, forKeyedSubscript: "__dominusStorageWrite" as NSString)
 
-        for name in ["Categories", "Tasks"] {
+        for name in ["Bridge", "Categories", "Tasks", "Stats"] {
             guard
                 let url = Bundle.main.url(forResource: name, withExtension: "js"),
                 let source = try? String(contentsOf: url, encoding: .utf8)
@@ -59,20 +81,34 @@ final class SharedRules {
         }
     }
 
+    // MARK: - Categories.js
+
     // "https://www.youtube.com/feed" -> "youtube.com", and "" for anything that
     // cannot be a hostname — exactly what the extension stores.
     func normalizeDomain(_ raw: String) -> String {
-        guard
-            let function = context.objectForKeyedSubscript("normalizeDomain"),
-            function.isObject,
-            let result = function.call(withArguments: [raw]),
-            result.isString
-        else { return "" }
+        guard let result = call("normalizeDomain", [raw]), result.isString else { return "" }
         return result.toString()
     }
 
+    // DEFAULT_CATEGORIES is a top-level const, which JavaScriptCore keeps in
+    // the script scope rather than on the global object, so it is read by
+    // evaluating its name rather than by subscripting.
+    var defaultCategories: [Category] {
+        guard let list = context.evaluateScript("DEFAULT_CATEGORIES")?.toArray() as? [[String: Any]] else {
+            return []
+        }
+        return list.compactMap { entry in
+            guard let name = entry["name"] as? String, let sites = entry["sites"] as? [String] else {
+                return nil
+            }
+            return Category(name: name, sites: sites)
+        }
+    }
+
+    // MARK: - Tasks.js
+
     // A fresh line of random words, as the blocked page shows for the Random
-    // Passage task. Empty only if Tasks.js failed to load, which the footer
+    // Passage task. Empty only if Tasks.js failed to load, which the app
     // reports.
     func generatePassage() -> String {
         call("generatePassage", [])?.toString() ?? ""
@@ -97,6 +133,47 @@ final class SharedRules {
         call("formatHuman", [seconds])?.toString() ?? "\(seconds) sec"
     }
 
+    // MARK: - Stats.js
+
+    // Hands stands and slips to recordStayFocused() and recordUnlock(), oldest
+    // first, each at its own moment. Returns what went wrong, or nil.
+    func record(_ events: [Event]) -> String? {
+        guard !events.isEmpty else { return nil }
+
+        let payload: [[String: Any]] = events.map { event in
+            var entry: [String: Any] = ["type": event.kind.rawValue]
+            if let at = event.at {
+                entry["at"] = (at.timeIntervalSince1970 * 1000).rounded()
+            }
+            if let domain = event.domain {
+                entry["domain"] = domain
+            }
+            return entry
+        }
+
+        switch settle(call("__dominusRecord", [payload])) {
+        case .success: return nil
+        case .failure(let problem): return problem.message
+        }
+    }
+
+    // Stats.js's own view of where the fortress stands, and today's day, as
+    // JSON for whoever asked to decode.
+    func standing() -> Result<Data, Problem> {
+        settle(call("__dominusStanding", [])).flatMap { value -> Result<Data, Problem> in
+            guard value.isString, let data = value.toString().data(using: .utf8) else {
+                return .failure(Problem(message: "Stats.js returned nothing to read."))
+            }
+            return .success(data)
+        }
+    }
+
+    // MARK: - Calling in
+
+    struct Problem: Error {
+        let message: String
+    }
+
     private func call(_ name: String, _ arguments: [Any]) -> JSValue? {
         guard let function = context.objectForKeyedSubscript(name), function.isObject else {
             return nil
@@ -104,18 +181,28 @@ final class SharedRules {
         return function.call(withArguments: arguments)
     }
 
-    // DEFAULT_CATEGORIES is a top-level const, which JavaScriptCore keeps in
-    // the script scope rather than on the global object, so it is read by
-    // evaluating its name rather than by subscripting.
-    var defaultCategories: [Category] {
-        guard let list = context.evaluateScript("DEFAULT_CATEGORIES")?.toArray() as? [[String: Any]] else {
-            return []
+    // Swift cannot await a JavaScript promise. Bridge.js puts the outcome in a
+    // box instead, and JavaScriptCore runs every queued step of a chain before
+    // a call into it returns — the storage callbacks are synchronous, so
+    // nothing in these chains waits on anything else. If the box is somehow
+    // still empty, one more trip in and out gives it a second chance before
+    // this reports a failure rather than a wrong number.
+    private func settle(_ promise: JSValue?) -> Result<JSValue, Problem> {
+        guard let promise, let box = call("__dominusSettle", [promise]) else {
+            return .failure(Problem(message: failure ?? "The shared scripts did not load."))
         }
-        return list.compactMap { entry in
-            guard let name = entry["name"] as? String, let sites = entry["sites"] as? [String] else {
-                return nil
-            }
-            return Category(name: name, sites: sites)
+        if box.forProperty("done")?.toBool() != true {
+            context.evaluateScript("void 0")
         }
+        guard box.forProperty("done")?.toBool() == true else {
+            return .failure(Problem(message: "The shared scripts did not finish."))
+        }
+        if let error = box.forProperty("error"), error.isString {
+            return .failure(Problem(message: error.toString()))
+        }
+        guard let value = box.forProperty("value") else {
+            return .failure(Problem(message: "The shared scripts returned nothing."))
+        }
+        return .success(value)
     }
 }

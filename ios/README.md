@@ -21,10 +21,22 @@ from it. The generated project is gitignored — edit `project.yml`, never the
 project.
 
 The extension's shared scripts are bundled from the repository root as they
-are (`Categories.js` and `Tasks.js` so far) and run through JavaScriptCore by
-`SharedRules.swift`, so the whole repository has to be checked out on the
-Mac, not just `ios/`. The one browser API they need, `crypto.getRandomValues`,
-is supplied from Swift.
+are (`Categories.js`, `Tasks.js` and `Stats.js` so far) and run through
+JavaScriptCore by `SharedRules.swift`, so the whole repository has to be
+checked out on the Mac, not just `ios/`.
+
+What they need from a browser is supplied by `Bridge.js`, loaded before them:
+`crypto.getRandomValues`, `chrome.storage.local` (backed by the App Group, so
+the record is the same shape as in Chrome), and a clock that can be held, so a
+stand made at the block screen while the app was closed is recorded on the day
+it was made. None of the Swift can be compiled on Windows, but this part can
+be run there:
+
+```sh
+node Tests/bridge.test.js
+```
+
+It loads the same files in the same order with the native hooks faked.
 
 ### Once, on the Mac
 

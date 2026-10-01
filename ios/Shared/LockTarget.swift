@@ -24,6 +24,13 @@ enum LockTarget: Codable, Hashable {
         }
     }
 
+    // The site's name, where there is one to read. The day log uses it to say
+    // what gave way; a picked app or site is a token and cannot say.
+    var domain: String? {
+        if case .site(let domain) = self { return domain }
+        return nil
+    }
+
     // A stable name for counting unlocks of the same thing on the same day,
     // which is what escalation counts. A token's encoded form is stable on
     // this phone, and a phone is the only place a token means anything.

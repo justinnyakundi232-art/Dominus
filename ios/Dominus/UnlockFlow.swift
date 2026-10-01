@@ -15,6 +15,7 @@ import FamilyControls
 struct UnlockFlow: View {
     let target: LockTarget
     @ObservedObject var fortress: Fortress
+    @ObservedObject var record: Record
     let done: () -> Void
 
     @Environment(\.scenePhase) private var scenePhase
@@ -73,7 +74,7 @@ struct UnlockFlow: View {
                     }
 
                     Button {
-                        Gate.recordStand()
+                        record.stand()
                         done()
                     } label: {
                         Text("STAY FOCUSED")
@@ -171,6 +172,7 @@ struct UnlockFlow: View {
             Button {
                 do {
                     try fortress.unlock(target)
+                    record.slip(domain: target.domain)
                     done()
                 } catch {
                     failure = error.localizedDescription
@@ -184,20 +186,6 @@ struct UnlockFlow: View {
                     .frame(maxWidth: .infinity)
                     .overlay(Rectangle().stroke(Theme.gold, lineWidth: 1))
             }
-        }
-    }
-}
-
-// Whatever a LockTarget names, drawn the way the app draws it everywhere.
-struct TargetLabel: View {
-    let target: LockTarget
-
-    var body: some View {
-        switch target {
-        case .application(let token): Label(token)
-        case .webDomain(let token): Label(token)
-        case .category(let token): Label(token)
-        case .site(let domain): Label(domain, systemImage: "globe")
         }
     }
 }

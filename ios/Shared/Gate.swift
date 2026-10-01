@@ -57,17 +57,30 @@ enum Gate {
     }
 
     // Choosing Stay focused at the block screen is a stand, exactly as walking
-    // away from the blocked page is in Chrome. Kept as times rather than a
-    // count, because the streak and the day log are derived from dates.
+    // away from the blocked page is in Chrome. But the block screen's
+    // extension cannot run Stats.js, so it only notes when the stand was
+    // made. The app hands these to Stats.js when it next comes to the front,
+    // each at its own time, and takes them off this list.
     static func recordStand() {
-        var times = stands.map(\.timeIntervalSince1970)
+        var times = standTimes
         times.append(Date().timeIntervalSince1970)
         defaults?.set(Array(times.suffix(500)), forKey: Key.stands)
     }
 
-    static var stands: [Date] {
-        (defaults?.array(forKey: Key.stands) as? [Double] ?? [])
-            .map(Date.init(timeIntervalSince1970:))
+    // Seconds since 1970, exactly as stored. Handed out and taken back as
+    // these numbers rather than as Dates: a Date keeps its time against a
+    // different epoch, and a stand that came back a rounding error away from
+    // how it went in would never be removed, and would be counted again every
+    // time the app opened.
+    static var standTimes: [Double] {
+        defaults?.array(forKey: Key.stands) as? [Double] ?? []
+    }
+
+    // Removes only the stands named, so one made at the block screen while
+    // the app was busy with the others is not lost.
+    static func removeStands(_ recorded: [Double]) {
+        let gone = Set(recorded)
+        defaults?.set(standTimes.filter { !gone.contains($0) }, forKey: Key.stands)
     }
 
     // The block screen has no way to show an error, so a notification that
