@@ -120,9 +120,7 @@ struct UnlockFlow: View {
                 .padding(14)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Theme.panel)
-            NoPasteField(text: $typed, placeholder: "Type it here")
-                .frame(height: 44)
-                .padding(.horizontal, 12)
+            NoPasteField(text: $typed)
                 .background(Theme.panel)
                 .overlay(Rectangle().stroke(Theme.goldDim.opacity(0.4), lineWidth: 1))
                 .onChange(of: typed) { value in
@@ -195,52 +193,82 @@ struct TargetLabel: View {
     }
 }
 
-// A text field that refuses pasting and dropping, as the blocked page's
+// A typing box that refuses pasting and dropping, as the blocked page's
 // blockPasteOn() does. Without it the passage is on screen and copy-paste
 // makes the task two taps. Autocorrect and prediction are off too, so the
 // keyboard doesn't type the words for you.
+//
+// A text view rather than a text field: a passage is twelve words, and a
+// single-line field grows sideways with what is typed, taking the page with it
+// and pushing the passage out of sight. This one keeps the width it is given
+// and wraps, growing downward instead.
 struct NoPasteField: UIViewRepresentable {
     @Binding var text: String
-    let placeholder: String
 
-    func makeUIView(context: Context) -> UITextField {
-        let field = PasteRefusingTextField()
-        field.placeholder = placeholder
-        field.textColor = UIColor(red: 0xE5 / 255, green: 0xE5 / 255, blue: 0xE5 / 255, alpha: 1)
-        field.font = .monospacedSystemFont(ofSize: 17, weight: .regular)
-        field.autocapitalizationType = .none
-        field.autocorrectionType = .no
-        field.spellCheckingType = .no
-        field.smartQuotesType = .no
-        field.smartDashesType = .no
-        field.smartInsertDeleteType = .no
+    func makeUIView(context: Context) -> UITextView {
+        let view = PasteRefusingTextView()
+        view.delegate = context.coordinator
+        view.textDropDelegate = context.coordinator
+        view.backgroundColor = .clear
+        view.textColor = UIColor(red: 0xE5 / 255, green: 0xE5 / 255, blue: 0xE5 / 255, alpha: 1)
+        view.tintColor = UIColor(red: 0xD4 / 255, green: 0xAF / 255, blue: 0x37 / 255, alpha: 1)
+        view.font = .monospacedSystemFont(ofSize: 17, weight: .regular)
+        view.textContainerInset = UIEdgeInsets(top: 12, left: 8, bottom: 12, right: 8)
+        // Not scrolling is what lets it report its own height and grow.
+        view.isScrollEnabled = false
+        view.autocapitalizationType = .none
+        view.autocorrectionType = .no
+        view.spellCheckingType = .no
+        view.smartQuotesType = .no
+        view.smartDashesType = .no
+        view.smartInsertDeleteType = .no
         if #available(iOS 17.0, *) {
-            field.inlinePredictionType = .no
+            view.inlinePredictionType = .no
         }
-        field.textDropDelegate = context.coordinator
-        field.addTarget(context.coordinator, action: #selector(Coordinator.changed(_:)), for: .editingChanged)
-        return field
+        view.returnKeyType = .done
+        // Its natural width is that of its text on one line. Left to insist on
+        // that, it would stretch the page exactly as the field did.
+        view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        return view
     }
 
-    func updateUIView(_ field: UITextField, context: Context) {
-        if field.text != text {
-            field.text = text
+    func updateUIView(_ view: UITextView, context: Context) {
+        if view.text != text {
+            view.text = text
         }
+    }
+
+    // The width SwiftUI offers, and whatever height the text needs at that
+    // width — never less than three lines, so it reads as somewhere to type.
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {
+        guard let width = proposal.width, width.isFinite, width > 0 else { return nil }
+        let fitted = uiView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
+        return CGSize(width: width, height: max(96, fitted.height))
     }
 
     func makeCoordinator() -> Coordinator {
         Coordinator(text: $text)
     }
 
-    final class Coordinator: NSObject, UITextDropDelegate {
+    final class Coordinator: NSObject, UITextViewDelegate, UITextDropDelegate {
         private let text: Binding<String>
 
         init(text: Binding<String>) {
             self.text = text
         }
 
-        @objc func changed(_ field: UITextField) {
-            text.wrappedValue = field.text ?? ""
+        func textViewDidChange(_ view: UITextView) {
+            text.wrappedValue = view.text ?? ""
+        }
+
+        // A passage is one line of words, so Return puts the keyboard away
+        // rather than adding a line break that could never match.
+        func textView(_ view: UITextView, shouldChangeTextIn range: NSRange, replacementText replacement: String) -> Bool {
+            if replacement == "\n" {
+                view.resignFirstResponder()
+                return false
+            }
+            return true
         }
 
         func textDroppableView(_ textDroppableView: UIView & UITextDroppable, proposalForDrop drop: UITextDropRequest) -> UITextDropProposal {
@@ -248,7 +276,7 @@ struct NoPasteField: UIViewRepresentable {
         }
     }
 
-    final class PasteRefusingTextField: UITextField {
+    final class PasteRefusingTextView: UITextView {
         override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
             if action == #selector(paste(_:)) || action == #selector(pasteAndMatchStyle(_:)) {
                 return false
