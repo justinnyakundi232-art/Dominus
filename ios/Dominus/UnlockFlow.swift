@@ -105,7 +105,7 @@ struct UnlockFlow: View {
             } else if phase == .active && leftDuringCooldown {
                 leftDuringCooldown = false
                 startedOver = true
-                step = .cooldown(ends: Date().addingTimeInterval(TimeInterval(seconds)))
+                startCooldown()
             }
         }
     }
@@ -126,7 +126,7 @@ struct UnlockFlow: View {
                 .onChange(of: typed) { value in
                     if value.trimmingCharacters(in: .whitespacesAndNewlines)
                         == passage.trimmingCharacters(in: .whitespacesAndNewlines) {
-                        step = .cooldown(ends: Date().addingTimeInterval(TimeInterval(seconds)))
+                        startCooldown()
                     }
                 }
             Text("Pasting is disabled.")
@@ -135,8 +135,17 @@ struct UnlockFlow: View {
         }
     }
 
+    // `now` only moves once a second, so at the moment a cooldown starts it
+    // can be most of a second stale — which made a 60-second cooldown open on
+    // 1:01. It is brought up to date here, and the display is capped at the
+    // cooldown's own length as well.
+    private func startCooldown() {
+        now = Date()
+        step = .cooldown(ends: now.addingTimeInterval(TimeInterval(seconds)))
+    }
+
     private func cooldown(ends: Date) -> some View {
-        let remaining = max(0, Int(ends.timeIntervalSince(now).rounded(.up)))
+        let remaining = min(seconds, max(0, Int(ends.timeIntervalSince(now).rounded(.up))))
         let prior = fortress.unlocksToday(of: target)
         return VStack(alignment: .leading, spacing: 14) {
             Text(SharedRules.shared.formatClock(remaining))
