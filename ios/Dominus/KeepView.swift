@@ -127,16 +127,23 @@ struct KeepView: View {
 
     // Two streaks that measure different things on purpose: days kept clean,
     // and stands made in a row with no unlock between them.
+    //
+    // Each says "streak" in its title, "in a row" beside its number, and
+    // explains itself on a tap. A bare "0 stands" above "Longest 4 stands"
+    // read as no stands ever made, when it meant none since the last unlock.
+    // One above the other rather than side by side, so the words fit.
     private var streaks: some View {
-        HStack(alignment: .top, spacing: 12) {
+        VStack(spacing: 24) {
             figure(
-                "Discipline",
+                "Discipline streak",
+                info: "Days in a row with no unlock. A day nothing tested you still counts. An unlock ends the run, and the next clean day starts a new one.",
                 value: record.standing?.currentStreak,
                 unit: ("day", "days"),
                 longest: record.standing?.longestStreak
             )
             figure(
-                "Resistance",
+                "Resistance streak",
+                info: "Times in a row you chose Stay focused with no unlock in between. An unlock sets it back to zero. It is not your total: every stand you have made counts toward the victory rate below.",
                 value: record.standing?.currentResistance,
                 unit: ("stand", "stands"),
                 longest: record.standing?.longestResistance
@@ -144,18 +151,18 @@ struct KeepView: View {
         }
     }
 
-    private func figure(_ title: String, value: Int?, unit: (String, String), longest: Int?) -> some View {
-        Panel(title) {
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
+    private func figure(_ title: String, info: String, value: Int?, unit: (String, String), longest: Int?) -> some View {
+        Panel(title, info: info) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(value.map { String($0) } ?? "–")
                     .font(.system(size: 44, weight: .bold, design: .serif))
                     .foregroundStyle(Theme.gold)
-                Text(value == 1 ? unit.0 : unit.1)
+                Text("\(value == 1 ? unit.0 : unit.1) in a row")
                     .font(.footnote)
                     .foregroundStyle(Theme.goldDim)
             }
             if let longest, longest > 0 {
-                Text("Longest \(longest) \(longest == 1 ? unit.0 : unit.1)")
+                Text("Longest streak: \(longest) \(longest == 1 ? unit.0 : unit.1)")
                     .font(.footnote)
                     .foregroundStyle(Theme.goldDim)
             }
@@ -163,15 +170,20 @@ struct KeepView: View {
     }
 
     private var victoryRate: some View {
-        Panel("Victory rate") {
+        Panel(
+            "Victory rate",
+            info: "Of all the times a block has stopped you, the share where you chose Stay focused rather than unlocking. Every stand and every unlock you have made counts, from the first."
+        ) {
             let standing = record.standing
-            let total = (standing?.stayFocusedCount ?? 0) + (standing?.unlockCount ?? 0)
+            let stands = standing?.stayFocusedCount ?? 0
+            let unlocks = standing?.unlockCount ?? 0
+            let total = stands + unlocks
             Text(standing?.ratio.map { "\(Int(($0 * 100).rounded()))%" } ?? "–")
                 .font(.system(size: 44, weight: .bold, design: .serif))
                 .foregroundStyle(Theme.gold)
             Text(total == 0
                  ? "Nothing has tested you yet"
-                 : "From \(total) \(total == 1 ? "moment" : "moments")")
+                 : "From \(total) \(total == 1 ? "moment" : "moments"): \(stands) \(stands == 1 ? "stand" : "stands"), \(unlocks) \(unlocks == 1 ? "unlock" : "unlocks")")
                 .font(.footnote)
                 .foregroundStyle(Theme.goldDim)
         }

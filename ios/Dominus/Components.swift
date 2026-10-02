@@ -10,23 +10,49 @@ import FamilyControls
 // that has just started. In build 4 the timer appeared two sections away from
 // the site that had been unlocked, and went unnoticed. Whatever just changed
 // has to draw the eye.
+//
+// `info` is the phone's tooltip. There is no hovering on a touch screen, so a
+// figure that needs a sentence of explanation carries a small (i) beside its
+// title, and tapping it shows the sentence. The first Keep on a phone showed
+// "0 stands" over "Longest 4 stands" and was read as no stands at all.
 struct Panel<Content: View>: View {
     private let title: String
+    private let info: String?
     private let glowing: Bool
     private let content: Content
 
-    init(_ title: String, glowing: Bool = false, @ViewBuilder content: () -> Content) {
+    @State private var infoShown = false
+
+    init(_ title: String, info: String? = nil, glowing: Bool = false, @ViewBuilder content: () -> Content) {
         self.title = title
+        self.info = info
         self.glowing = glowing
         self.content = content()
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text(title.uppercased())
-                .font(.caption.monospaced())
-                .tracking(2)
-                .foregroundStyle(glowing ? Theme.gold : Theme.goldDim)
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(title.uppercased())
+                    .font(.caption.monospaced())
+                    .tracking(2)
+                    .foregroundStyle(glowing ? Theme.gold : Theme.goldDim)
+                if info != nil {
+                    Button {
+                        infoShown.toggle()
+                    } label: {
+                        Image(systemName: infoShown ? "info.circle.fill" : "info.circle")
+                            .font(.footnote)
+                            .foregroundStyle(Theme.gold)
+                    }
+                    .accessibilityLabel("What \(title) means")
+                }
+            }
+            if let info, infoShown {
+                Text(info)
+                    .font(.footnote)
+                    .foregroundStyle(Theme.parchment)
+            }
             content
         }
         .padding(20)
