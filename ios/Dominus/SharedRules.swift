@@ -1,20 +1,23 @@
 import Foundation
 import JavaScriptCore
 
-// The extension's own Categories.js, Tasks.js and Stats.js, run on the phone
-// through JavaScriptCore.
+// The extension's own shared layer, run on the phone through JavaScriptCore:
+// Tasks.js, Categories.js, Applications.js, Stats.js, Seal.js and Sync.js —
+// the set its service worker loads, in the same order.
 //
 // The files are bundled from the repository root as they are, not copied or
 // translated. A second copy of a rule is a rule that will eventually differ —
 // the whole reason the desktop app runs the extension's Sync.js rather than a
-// Rust one. Sync.js follows the same path when the phone has a peer.
+// Rust one. So what a category is, what counts as taking a defence down, how
+// long a cooldown runs and how a streak is counted are all decided by the
+// code that decides them in Chrome.
 //
 // They are classic scripts that declare everything at the top level and touch
 // chrome.* and the DOM only inside functions, so evaluating them has no side
 // effects. What they need from a browser — crypto, chrome.storage.local — is
-// supplied by ../Bridge.js, loaded first, which in turn rests on the three
-// native functions set up below. All of that stands in for the platform, not
-// for a rule. Tests/bridge.test.js loads the same files in the same order.
+// supplied by ../Bridge.js, loaded first, which in turn rests on the native
+// functions set up below. All of that stands in for the platform, not for a
+// rule. Tests/bridge.test.js loads the same files in the same order.
 final class SharedRules {
     static let shared = SharedRules()
 
@@ -65,11 +68,13 @@ final class SharedRules {
         let write: @convention(block) (String, String) -> Void = { key, json in
             SharedRules.storage.set(json, forKey: SharedRules.storagePrefix + key)
         }
+        let uuid: @convention(block) () -> String = { UUID().uuidString.lowercased() }
         context.setObject(random, forKeyedSubscript: "__dominusRandomUInt32" as NSString)
+        context.setObject(uuid, forKeyedSubscript: "__dominusUUID" as NSString)
         context.setObject(read, forKeyedSubscript: "__dominusStorageRead" as NSString)
         context.setObject(write, forKeyedSubscript: "__dominusStorageWrite" as NSString)
 
-        for name in ["Bridge", "Categories", "Tasks", "Stats"] {
+        for name in ["Bridge", "Tasks", "Categories", "Applications", "Stats", "Seal", "Sync"] {
             guard
                 let url = Bundle.main.url(forResource: name, withExtension: "js"),
                 let source = try? String(contentsOf: url, encoding: .utf8)
@@ -105,6 +110,47 @@ final class SharedRules {
         }
     }
 
+    // MARK: - The fortress (Seal.js, by way of Bridge.js)
+
+    // Fortresses cross as JSON text in both directions; see Bridge.js for why.
+
+    // The fortress as stored, with the block list derived from it.
+    func fortress() -> Result<Data, Problem> {
+        json("__dominusFortress", [])
+    }
+
+    // What an edit would take down, as describeWeakening() words it.
+    func review(_ edit: Data) -> Result<Data, Problem> {
+        json("__dominusReview", [String(decoding: edit, as: UTF8.self)])
+    }
+
+    // Stamps and writes an edit.
+    func commit(_ edit: Data) -> Result<Data, Problem> {
+        json("__dominusCommit", [String(decoding: edit, as: UTF8.self)])
+    }
+
+    // The task and cooldown that govern unlocking a site, or, with no name to
+    // look up, the fortress's own.
+    func standards(for domain: String?) -> Result<Data, Problem> {
+        let argument: Any = domain ?? ""
+        return json("__dominusStandards", [argument])
+    }
+
+    // Sites typed into the test builds lived in the app's own list. Put where
+    // the extension's first-run migration looks for a block list, they become
+    // sites blocked by hand — by loadCategories() itself, not by a copy of it.
+    // Only ever before that first read: afterwards the stored list is derived
+    // and writing it would be overwritten or, worse, believed.
+    func carryOverSites(_ sites: [String]) {
+        let defaults = SharedRules.storage
+        guard
+            !sites.isEmpty,
+            defaults.string(forKey: SharedRules.storagePrefix + "categoryDefs") == nil,
+            let data = try? JSONEncoder().encode(sites)
+        else { return }
+        defaults.set(String(decoding: data, as: UTF8.self), forKey: SharedRules.storagePrefix + "blockedSites")
+    }
+
     // MARK: - Tasks.js
 
     // A fresh line of random words, as the blocked page shows for the Random
@@ -126,6 +172,12 @@ final class SharedRules {
     // "M:SS", as the blocked page's countdown reads.
     func formatClock(_ seconds: Int) -> String {
         call("formatClock", [seconds])?.toString() ?? "\(seconds)"
+    }
+
+    // A code for the Guarded Code task: eight characters with nothing that
+    // can be misread on paper.
+    func generateGuardCode() -> String {
+        call("generateGuardCode", [])?.toString() ?? ""
     }
 
     // "3 minutes", "2 min 30 sec".
@@ -160,18 +212,24 @@ final class SharedRules {
     // Stats.js's own view of where the fortress stands, and today's day, as
     // JSON for whoever asked to decode.
     func standing() -> Result<Data, Problem> {
-        settle(call("__dominusStanding", [])).flatMap { value -> Result<Data, Problem> in
-            guard value.isString, let data = value.toString().data(using: .utf8) else {
-                return .failure(Problem(message: "Stats.js returned nothing to read."))
-            }
-            return .success(data)
-        }
+        json("__dominusStanding", [])
     }
 
     // MARK: - Calling in
 
     struct Problem: Error {
         let message: String
+    }
+
+    // Calls a bridge function that resolves to JSON text, and hands the text
+    // back for whoever asked to decode.
+    private func json(_ name: String, _ arguments: [Any]) -> Result<Data, Problem> {
+        settle(call(name, arguments)).flatMap { value -> Result<Data, Problem> in
+            guard value.isString, let data = value.toString().data(using: .utf8) else {
+                return .failure(Problem(message: "The shared scripts returned nothing to read."))
+            }
+            return .success(data)
+        }
     }
 
     private func call(_ name: String, _ arguments: [Any]) -> JSValue? {

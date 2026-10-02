@@ -2,11 +2,10 @@
 //
 //     node Tests/bridge.test.js
 //
-// The iOS app does not copy the rules; it loads ios/Bridge.js and then
-// Categories.js, Tasks.js and Stats.js exactly as they are, through
-// JavaScriptCore. Bridge.js supplies what a phone lacks — crypto,
-// chrome.storage.local, and a clock that can be held — and three native hooks
-// stand behind it.
+// The iOS app does not copy the rules; it loads ios/Bridge.js and then the
+// extension's shared layer exactly as it is, through JavaScriptCore.
+// Bridge.js supplies what a phone lacks — crypto, chrome.storage.local, and a
+// clock that can be held — and a handful of native hooks stand behind it.
 //
 // This loads the same files in the same order with those hooks faked, so the
 // part that cannot be compiled on Windows is at least run somewhere before it
@@ -23,8 +22,9 @@ const { createHarness } = require("./load.js");
 
 const { describe, it, eq, ok, report } = createHarness();
 
-// The order SharedRules.swift loads them in.
-const FILES = ["ios/Bridge.js", "Categories.js", "Tasks.js", "Stats.js"];
+// The order SharedRules.swift loads them in: the bridge, then the same set, in
+// the same order, as Tests/load.js and the extension's service worker.
+const FILES = ["ios/Bridge.js", "Tasks.js", "Categories.js", "Applications.js", "Stats.js", "Seal.js", "Sync.js"];
 
 function loadPhone() {
     const root = path.join(__dirname, "..");
@@ -32,6 +32,7 @@ function loadPhone() {
 
     const scope = vm.createContext({
         __dominusRandomUInt32: () => nodeCrypto.randomBytes(4).readUInt32BE(0),
+        __dominusUUID: () => nodeCrypto.randomUUID(),
         // JSON strings, one per key, as the App Group holds them.
         __dominusStorageRead: (key) => (key in store ? store[key] : null),
         __dominusStorageWrite: (key, json) => { store[key] = json; }
@@ -44,7 +45,14 @@ function loadPhone() {
     return {
         scope,
         read: (key) => (key in store ? JSON.parse(store[key]) : undefined),
-        run: (source) => vm.runInContext(source, scope)
+        write: (key, value) => { store[key] = JSON.stringify(value); },
+        run: (source) => vm.runInContext(source, scope),
+        // The four calls Swift makes about the fortress, with the JSON text
+        // handled the way Swift handles it.
+        fortress: async () => JSON.parse(await scope.__dominusFortress()),
+        review: async (next) => JSON.parse(await scope.__dominusReview(JSON.stringify(next))).weakenings,
+        commit: async (next) => JSON.parse(await scope.__dominusCommit(JSON.stringify(next))),
+        standards: async (domain) => JSON.parse(await scope.__dominusStandards(domain))
     };
 }
 
@@ -202,6 +210,196 @@ async function run() {
 
         eq(box.done, true);
         eq(box.error, "boom");
+    });
+
+    describe("The fortress");
+
+    await it("a new fortress has the extension's categories, all switched off", async () => {
+        const phone = loadPhone();
+
+        const fortress = await phone.fortress();
+
+        eq(fortress.categories.map((c) => c.name), ["Social Media", "Video Streaming", "Gaming"]);
+        eq(fortress.categories.some((c) => c.enabled), false);
+        eq(fortress.blockedSites, []);
+        eq(fortress.task, null);
+        eq(fortress.cooldown, { seconds: 60, escalate: false, factor: 1.25 });
+        eq(fortress.removeCooldownSeconds, 10);
+    });
+
+    await it("sites typed in the test builds become sites blocked by hand", async () => {
+        const phone = loadPhone();
+        // What the app does before its first read: the old list is put where
+        // the extension's own migration looks for one.
+        phone.write("blockedSites", ["reddit.com", "youtube.com"]);
+
+        const fortress = await phone.fortress();
+
+        eq(fortress.manualSites, ["reddit.com", "youtube.com"]);
+        eq(fortress.blockedSites.sort(), ["reddit.com", "youtube.com"]);
+    });
+
+    await it("switching a category on is free, and blocks its sites", async () => {
+        const phone = loadPhone();
+        const fortress = await phone.fortress();
+        fortress.categories[1].enabled = true;
+
+        eq(await phone.review({ categories: fortress.categories }), []);
+        const result = await phone.commit({ categories: fortress.categories });
+
+        ok(result.blockedSites.includes("youtube.com"), "its sites were not blocked");
+        ok(phone.read("blockedSites").includes("netflix.com"), "the stored block list was not re-derived");
+    });
+
+    await it("switching it off again is named as a weakening, in the extension's words", async () => {
+        const phone = loadPhone();
+        const fortress = await phone.fortress();
+        fortress.categories[1].enabled = true;
+        await phone.commit({ categories: fortress.categories });
+
+        const after = await phone.fortress();
+        after.categories[1].enabled = false;
+
+        eq(await phone.review({ categories: after.categories }),
+            ["Video Streaming switched off — 5 sites stop being blocked."]);
+    });
+
+    await it("taking one site out of a category names the site", async () => {
+        const phone = loadPhone();
+        const fortress = await phone.fortress();
+        fortress.categories[1].enabled = true;
+        await phone.commit({ categories: fortress.categories });
+
+        const after = await phone.fortress();
+        after.categories[1].sites = after.categories[1].sites.filter((site) => site !== "hulu.com");
+
+        eq(await phone.review({ categories: after.categories }), ["hulu.com removed from Video Streaming."]);
+    });
+
+    await it("a site typed with a scheme is stored as a bare domain", async () => {
+        const phone = loadPhone();
+
+        const result = await phone.commit({ manualSites: ["https://www.Example.com/path", "example.com"] });
+
+        eq(result.blockedSites, ["example.com"]);
+        eq((await phone.fortress()).manualSites, ["example.com"]);
+    });
+
+    await it("unblocking a site blocked by hand is a weakening", async () => {
+        const phone = loadPhone();
+        await phone.commit({ manualSites: ["example.com"] });
+
+        eq(await phone.review({ manualSites: [] }), ["example.com unblocked."]);
+    });
+
+    await it("a new category gets an id and a banner of its own", async () => {
+        const phone = loadPhone();
+        const fortress = await phone.fortress();
+        fortress.categories.push({ name: "News", sites: ["bbc.co.uk"], enabled: true });
+
+        await phone.commit({ categories: fortress.categories });
+
+        const made = (await phone.fortress()).categories[3];
+        ok(made.id && made.id.startsWith("custom-"), "no id was minted");
+        ok(made.color && made.glyph, "no banner was given");
+        eq(made.sites, ["bbc.co.uk"]);
+    });
+
+    await it("an unknown field on a category survives a round trip", async () => {
+        const phone = loadPhone();
+        const fortress = await phone.fortress();
+        // A category's own task: nothing on the phone edits it yet, so it must
+        // come back exactly as it went rather than being dropped.
+        fortress.categories[0].task = { type: "passage" };
+        await phone.commit({ categories: fortress.categories });
+
+        const again = await phone.fortress();
+        again.categories[0].enabled = true;
+        await phone.commit({ categories: again.categories });
+
+        eq((await phone.fortress()).categories[0].task, { type: "passage" });
+    });
+
+    describe("Standards");
+
+    await it("setting a task is free; clearing it is not", async () => {
+        const phone = loadPhone();
+
+        eq(await phone.review({ task: { type: "passage" } }), []);
+        await phone.commit({ task: { type: "passage" } });
+        eq((await phone.fortress()).task, { type: "passage" });
+
+        const lines = await phone.review({ task: null });
+        eq(lines.length, 1, "clearing the task was not named");
+    });
+
+    await it("an edit that says nothing about the task leaves it alone", async () => {
+        const phone = loadPhone();
+        await phone.commit({ task: { type: "cooldown", message: "Is this worth it?" } });
+
+        await phone.commit({ manualSites: ["example.com"] });
+
+        eq((await phone.fortress()).task, { type: "cooldown", message: "Is this worth it?" });
+    });
+
+    await it("a longer cooldown is free; a shorter one is not", async () => {
+        const phone = loadPhone();
+
+        eq(await phone.review({ cooldown: { seconds: 300, escalate: true, factor: 1.5 } }), []);
+        await phone.commit({ cooldown: { seconds: 300, escalate: true, factor: 1.5 } });
+
+        const lines = await phone.review({ cooldown: { seconds: 120, escalate: true, factor: 1.5 } });
+        eq(lines.length, 1, "shortening the cooldown was not named");
+    });
+
+    await it("an unlock is governed by the fortress's task and cooldown", async () => {
+        const phone = loadPhone();
+        await phone.commit({
+            task: { type: "code", code: "ABCD2345" },
+            cooldown: { seconds: 120, escalate: false, factor: 1.25 }
+        });
+
+        const forApp = await phone.standards(null);
+        const forSite = await phone.standards("youtube.com");
+
+        eq(forApp.task, { type: "code", code: "ABCD2345" });
+        eq(forApp.cooldown.seconds, 120);
+        eq(forSite.task, forApp.task);
+        eq(forSite.permanent, false);
+    });
+
+    describe("What a peer will be told");
+
+    await it("a commit raises the revision, and a weakening leaves a record", async () => {
+        const phone = loadPhone();
+        const fortress = await phone.fortress();
+        fortress.categories[0].enabled = true;
+        await phone.commit({ categories: fortress.categories });
+
+        const after = await phone.fortress();
+        after.categories[0].enabled = false;
+        await phone.commit({ categories: after.categories });
+
+        const meta = phone.read("syncMeta");
+        eq(meta.fortressRev, 2);
+        eq(meta.authored.length, 1);
+        eq(meta.authored[0].categoriesDisabled, ["socialMedia"]);
+    });
+
+    await it("a stand replayed from yesterday is logged as yesterday's event", async () => {
+        const phone = loadPhone();
+        const yesterday = daysAgo(1, 12, 0);
+
+        await phone.scope.__dominusRecord([{ type: "stand", at: yesterday.getTime() }]);
+        // The mirror into the event log is deliberately not awaited by Stats.js.
+        await tick();
+        await tick();
+
+        const events = phone.read("syncEvents");
+        eq(events.length, 1);
+        eq(events[0].type, "stand");
+        eq(events[0].at, yesterday.getTime());
+        eq(events[0].date, phone.scope.localDateString(yesterday));
     });
 
     process.exit(report("bridge") ? 1 : 0);

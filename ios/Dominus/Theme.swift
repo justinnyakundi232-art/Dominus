@@ -21,3 +21,12 @@ extension Color {
         )
     }
 }
+
+extension Color {
+    // "#D4AF37", as Categories.js's CATEGORY_COLORS gives a banner's colour.
+    // Gold for anything it cannot read, as categoryColorValue() falls back.
+    init(hexString: String) {
+        let digits = hexString.hasPrefix("#") ? String(hexString.dropFirst()) : hexString
+        self.init(hex: UInt32(digits, radix: 16) ?? 0xD4AF37)
+    }
+}

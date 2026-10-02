@@ -1,31 +1,38 @@
 // Bridge.js — what a phone has to supply for the extension's scripts to run.
 //
-// Loaded first, before Categories.js, Tasks.js and Stats.js, which then run
-// unchanged. Everything here stands in for the platform, never for a rule:
-// the three things a browser gives those scripts that JavaScriptCore does not,
-// and two ways for Swift to call them.
+// Loaded first, before Tasks.js, Categories.js, Applications.js, Stats.js,
+// Seal.js and Sync.js — the same set, in the same order, that the extension's
+// service worker pulls in — which then run unchanged. Everything here stands
+// in for the platform, never for a rule: the three things a browser gives
+// those scripts that JavaScriptCore does not, and the ways Swift calls them.
 //
 // The functions named __dominus… below are supplied from Swift, in
 // SharedRules.swift.
 
 // ---- crypto ---------------------------------------------------------------
 //
-// Tasks.js's randomInt() draws from crypto.getRandomValues. Backed by the
-// system's secure generator.
+// Tasks.js's randomInt() draws from crypto.getRandomValues, and Sync.js names
+// this device and each event with crypto.randomUUID. Both are backed by the
+// system. crypto.subtle, which Seal.js hashes a password with, is not here
+// yet: nothing calls it until a seal is set.
 
 var crypto = {
     getRandomValues: function (array) {
         for (var i = 0; i < array.length; i++) array[i] = __dominusRandomUInt32();
         return array;
+    },
+    randomUUID: function () {
+        return __dominusUUID();
     }
 };
 
 // ---- chrome.storage.local -------------------------------------------------
 //
-// Stats.js keeps `stats` and `dayLog` here. Backed by the App Group, one JSON
-// string per key, so the fortress's record is the same shape on the phone as
-// in Chrome — which is what will let it be merged, not converted, when the
-// phone syncs.
+// Where the scripts keep everything: the stats and the day log, the
+// categories, the unlock task and the cooldown, and Sync.js's event log and
+// revisions. Backed by the App Group, one JSON string per key, so the whole
+// fortress is the same shape on the phone as in Chrome — which is what will
+// let it be merged, not converted, when the phone syncs.
 //
 // The callbacks run at once rather than later. Stats.js wraps every call in a
 // promise, so it cannot tell the difference, and it means a whole chain of
@@ -135,6 +142,92 @@ function __dominusStanding() {
                 todayState: today.state,
                 today: today.entry
             });
+        });
+    });
+}
+
+// ---- The fortress ---------------------------------------------------------
+//
+// Seal.js's commitFortress() is the extension's one way to change a fortress:
+// read it, work out what the edit takes down, ask for the seal if it is set,
+// stamp the commit, write. The asking is built out of page elements there, so
+// the phone cannot call it whole. These are the same steps with the asking
+// left to Swift — each one still the extension's own function, so what counts
+// as a weakening, what is written, and what a peer is later told are decided
+// in one place.
+//
+// Fortresses cross as JSON text in both directions. It keeps `task: null`
+// ("deliberately no task") distinct from a missing key ("leave it alone"),
+// which is the distinction fillFortressState() turns on.
+
+function __dominusEdited(nextJSON, before) {
+    var next = JSON.parse(nextJSON);
+    if (Array.isArray(next.categories)) {
+        next.categories = normalizeCategoryList(next.categories);
+    }
+    if (Array.isArray(next.manualSites)) {
+        next.manualSites = parseSiteList(next.manualSites.join("\n"));
+    }
+    return fillFortressState(next, before);
+}
+
+// The fortress as stored, with what a screen needs beside it: the derived
+// block list, the colours a category may take, and the gate's length.
+function __dominusFortress() {
+    return readFortress().then(function (fortress) {
+        return JSON.stringify({
+            categories: fortress.categories,
+            manualSites: fortress.manualSites,
+            task: fortress.task,
+            cooldown: fortress.cooldown,
+            blockedSites: computeBlockedSites(fortress.categories, fortress.manualSites),
+            palette: CATEGORY_COLORS,
+            glyphs: CATEGORY_GLYPHS,
+            taskTypes: TASK_TYPES,
+            removeCooldownSeconds: REMOVE_COOLDOWN_SECONDS,
+            minCooldownSeconds: MIN_COOLDOWN_SECONDS,
+            maxCooldownSeconds: MAX_COOLDOWN_SECONDS,
+            minEscalationFactor: MIN_ESCALATION_FACTOR
+        });
+    });
+}
+
+// What an edit would take down, in the words the extension's seal prompt uses.
+// An empty list is a strengthening, which is free.
+function __dominusReview(nextJSON) {
+    return readFortress().then(function (before) {
+        return JSON.stringify({
+            weakenings: describeWeakening(before, __dominusEdited(nextJSON, before))
+        });
+    });
+}
+
+// Stamps and writes the edit. Whether it may be made is decided before this
+// is called.
+function __dominusCommit(nextJSON) {
+    return readFortress().then(function (before) {
+        var after = __dominusEdited(nextJSON, before);
+        return stampCommit(before, after)
+            .then(function () { return writeFortress(after); })
+            .then(function (result) {
+                return JSON.stringify({ blockedSites: result.blockedSites });
+            });
+    });
+}
+
+// The task and cooldown that govern an unlock: a site's category may set its
+// own, and a picked app, which has no name to look up, takes the fortress's.
+function __dominusStandards(domain) {
+    return readFortress().then(function (fortress) {
+        var named = typeof domain === "string" && domain.length > 0;
+        return JSON.stringify({
+            task: named
+                ? resolveTaskForDomain(fortress.categories, domain, fortress.task)
+                : fortress.task,
+            cooldown: named
+                ? resolveCooldownForDomain(fortress.categories, domain, fortress.cooldown)
+                : normalizeCooldown(fortress.cooldown),
+            permanent: named ? isPermanentDomain(fortress.categories, domain) : false
         });
     });
 }

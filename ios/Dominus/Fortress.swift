@@ -3,21 +3,31 @@ import DeviceActivity
 import FamilyControls
 import ManagedSettings
 
-// The app's handle on FortressState: what is chosen, what is typed, whether it
-// is standing, and what is open for now.
+// The app's handle on the fortress: what is held, whether it is standing, and
+// what is open for now.
 //
-// Picked things are shielded and reach Dominus's block screen; sites typed by
-// name are stopped by the web content filter, whose page has no buttons, so
-// they are unlocked from here. Either way the unlock itself runs in the app,
-// and DominusMonitor puts the block back when its time is up.
+// It is kept in two places, for two readers.
 //
-// Taking the whole fortress down is still free. The cost is on opening one
-// thing while the rest stands, which is the moment the extension guards too.
+//   - The plan — categories, sites blocked by hand, the unlock task, the
+//     cooldown — is the extension's, stored in its shape and read and written
+//     through Seal.js. It is what a peer will one day merge.
+//   - FortressState is what this phone enforces: the apps picked in Apple's
+//     picker, which mean nothing off this phone; the block list derived from
+//     the plan; whether the fortress is raised; and what is open. It lives in
+//     the App Group as one value because DominusMonitor has to rebuild the
+//     blocks from it without the app, or JavaScript, to help.
+//
+// Strengthening is free. Anything that takes a defence down is named first,
+// by weakenings(of:), so that whoever is about to do it can be shown what
+// they are giving up and made to wait.
 @MainActor
 final class Fortress: ObservableObject {
     @Published private var state: FortressState
+    @Published private(set) var plan: FortressPlan?
+    @Published private(set) var failure: String?
 
     private let store = ManagedSettingsStore()
+    private let rules = SharedRules.shared
 
     init() {
         state = FortressState.load() ?? Fortress.fromBuild3()
@@ -51,7 +61,8 @@ final class Fortress: ObservableObject {
     func refresh() {
         state = FortressState.load() ?? state
         let ended = state.pruneExpired(at: Date())
-        commit()
+        readPlan()
+        enforce()
         stopTimers(for: ended)
     }
 
@@ -65,14 +76,7 @@ final class Fortress: ObservableObject {
 
     // MARK: - What is held
 
-    var selection: FamilyActivitySelection {
-        get { state.selection }
-        set {
-            state.selection = newValue
-            commit()
-        }
-    }
-
+    var selection: FamilyActivitySelection { state.selection }
     var sites: [String] { state.sites }
     var isStanding: Bool { state.raised }
 
@@ -83,54 +87,112 @@ final class Fortress: ObservableObject {
             && state.sites.isEmpty
     }
 
-    // Returns the domain as stored, or nil if it could not be a site.
-    @discardableResult
-    func addSite(_ raw: String) -> String? {
-        let domain = SharedRules.shared.normalizeDomain(raw)
-        guard !domain.isEmpty else { return nil }
-        if !state.sites.contains(domain) {
-            state.sites.append(domain)
-            commit()
-        }
-        return domain
-    }
+    // The plan, and the block list it comes to. The list is copied into
+    // FortressState the way the extension keeps blockedSites beside its
+    // categories: derived every time, never edited, so what is enforced
+    // cannot drift from what is shown.
+    private func readPlan() {
+        // Before the very first read only: see carryOverSites().
+        rules.carryOverSites(state.sites)
 
-    // Built up and committed once, so a whole category is one save and one
-    // apply rather than one per site.
-    func addSites(_ list: [String]) {
-        var next = state.sites
-        for raw in list {
-            let domain = SharedRules.shared.normalizeDomain(raw)
-            if !domain.isEmpty && !next.contains(domain) {
-                next.append(domain)
+        switch rules.fortress() {
+        case .success(let data):
+            do {
+                let plan = try JSONDecoder().decode(FortressPlan.self, from: data)
+                self.plan = plan
+                state.sites = plan.blockedSites
+                failure = nil
+            } catch {
+                failure = "Dominus couldn't read the fortress: \(error.localizedDescription)"
             }
-        }
-        if next != state.sites {
-            state.sites = next
-            commit()
+        case .failure(let problem):
+            failure = problem.message
         }
     }
 
-    func removeSite(_ domain: String) {
-        state.sites.removeAll { $0 == domain }
-        let ended = state.unlocks.filter { $0.target == .site(domain) }
-        state.unlocks.removeAll { $0.target == .site(domain) }
-        commit()
-        stopTimers(for: ended)
+    // MARK: - Changing it
+
+    // Something that would change what is held. Edits to the plan go through
+    // the extension's code; the other two exist only on a phone.
+    enum Change {
+        case edit(FortressEdit)
+        case selection(FamilyActivitySelection)
+        case standDown
+    }
+
+    // What a change would take down, one line each. Empty means it only
+    // strengthens, and may simply be made.
+    //
+    // For an edit the lines are describeWeakening()'s own, so the phone says
+    // what Chrome's seal prompt would say. A fortress that is down defends
+    // nothing, so nothing done to it is a weakening — the same reasoning the
+    // extension applies to a category that is switched off.
+    func weakenings(of change: Change) -> [String] {
+        guard isStanding else { return [] }
+
+        switch change {
+        case .edit(let edit):
+            struct Review: Decodable {
+                let weakenings: [String]
+            }
+            guard
+                case .success(let data) = rules.review(edit.data),
+                let review = try? JSONDecoder().decode(Review.self, from: data)
+            else {
+                // Unchecked is not the same as harmless.
+                return ["Dominus couldn't check what this changes, so it is treated as taking a defence down."]
+            }
+            return review.weakenings
+
+        case .selection(let next):
+            var lines: [String] = []
+            let apps = state.selection.applicationTokens.subtracting(next.applicationTokens).count
+            let categories = state.selection.categoryTokens.subtracting(next.categoryTokens).count
+            let sites = state.selection.webDomainTokens.subtracting(next.webDomainTokens).count
+            if apps > 0 {
+                lines.append("\(apps) \(apps == 1 ? "app" : "apps") removed — \(apps == 1 ? "it stops" : "they stop") being blocked.")
+            }
+            if categories > 0 {
+                lines.append("\(categories) app \(categories == 1 ? "category" : "categories") removed — everything in \(categories == 1 ? "it" : "them") stops being blocked.")
+            }
+            if sites > 0 {
+                lines.append("\(sites) picked \(sites == 1 ? "site" : "sites") removed — \(sites == 1 ? "it stops" : "they stop") being blocked.")
+            }
+            return lines
+
+        case .standDown:
+            return ["The whole fortress comes down — nothing on this phone stays blocked."]
+        }
+    }
+
+    // Makes the change. Whether it may be made is settled before this.
+    func perform(_ change: Change) {
+        switch change {
+        case .edit(let edit):
+            if case .failure(let problem) = rules.commit(edit.data) {
+                failure = problem.message
+            }
+            readPlan()
+            enforce()
+
+        case .selection(let next):
+            state.selection = next
+            enforce()
+
+        case .standDown:
+            // Also closes anything open: a fortress raised again later starts
+            // whole.
+            let ended = state.unlocks
+            state.raised = false
+            state.unlocks = []
+            enforce()
+            stopTimers(for: ended)
+        }
     }
 
     func raise() {
         state.raised = true
-        commit()
-    }
-
-    // Also closes anything open: a fortress raised again later starts whole.
-    func standDown() {
-        let ended = state.unlocks
-        state.raised = false
-        state.unlocks = []
-        commit()
-        stopTimers(for: ended)
+        enforce()
     }
 
     // MARK: - What is open
@@ -147,8 +209,11 @@ final class Fortress: ObservableObject {
         state.unlocksToday(of: target)
     }
 
-    var slipsToday: Int {
-        state.slips.filter { Calendar.current.isDateInToday($0.at) }.count
+    // The task and cooldown that govern unlocking this. A site's category may
+    // set its own; an app has no name to look up and takes the fortress's.
+    func standards(for target: LockTarget) -> Standards? {
+        guard case .success(let data) = rules.standards(for: target.domain) else { return nil }
+        return try? JSONDecoder().decode(Standards.self, from: data)
     }
 
     enum UnlockError: LocalizedError {
@@ -162,9 +227,9 @@ final class Fortress: ObservableObject {
         }
     }
 
-    // Opens one thing for its window and records the slip. The timer that
-    // ends it is started first: an unlock with nothing to close it would be a
-    // block quietly gone for good, so if the timer cannot be set, nothing
+    // Opens one thing for its window and notes it for escalation. The timer
+    // that ends it is started first: an unlock with nothing to close it would
+    // be a block quietly gone for good, so if the timer cannot be set, nothing
     // opens.
     func unlock(_ target: LockTarget) throws {
         let now = Date()
@@ -180,19 +245,19 @@ final class Fortress: ObservableObject {
         state.unlocks.removeAll { $0.target == target }
         state.unlocks.append(FortressState.Unlock(id: id, target: target, until: until))
         state.slips.append(FortressState.Slip(key: target.key, at: now))
-        commit()
+        enforce()
     }
 
     // Closing early is strengthening, so it is free.
     func close(_ unlock: FortressState.Unlock) {
         state.unlocks.removeAll { $0.id == unlock.id }
-        commit()
+        enforce()
         stopTimers(for: [unlock])
     }
 
     // MARK: - Enforcement
 
-    private func commit() {
+    private func enforce() {
         state.save()
         state.apply(to: store)
     }

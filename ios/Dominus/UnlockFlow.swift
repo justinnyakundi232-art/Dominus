@@ -4,13 +4,15 @@ import FamilyControls
 // The unlock, as the extension's blocked page runs it: the task, then the
 // cooldown, then a last word before anything opens.
 //
-//   - The task is Random Passage, the one that needs nothing set up first: a
-//     fresh line from Tasks.js's generatePassage(), typed back exactly, with
-//     pasting refused. Compared as the blocked page compares it — trimmed,
-//     then exact.
-//   - The cooldown is Tasks.js's effectiveCooldownSeconds(), escalating with
-//     each unlock of the same thing today. Leaving Dominus starts it over:
-//     the wait is the friction, and a wait spent elsewhere isn't one.
+//   - The task is whichever the fortress sets, in the blocked page's own
+//     words and checked the way it checks them: Reflection Message and Random
+//     Passage are typed back exactly (trimmed, then compared), with pasting
+//     refused; Guarded Code is typed from the paper it was written on, in
+//     either case. With no task set, the unlock goes straight to the cooldown.
+//   - The cooldown is Tasks.js's effectiveCooldownSeconds() over the
+//     fortress's settings, escalating with each unlock of the same thing
+//     today if it is set to. Leaving Dominus starts it over: the wait is the
+//     friction, and a wait spent elsewhere isn't one.
 //   - Stay focused, at any point, is a stand.
 struct UnlockFlow: View {
     let target: LockTarget
@@ -26,24 +28,60 @@ struct UnlockFlow: View {
         case confirm
     }
 
+    // What has to be done before the cooldown starts.
+    private enum Challenge {
+        case none
+        case typing(instruction: String, target: String)
+        case code(expected: String)
+    }
+
+    private let challenge: Challenge
+    private let cooldownSettings: [String: Any]
+
     @State private var step: Step = .task
-    @State private var passage = SharedRules.shared.generatePassage()
     @State private var typed = ""
     @State private var now = Date()
     @State private var leftDuringCooldown = false
     @State private var startedOver = false
     @State private var failure: String?
 
-    // Until the phone has settings: the extension's floor of 60 seconds, with
-    // escalation on so it can be seen working. 60, 75, 94, 117… capped at an
-    // hour by Tasks.js itself.
-    private static let cooldownSettings: [String: Any] = ["seconds": 60, "escalate": true, "factor": 1.25]
-
     private let tick = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+
+    init(target: LockTarget, fortress: Fortress, record: Record, done: @escaping () -> Void) {
+        self.target = target
+        _fortress = ObservedObject(wrappedValue: fortress)
+        _record = ObservedObject(wrappedValue: record)
+        self.done = done
+
+        // Read once, as the unlock begins: the standards that govern it should
+        // not change underneath someone halfway through.
+        let standards = fortress.standards(for: target)
+        cooldownSettings = standards?.cooldown.dictionary ?? ["seconds": 60, "escalate": false, "factor": 1.25]
+
+        // The same routing as the blocked page's beginTask(), including its
+        // two escapes: a task of a type this version doesn't know, or a code
+        // task saved without a code, must not become a lock with no key.
+        switch standards?.task?.type ?? "" {
+        case "cooldown" where standards?.task?.message.isEmpty == false:
+            challenge = .typing(
+                instruction: "Type the message below exactly to begin your cooldown:",
+                target: standards?.task?.message ?? ""
+            )
+        case "passage":
+            challenge = .typing(
+                instruction: "Type this passage exactly to begin your cooldown:",
+                target: SharedRules.shared.generatePassage()
+            )
+        case "code" where standards?.task?.code.isEmpty == false:
+            challenge = .code(expected: standards?.task?.code ?? "")
+        default:
+            challenge = .none
+        }
+    }
 
     private var seconds: Int {
         SharedRules.shared.effectiveCooldownSeconds(
-            Self.cooldownSettings,
+            cooldownSettings,
             priorUnlocks: fortress.unlocksToday(of: target)
         )
     }
@@ -93,6 +131,12 @@ struct UnlockFlow: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
+        .onAppear {
+            // No task set: the cooldown is the whole of the cost.
+            if case .none = challenge, step == .task {
+                startCooldown()
+            }
+        }
         .onReceive(tick) { date in
             now = date
             if case .cooldown(let ends) = step, date >= ends {
@@ -111,29 +155,58 @@ struct UnlockFlow: View {
         }
     }
 
+    @ViewBuilder
     private var task: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Type this passage exactly to begin your cooldown:")
-                .foregroundStyle(Theme.parchment)
-            Text(passage)
-                .font(.system(.body, design: .monospaced))
-                .foregroundStyle(Theme.gold)
-                .padding(14)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Theme.panel)
-            NoPasteField(text: $typed)
-                .background(Theme.panel)
-                .overlay(Rectangle().stroke(Theme.goldDim.opacity(0.4), lineWidth: 1))
-                .onChange(of: typed) { value in
-                    if value.trimmingCharacters(in: .whitespacesAndNewlines)
-                        == passage.trimmingCharacters(in: .whitespacesAndNewlines) {
-                        startCooldown()
-                    }
+        switch challenge {
+        case .none:
+            EmptyView()
+
+        case .typing(let instruction, let target):
+            VStack(alignment: .leading, spacing: 14) {
+                Text(instruction)
+                    .foregroundStyle(Theme.parchment)
+                Text(target)
+                    .font(.system(.body, design: .monospaced))
+                    .foregroundStyle(Theme.gold)
+                    .padding(14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Theme.panel)
+                typingBox { value in
+                    value.trimmingCharacters(in: .whitespacesAndNewlines)
+                        == target.trimmingCharacters(in: .whitespacesAndNewlines)
                 }
-            Text("Pasting is disabled.")
-                .font(.footnote)
-                .foregroundStyle(Theme.goldDim)
+                Text("Pasting is disabled.")
+                    .font(.footnote)
+                    .foregroundStyle(Theme.goldDim)
+            }
+
+        case .code(let expected):
+            VStack(alignment: .leading, spacing: 14) {
+                Text("Enter the code you wrote down:")
+                    .foregroundStyle(Theme.parchment)
+                // Case-insensitive, as on the blocked page: the friction is
+                // fetching the paper, not remembering how it was written.
+                typingBox { value in
+                    value.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+                        == expected.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+                }
+                Text("The code isn't shown here. The only copy is the one you wrote down.")
+                    .font(.footnote)
+                    .foregroundStyle(Theme.goldDim)
+            }
         }
+    }
+
+    // The cooldown begins the moment what is typed matches.
+    private func typingBox(matches: @escaping (String) -> Bool) -> some View {
+        NoPasteField(text: $typed)
+            .background(Theme.panel)
+            .overlay(Rectangle().stroke(Theme.goldDim.opacity(0.4), lineWidth: 1))
+            .onChange(of: typed) { value in
+                if matches(value) {
+                    startCooldown()
+                }
+            }
     }
 
     // `now` only moves once a second, so at the moment a cooldown starts it
@@ -148,6 +221,7 @@ struct UnlockFlow: View {
     private func cooldown(ends: Date) -> some View {
         let remaining = min(seconds, max(0, Int(ends.timeIntervalSince(now).rounded(.up))))
         let prior = fortress.unlocksToday(of: target)
+        let escalating = (cooldownSettings["escalate"] as? Bool) == true
         return VStack(alignment: .leading, spacing: 14) {
             Text(SharedRules.shared.formatClock(remaining))
                 .font(.system(size: 64, weight: .bold, design: .serif))
@@ -157,7 +231,7 @@ struct UnlockFlow: View {
                  ? "You left Dominus, so the cooldown started over. Stay here until it ends."
                  : "Stay here until it ends. Leaving Dominus starts it over.")
                 .foregroundStyle(Theme.parchment)
-            if prior > 0 {
+            if prior > 0 && escalating {
                 Text("Unlocked \(prior) \(prior == 1 ? "time" : "times") already today, so this wait is longer.")
                     .font(.footnote)
                     .foregroundStyle(Theme.goldDim)
