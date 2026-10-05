@@ -18,8 +18,8 @@ import ManagedSettings
 //     blocks from it without the app, or JavaScript, to help.
 //
 // Strengthening is free. Anything that takes a defence down is named first,
-// by weakenings(of:), so that whoever is about to do it can be shown what
-// they are giving up and made to wait.
+// by cost(of:), so that whoever is about to do it can be shown what they are
+// giving up and made to wait.
 @MainActor
 final class Fortress: ObservableObject {
     @Published private var state: FortressState
@@ -120,29 +120,40 @@ final class Fortress: ObservableObject {
         case standDown
     }
 
-    // What a change would take down, one line each. Empty means it only
-    // strengthens, and may simply be made.
+    // What a change costs: what it gives up, one line each, and whether that
+    // is a taking down or only a change.
+    struct Cost {
+        var lines: [String]
+        // Swapping one unlock task for another waits like a weakening, since
+        // it could be one, but is not announced as one. See __dominusReview().
+        var changeOnly = false
+
+        var isFree: Bool { lines.isEmpty }
+    }
+
+    // Free means it only strengthens, and may simply be made.
     //
     // For an edit the lines are describeWeakening()'s own, so the phone says
     // what Chrome's seal prompt would say. A fortress that is down defends
     // nothing, so nothing done to it is a weakening — the same reasoning the
     // extension applies to a category that is switched off.
-    func weakenings(of change: Change) -> [String] {
-        guard isStanding else { return [] }
+    func cost(of change: Change) -> Cost {
+        guard isStanding else { return Cost(lines: []) }
 
         switch change {
         case .edit(let edit):
             struct Review: Decodable {
                 let weakenings: [String]
+                let changeOnly: Bool
             }
             guard
                 case .success(let data) = rules.review(edit.data),
                 let review = try? JSONDecoder().decode(Review.self, from: data)
             else {
                 // Unchecked is not the same as harmless.
-                return ["Dominus couldn't check what this changes, so it is treated as taking a defence down."]
+                return Cost(lines: ["Dominus couldn't check what this changes, so it is treated as taking a defence down."])
             }
-            return review.weakenings
+            return Cost(lines: review.weakenings, changeOnly: review.changeOnly)
 
         case .selection(let next):
             var lines: [String] = []
@@ -158,10 +169,10 @@ final class Fortress: ObservableObject {
             if sites > 0 {
                 lines.append("\(sites) picked \(sites == 1 ? "site" : "sites") removed — \(sites == 1 ? "it stops" : "they stop") being blocked.")
             }
-            return lines
+            return Cost(lines: lines)
 
         case .standDown:
-            return ["The whole fortress comes down — nothing on this phone stays blocked."]
+            return Cost(lines: ["The whole fortress comes down — nothing on this phone stays blocked."])
         }
     }
 

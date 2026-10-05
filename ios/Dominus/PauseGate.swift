@@ -9,9 +9,15 @@ import SwiftUI
 // decision. Someone who means to take a block down should be able to; they
 // just shouldn't be able to do it without noticing they did.
 //
+// A change of unlock task waits here too, because it could be a weakening:
+// a Guarded Code swapped for a one-word message. But the extension's own line
+// for it says "changed", not "weakened", and neither does this. `changeOnly`
+// keeps the wait and drops the claim that defences are coming down.
+//
 // When a seal is set, this is where the password will be asked for instead.
 struct PauseGate: View {
     let lines: [String]
+    let changeOnly: Bool
     let seconds: Int
     let streak: Int
     let confirm: () -> Void
@@ -27,14 +33,15 @@ struct PauseGate: View {
     }
 
     var body: some View {
-        Page("Taking defences down") {
-            // The line the extension's gates have carried since 1.4.5.
-            if streak > 0 {
+        Page(changeOnly ? "Changing your defences" : "Taking defences down") {
+            // The line the extension's gates have carried since 1.4.5. Left
+            // out for a change, which dismantles nothing.
+            if streak > 0 && !changeOnly {
                 Text("You're on a \(streak)-day discipline streak — don't dismantle what you've built.")
                     .foregroundStyle(Theme.gold)
             }
 
-            Panel("This takes defences down") {
+            Panel(changeOnly ? "This changes what an unlock costs" : "This takes defences down") {
                 ForEach(lines, id: \.self) { line in
                     HStack(alignment: .firstTextBaseline, spacing: 10) {
                         Text("—")
@@ -45,10 +52,10 @@ struct PauseGate: View {
                 }
             }
 
-            GoldButton("Keep my defences", action: keep)
+            GoldButton(changeOnly ? "Keep it as it is" : "Keep my defences", action: keep)
 
             Button(action: confirm) {
-                Text(remaining > 0 ? "WAIT \(remaining)" : "TAKE IT DOWN")
+                Text(remaining > 0 ? "WAIT \(remaining)" : (changeOnly ? "MAKE THE CHANGE" : "TAKE IT DOWN"))
                     .font(.subheadline.weight(.semibold))
                     .tracking(1.5)
                     .monospacedDigit()
@@ -59,7 +66,9 @@ struct PauseGate: View {
             }
             .disabled(remaining > 0)
 
-            Text("Strengthening the fortress is always free. Weakening it waits.")
+            Text(changeOnly
+                 ? "A change of task waits, because the new one may be easier than the old."
+                 : "Strengthening the fortress is always free. Weakening it waits.")
                 .font(.footnote)
                 .foregroundStyle(Theme.goldDim)
         }

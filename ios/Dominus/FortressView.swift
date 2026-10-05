@@ -22,7 +22,7 @@ struct FortressView: View {
     private enum Sheet: Identifiable {
         case category(FortressPlan.Category?)
         case standards
-        case gate(Fortress.Change, [String])
+        case gate(Fortress.Change, Fortress.Cost)
 
         var id: String {
             switch self {
@@ -94,9 +94,10 @@ struct FortressView: View {
                         cancel: { self.sheet = nil }
                     )
                 }
-            case .gate(let change, let lines):
+            case .gate(let change, let cost):
                 PauseGate(
-                    lines: lines,
+                    lines: cost.lines,
+                    changeOnly: cost.changeOnly,
                     seconds: fortress.plan?.removeCooldownSeconds ?? 10,
                     streak: record.standing?.currentStreak ?? 0,
                     confirm: {
@@ -111,12 +112,12 @@ struct FortressView: View {
 
     // Free if it only strengthens; otherwise to the gate.
     private func attempt(_ change: Fortress.Change) {
-        let lines = fortress.weakenings(of: change)
-        if lines.isEmpty {
+        let cost = fortress.cost(of: change)
+        if cost.isFree {
             fortress.perform(change)
             sheet = nil
         } else {
-            sheet = .gate(change, lines)
+            sheet = .gate(change, cost)
         }
     }
 

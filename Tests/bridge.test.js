@@ -51,6 +51,7 @@ function loadPhone() {
         // handled the way Swift handles it.
         fortress: async () => JSON.parse(await scope.__dominusFortress()),
         review: async (next) => JSON.parse(await scope.__dominusReview(JSON.stringify(next))).weakenings,
+        reviewWhole: async (next) => JSON.parse(await scope.__dominusReview(JSON.stringify(next))),
         commit: async (next) => JSON.parse(await scope.__dominusCommit(JSON.stringify(next))),
         standards: async (domain) => JSON.parse(await scope.__dominusStandards(domain))
     };
@@ -331,6 +332,32 @@ async function run() {
 
         const lines = await phone.review({ task: null });
         eq(lines.length, 1, "clearing the task was not named");
+    });
+
+    await it("swapping one task for another waits, but is a change and not a taking down", async () => {
+        const phone = loadPhone();
+        await phone.commit({ task: { type: "code", code: "ABCD2345" } });
+
+        const swap = await phone.reviewWhole({ task: { type: "passage" } });
+
+        eq(swap.weakenings, ["Fortress-wide task changed from Guarded Code to Random Passage."]);
+        eq(swap.changeOnly, true);
+    });
+
+    await it("clearing the task, or swapping it while something else comes down, is a taking down", async () => {
+        const phone = loadPhone();
+        const fortress = await phone.fortress();
+        fortress.categories[0].enabled = true;
+        await phone.commit({ categories: fortress.categories, task: { type: "code", code: "ABCD2345" } });
+
+        eq((await phone.reviewWhole({ task: null })).changeOnly, false);
+
+        const after = await phone.fortress();
+        after.categories[0].enabled = false;
+        const both = await phone.reviewWhole({ categories: after.categories, task: { type: "passage" } });
+
+        eq(both.weakenings.length, 2);
+        eq(both.changeOnly, false);
     });
 
     await it("an edit that says nothing about the task leaves it alone", async () => {

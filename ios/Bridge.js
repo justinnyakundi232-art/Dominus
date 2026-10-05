@@ -194,11 +194,28 @@ function __dominusFortress() {
 
 // What an edit would take down, in the words the extension's seal prompt uses.
 // An empty list is a strengthening, which is free.
+//
+// `changeOnly` is true when everything listed comes from swapping one unlock
+// task for another, or replacing a Guarded Code. The extension counts those —
+// whether a passage is weaker than a code has no honest answer, and leaving
+// a swap uncounted would make it a way around the seal — but its own line
+// says "changed", not "weakened", and a gate that announces defences coming
+// down over a change of task is saying something that may not be true. So the
+// wait is the same and the words are not. It is worked out by asking
+// describeWeakening() again with the task put back, rather than by reading
+// its sentences.
 function __dominusReview(nextJSON) {
     return readFortress().then(function (before) {
-        return JSON.stringify({
-            weakenings: describeWeakening(before, __dominusEdited(nextJSON, before))
-        });
+        var after = __dominusEdited(nextJSON, before);
+        var lines = describeWeakening(before, after);
+        var changeOnly = false;
+
+        if (lines.length && before.task && after.task) {
+            var taskPutBack = Object.assign({}, after, { task: before.task });
+            changeOnly = describeWeakening(before, taskPutBack).length === 0;
+        }
+
+        return JSON.stringify({ weakenings: lines, changeOnly: changeOnly });
     });
 }
 
