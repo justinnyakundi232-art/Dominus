@@ -31,7 +31,7 @@ struct UnlockFlow: View {
     // What has to be done before the cooldown starts.
     private enum Challenge {
         case none
-        case typing(instruction: String, target: String)
+        case typing(instruction: String, target: String, sentences: Bool)
         case code(expected: String)
     }
 
@@ -63,14 +63,18 @@ struct UnlockFlow: View {
         // task saved without a code, must not become a lock with no key.
         switch standards?.task?.type ?? "" {
         case "cooldown" where standards?.task?.message.isEmpty == false:
+            // The user's own words, written with a keyboard that capitalises
+            // sentences, so they are typed back with one that does too.
             challenge = .typing(
                 instruction: "Type the message below exactly to begin your cooldown:",
-                target: standards?.task?.message ?? ""
+                target: standards?.task?.message ?? "",
+                sentences: true
             )
         case "passage":
             challenge = .typing(
                 instruction: "Type this passage exactly to begin your cooldown:",
-                target: SharedRules.shared.generatePassage()
+                target: SharedRules.shared.generatePassage(),
+                sentences: false
             )
         case "code" where standards?.task?.code.isEmpty == false:
             challenge = .code(expected: standards?.task?.code ?? "")
@@ -161,7 +165,7 @@ struct UnlockFlow: View {
         case .none:
             EmptyView()
 
-        case .typing(let instruction, let target):
+        case .typing(let instruction, let target, let sentences):
             VStack(alignment: .leading, spacing: 14) {
                 Text(instruction)
                     .foregroundStyle(Theme.parchment)
@@ -171,9 +175,16 @@ struct UnlockFlow: View {
                     .padding(14)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(Theme.panel)
-                typingBox { value in
-                    value.trimmingCharacters(in: .whitespacesAndNewlines)
-                        == target.trimmingCharacters(in: .whitespacesAndNewlines)
+                typingBox(sentences: sentences) { value in
+                    Self.plain(value) == Self.plain(target)
+                }
+                // The blocked page says so when CONFIRM is pressed on a
+                // mismatch. Here the cooldown starts by itself on a match, so
+                // without this a wrong capital looks like a frozen screen.
+                if Self.plain(typed).count >= Self.plain(target).count && Self.plain(typed) != Self.plain(target) {
+                    Text("That doesn't match yet. Check the capitals and the punctuation.")
+                        .font(.footnote)
+                        .foregroundStyle(.red)
                 }
                 Text("Pasting is disabled.")
                     .font(.footnote)
@@ -186,7 +197,7 @@ struct UnlockFlow: View {
                     .foregroundStyle(Theme.parchment)
                 // Case-insensitive, as on the blocked page: the friction is
                 // fetching the paper, not remembering how it was written.
-                typingBox { value in
+                typingBox(sentences: false) { value in
                     value.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
                         == expected.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
                 }
@@ -197,9 +208,34 @@ struct UnlockFlow: View {
         }
     }
 
+    // What is compared: the text with the differences a phone keyboard makes
+    // by itself taken out. The blocked page compares trimmed text exactly, and
+    // so does this for every letter and its case. But a message may have been
+    // written where the keyboard curls its quotes and joins its dashes — on
+    // this phone before that was switched off, or one day in Chrome — and
+    // typed back where it does not. Those are the same sentence, and a task
+    // that cannot be completed is a lock with no key.
+    private static func plain(_ text: String) -> String {
+        let folded = text
+            .replacingOccurrences(of: "\u{2018}", with: "'")
+            .replacingOccurrences(of: "\u{2019}", with: "'")
+            .replacingOccurrences(of: "\u{201C}", with: "\"")
+            .replacingOccurrences(of: "\u{201D}", with: "\"")
+            .replacingOccurrences(of: "\u{2013}", with: "-")
+            .replacingOccurrences(of: "\u{2014}", with: "-")
+            .replacingOccurrences(of: "\u{2026}", with: "...")
+            .replacingOccurrences(of: "\u{00A0}", with: " ")
+        // Any run of spaces or line breaks is one space: the box that is
+        // typed into has no Return key to make a line break with.
+        return folded
+            .components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+    }
+
     // The cooldown begins the moment what is typed matches.
-    private func typingBox(matches: @escaping (String) -> Bool) -> some View {
-        NoPasteField(text: $typed)
+    private func typingBox(sentences: Bool, matches: @escaping (String) -> Bool) -> some View {
+        NoPasteField(text: $typed, sentences: sentences)
             .background(Theme.panel)
             .overlay(Rectangle().stroke(Theme.goldDim.opacity(0.4), lineWidth: 1))
             .onChange(of: typed) { value in
@@ -275,9 +311,17 @@ struct UnlockFlow: View {
 // and wraps, growing downward instead.
 struct NoPasteField: UIViewRepresentable {
     @Binding var text: String
+    // Capital at the start of a sentence, as a keyboard does for prose. Off
+    // for a passage or a code, which have none.
+    var sentences = false
+    // The same plain keyboard is used to write a Reflection Message as to
+    // type it back, so nothing is written that cannot be typed. There,
+    // pasting is your own words and is allowed.
+    var refusesPaste = true
 
     func makeUIView(context: Context) -> UITextView {
         let view = PasteRefusingTextView()
+        view.refusesPaste = refusesPaste
         view.delegate = context.coordinator
         view.textDropDelegate = context.coordinator
         view.backgroundColor = .clear
@@ -287,7 +331,7 @@ struct NoPasteField: UIViewRepresentable {
         view.textContainerInset = UIEdgeInsets(top: 12, left: 8, bottom: 12, right: 8)
         // Not scrolling is what lets it report its own height and grow.
         view.isScrollEnabled = false
-        view.autocapitalizationType = .none
+        view.autocapitalizationType = sentences ? .sentences : .none
         view.autocorrectionType = .no
         view.spellCheckingType = .no
         view.smartQuotesType = .no
@@ -343,18 +387,25 @@ struct NoPasteField: UIViewRepresentable {
         }
 
         func textDroppableView(_ textDroppableView: UIView & UITextDroppable, proposalForDrop drop: UITextDropRequest) -> UITextDropProposal {
-            UITextDropProposal(operation: .cancel)
+            let refuses = (textDroppableView as? PasteRefusingTextView)?.refusesPaste ?? true
+            return UITextDropProposal(operation: refuses ? .cancel : .copy)
         }
     }
 
     final class PasteRefusingTextView: UITextView {
+        var refusesPaste = true
+
         override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
-            if action == #selector(paste(_:)) || action == #selector(pasteAndMatchStyle(_:)) {
+            if refusesPaste && (action == #selector(paste(_:)) || action == #selector(pasteAndMatchStyle(_:))) {
                 return false
             }
             return super.canPerformAction(action, withSender: sender)
         }
 
-        override func paste(_ sender: Any?) {}
+        override func paste(_ sender: Any?) {
+            if !refusesPaste {
+                super.paste(sender)
+            }
+        }
     }
 }

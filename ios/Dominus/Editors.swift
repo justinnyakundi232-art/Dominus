@@ -172,13 +172,16 @@ struct StandardsEditor: View {
                     Text("Your message, written now, while you are thinking clearly:")
                         .font(.footnote)
                         .foregroundStyle(Theme.goldDim)
-                    TextEditor(text: $message)
-                        .scrollContentBackground(.hidden)
-                        .foregroundStyle(Theme.parchment)
-                        .frame(minHeight: 110)
-                        .padding(8)
+                    // The box it will be typed back into, pasting aside: the
+                    // same keyboard, with no curled quotes, joined dashes or
+                    // line breaks, so nothing can be written here that cannot
+                    // be typed there.
+                    NoPasteField(text: $message, sentences: true, refusesPaste: false)
                         .background(Theme.panel)
                         .overlay(Rectangle().stroke(Theme.goldDim.opacity(0.4), lineWidth: 1))
+                    Text("You will type this back exactly, capitals and punctuation included.")
+                        .font(.footnote)
+                        .foregroundStyle(Theme.goldDim)
                 }
 
                 if type == "code" {
