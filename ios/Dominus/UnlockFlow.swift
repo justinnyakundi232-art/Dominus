@@ -180,9 +180,11 @@ struct UnlockFlow: View {
                 }
                 // The blocked page says so when CONFIRM is pressed on a
                 // mismatch. Here the cooldown starts by itself on a match, so
-                // without this a wrong capital looks like a frozen screen.
-                if Self.plain(typed).count >= Self.plain(target).count && Self.plain(typed) != Self.plain(target) {
-                    Text("That doesn't match yet. Check the capitals and the punctuation.")
+                // without this a wrong capital looks like a frozen screen. It
+                // shows at the first character that goes astray, rather than
+                // after the whole thing has been typed in vain.
+                if !Self.plain(target).hasPrefix(Self.plain(typed)) {
+                    Text("That doesn't match. Check the capitals and the punctuation.")
                         .font(.footnote)
                         .foregroundStyle(.red)
                 }

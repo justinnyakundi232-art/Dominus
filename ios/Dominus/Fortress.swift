@@ -2,6 +2,7 @@ import Foundation
 import DeviceActivity
 import FamilyControls
 import ManagedSettings
+import UserNotifications
 
 // The app's handle on the fortress: what is held, whether it is standing, and
 // what is open for now.
@@ -25,6 +26,7 @@ final class Fortress: ObservableObject {
     @Published private var state: FortressState
     @Published private(set) var plan: FortressPlan?
     @Published private(set) var failure: String?
+    @Published private(set) var standDown: StandDown = .none
 
     private let store = ManagedSettingsStore()
     private let rules = SharedRules.shared
@@ -62,15 +64,23 @@ final class Fortress: ObservableObject {
         state = FortressState.load() ?? state
         let ended = state.pruneExpired(at: Date())
         readPlan()
+        readStandDown()
         enforce()
         stopTimers(for: ended)
     }
 
     // For a clock tick while the app is open: an unlock that runs out in
-    // front of you ends in front of you, not whenever the timer lands.
+    // front of you ends in front of you, not whenever the timer lands, and a
+    // request to take the fortress down becomes ready, or lapses, on time.
     func refreshIfAnyEnded() {
         if state.unlocks.contains(where: { $0.until <= Date() }) {
             refresh()
+        } else if state.standDownRequestedAt != nil {
+            let before = standDown
+            readStandDown()
+            if standDown != before {
+                state.save()
+            }
         }
     }
 
@@ -113,11 +123,12 @@ final class Fortress: ObservableObject {
     // MARK: - Changing it
 
     // Something that would change what is held. Edits to the plan go through
-    // the extension's code; the other two exist only on a phone.
+    // the extension's code; the picked apps exist only on a phone. Taking the
+    // whole fortress down is not one of these: it has a slower road of its
+    // own, below.
     enum Change {
         case edit(FortressEdit)
         case selection(FamilyActivitySelection)
-        case standDown
     }
 
     // What a change costs: what it gives up, one line each, and whether that
@@ -170,9 +181,6 @@ final class Fortress: ObservableObject {
                 lines.append("\(sites) picked \(sites == 1 ? "site" : "sites") removed — \(sites == 1 ? "it stops" : "they stop") being blocked.")
             }
             return Cost(lines: lines)
-
-        case .standDown:
-            return Cost(lines: ["The whole fortress comes down — nothing on this phone stays blocked."])
         }
     }
 
@@ -189,21 +197,117 @@ final class Fortress: ObservableObject {
         case .selection(let next):
             state.selection = next
             enforce()
-
-        case .standDown:
-            // Also closes anything open: a fortress raised again later starts
-            // whole.
-            let ended = state.unlocks
-            state.raised = false
-            state.unlocks = []
-            enforce()
-            stopTimers(for: ended)
         }
     }
 
     func raise() {
         state.raised = true
         enforce()
+    }
+
+    // MARK: - Taking the whole fortress down
+
+    // The extension has no switch for this: there, blocks come down one at a
+    // time, each through its own gate. On the phone one button lifts
+    // everything, so it is the slowest thing in the app.
+    //
+    //   - Asking changes nothing. The fortress stays up, whole, for
+    //     standDownDelay — thirty minutes that do not have to be watched,
+    //     which is why they can be thirty.
+    //   - It never falls by itself. When the wait is over it has to be
+    //     confirmed, here, by someone who still wants it: an impulse at
+    //     eleven should not take the fortress down at half past whether or
+    //     not it has passed.
+    //   - The offer lapses after standDownWindow, so a request cannot be
+    //     made in advance and held in reserve.
+    //   - Calling it off is strengthening, and free, at any point.
+    //
+    // None of this is a lock. One thing can still be unlocked at its usual
+    // cost in the meantime, and deleting Dominus, or turning off its Screen
+    // Time access, lifts everything at once and always will.
+    enum StandDown: Equatable {
+        case none
+        case waiting(until: Date)
+        case ready(until: Date)
+    }
+
+    func requestStandDown() {
+        guard isStanding, state.standDownRequestedAt == nil else { return }
+        state.standDownRequestedAt = Date()
+        readStandDown()
+        state.save()
+        notifyWhenStandDownIsReady()
+    }
+
+    func cancelStandDown() {
+        clearStandDown()
+        state.save()
+    }
+
+    // Only once the wait is over and before the offer lapses. Also closes
+    // anything open: a fortress raised again later starts whole.
+    func confirmStandDown() {
+        readStandDown()
+        guard case .ready = standDown else { return }
+
+        let ended = state.unlocks
+        state.raised = false
+        state.unlocks = []
+        clearStandDown()
+        enforce()
+        stopTimers(for: ended)
+    }
+
+    // Where a request stands as of now. One that has lapsed, or that outlived
+    // the fortress it was about, is cleared.
+    private func readStandDown() {
+        guard let asked = state.standDownRequestedAt, state.raised else {
+            if state.standDownRequestedAt != nil {
+                clearStandDown()
+            } else {
+                standDown = .none
+            }
+            return
+        }
+
+        let now = Date()
+        let ready = asked.addingTimeInterval(FortressState.standDownDelay)
+        let lapses = ready.addingTimeInterval(FortressState.standDownWindow)
+
+        if now < ready {
+            standDown = .waiting(until: ready)
+        } else if now < lapses {
+            standDown = .ready(until: lapses)
+        } else {
+            clearStandDown()
+        }
+    }
+
+    private func clearStandDown() {
+        state.standDownRequestedAt = nil
+        standDown = .none
+        UNUserNotificationCenter.current()
+            .removePendingNotificationRequests(withIdentifiers: [Fortress.standDownNotification])
+    }
+
+    private static let standDownNotification = "dominus.standdown"
+
+    // Says when the wait is over, since nobody is meant to be watching it.
+    // Without notifications allowed nothing arrives, and the request is
+    // simply found ready the next time Dominus is opened.
+    private func notifyWhenStandDownIsReady() {
+        let content = UNMutableNotificationContent()
+        content.title = "The fortress can come down now"
+        content.body = "Open Dominus within the hour to confirm, or leave it standing."
+        content.sound = .default
+
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: FortressState.standDownDelay, repeats: false)
+        let request = UNNotificationRequest(
+            identifier: Fortress.standDownNotification,
+            content: content,
+            trigger: trigger
+        )
+        UNUserNotificationCenter.current().add(request)
     }
 
     // MARK: - What is open

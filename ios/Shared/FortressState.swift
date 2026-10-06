@@ -20,6 +20,20 @@ struct FortressState: Codable {
     var unlocks: [Unlock] = []
     var slips: [Slip] = []
 
+    // When taking the whole fortress down was asked for, if it has been and
+    // has not yet been answered. Asking changes nothing by itself: see
+    // Fortress.StandDown. Optional, so a state saved before this existed
+    // still reads.
+    var standDownRequestedAt: Date?
+
+    // How long a request waits before it can be confirmed, and how long the
+    // offer then stays open. The wait is long because it does not have to be
+    // watched — the same reasoning as the seal's one-hour recovery — and the
+    // offer lapses so a request cannot be made every morning and kept in a
+    // pocket for later.
+    static let standDownDelay: TimeInterval = 30 * 60
+    static let standDownWindow: TimeInterval = 60 * 60
+
     struct Unlock: Codable, Identifiable {
         let id: String          // also the DeviceActivity name that ends it
         let target: LockTarget

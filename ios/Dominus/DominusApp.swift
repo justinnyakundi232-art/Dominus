@@ -81,5 +81,10 @@ struct RootView: View {
         fortress.refresh()
         record.refresh()
         session.refresh()
+        // A request to take the fortress down that is now ready is what its
+        // notification was about, so it is put in front.
+        if case .ready = fortress.standDown {
+            session.tab = .keep
+        }
     }
 }

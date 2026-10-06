@@ -29,6 +29,8 @@ out by the same code as in Chrome.
 | **The Order** | Left out until it exists. Four tabs, not five. |
 | **Cooldown** | Starts over if you leave Dominus. |
 | **Windows** | 15 minutes for an app, an hour for a site. |
+| **Task swaps** | Wait at the gate like a weakening, since one could be, but are called a change, not a taking down. One rule with Chrome. |
+| **Taking it all down** | The slowest thing in the app. Asking starts a 30-minute wait that needn't be watched and changes nothing; afterwards it must be confirmed, within an hour, or the request lapses. It never falls by itself, stays down until raised, and is not counted as a slip. |
 
 ## The screens
 

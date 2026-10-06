@@ -185,3 +185,34 @@ struct ComingView: View {
         }
     }
 }
+
+// A request to take the whole fortress down, while it waits and once it can
+// be confirmed. Shown on The Keep, where it glows, and in The Fortress beside
+// the button that started it.
+struct StandDownStatus: View {
+    @EnvironmentObject private var fortress: Fortress
+
+    var body: some View {
+        switch fortress.standDown {
+        case .none:
+            EmptyView()
+
+        case .waiting(let until):
+            (Text("The fortress stays up for now. It can come down in ") + Text(until, style: .relative) + Text("."))
+                .foregroundStyle(Theme.parchment)
+            Text("Nothing has changed, and nothing will unless you confirm it then. You don't need to wait here.")
+                .font(.footnote)
+                .foregroundStyle(Theme.goldDim)
+            GoldButton("Keep it standing") { fortress.cancelStandDown() }
+
+        case .ready(let until):
+            Text("The wait is over. The fortress can come down now, and everything on this phone stops being blocked.")
+                .foregroundStyle(Theme.parchment)
+            (Text("If you do nothing, it stays up. This offer lapses in ") + Text(until, style: .relative) + Text("."))
+                .font(.footnote)
+                .foregroundStyle(Theme.goldDim)
+            GoldButton("Keep it standing") { fortress.cancelStandDown() }
+            GoldButton("Take it down now", secondary: true) { fortress.confirmStandDown() }
+        }
+    }
+}

@@ -21,6 +21,11 @@ struct KeepView: View {
             if !fortress.openUnlocks.isEmpty {
                 openForNow
             }
+            if fortress.standDown != .none {
+                Panel("The fortress is coming down", glowing: true) {
+                    StandDownStatus()
+                }
+            }
             if center.authorizationStatus != .approved {
                 notSetUp
             }

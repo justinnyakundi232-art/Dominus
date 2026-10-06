@@ -173,7 +173,14 @@ struct FortressView: View {
             if fortress.isStanding {
                 Text("Standing. Everything below is blocked.")
                     .foregroundStyle(Theme.parchment)
-                GoldButton("Take it down", secondary: true) { attempt(.standDown) }
+                if fortress.standDown == .none {
+                    GoldButton("Take it down", secondary: true) { fortress.requestStandDown() }
+                    Text("Asking starts a 30-minute wait you don't have to watch. Nothing changes until you come back and confirm.")
+                        .font(.footnote)
+                        .foregroundStyle(Theme.goldDim)
+                } else {
+                    StandDownStatus()
+                }
             } else if fortress.isEmpty {
                 Text("Nothing to block yet. Choose apps, switch on a category, or block a site by hand.")
                     .foregroundStyle(Theme.parchment)
