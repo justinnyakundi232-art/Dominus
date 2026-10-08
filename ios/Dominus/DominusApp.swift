@@ -39,11 +39,8 @@ struct RootView: View {
             FortressView()
                 .tabItem { Label("Fortress", systemImage: "building.columns") }
                 .tag(Session.Tab.fortress)
-            ComingView(
-                title: "The Campaign",
-                what: "Progress, the history grid and your records. Stands and slips are already being kept, so the history will be there when this is."
-            )
-            .tabItem { Label("Campaign", systemImage: "chart.bar") }
+            CampaignView()
+                .tabItem { Label("Campaign", systemImage: "chart.bar") }
             .tag(Session.Tab.campaign)
             ComingView(
                 title: "The Seal",

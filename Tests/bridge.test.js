@@ -24,7 +24,7 @@ const { describe, it, eq, ok, report } = createHarness();
 
 // The order SharedRules.swift loads them in: the bridge, then the same set, in
 // the same order, as Tests/load.js and the extension's service worker.
-const FILES = ["ios/Bridge.js", "Tasks.js", "Categories.js", "Applications.js", "Stats.js", "Seal.js", "Sync.js"];
+const FILES = ["ios/Bridge.js", "Tasks.js", "Categories.js", "Applications.js", "Stats.js", "Seal.js", "Sync.js", "TrackProgress.js"];
 
 function loadPhone() {
     const root = path.join(__dirname, "..");
@@ -53,7 +53,8 @@ function loadPhone() {
         review: async (next) => JSON.parse(await scope.__dominusReview(JSON.stringify(next))).weakenings,
         reviewWhole: async (next) => JSON.parse(await scope.__dominusReview(JSON.stringify(next))),
         commit: async (next) => JSON.parse(await scope.__dominusCommit(JSON.stringify(next))),
-        standards: async (domain) => JSON.parse(await scope.__dominusStandards(domain))
+        standards: async (domain) => JSON.parse(await scope.__dominusStandards(domain)),
+        campaign: async () => JSON.parse(await scope.__dominusCampaign())
     };
 }
 
@@ -427,6 +428,73 @@ async function run() {
         eq(events[0].type, "stand");
         eq(events[0].at, yesterday.getTime());
         eq(events[0].date, phone.scope.localDateString(yesterday));
+    });
+
+    describe("The Campaign");
+
+    await it("is twenty-six weeks ending today, laid out as the extension lays it out", async () => {
+        const phone = loadPhone();
+
+        const campaign = await phone.campaign();
+        const first = campaign.days[0];
+        const last = campaign.days[campaign.days.length - 1];
+
+        eq(campaign.weeks, 26);
+        eq(campaign.days.length, 182);
+        eq(last.date, phone.scope.todayLocal());
+        eq(last.today, true);
+        eq(campaign.days.filter((day) => day.today).length, 1);
+        // The first column starts on a Sunday, so the first day is pushed down
+        // by as many squares as its weekday.
+        eq(campaign.blanks, phone.scope.dateFromLocalString(first.date).getDay());
+        eq(campaign.months.length, Math.ceil((182 + campaign.blanks) / 7));
+        eq(campaign.months[0], "", "a month was named over the first, partial column");
+        eq(campaign.weekdays, ["", "Mon", "", "Wed", "", "Fri", ""]);
+    });
+
+    await it("a new fortress has no history to claim", async () => {
+        const phone = loadPhone();
+
+        const campaign = await phone.campaign();
+
+        eq(campaign.summary.recorded, 0);
+        eq(campaign.days[0].state, "before");
+        eq(campaign.days[0].description, "This is before your history begins.");
+        eq(campaign.days[181].state, "untested");
+        eq(campaign.standing.ratio, null);
+    });
+
+    await it("each day arrives described and shaded by TrackProgress.js", async () => {
+        const phone = loadPhone();
+        const twoAgo = daysAgo(2, 23, 14);
+        const yesterday = daysAgo(1, 12, 0);
+
+        await phone.scope.__dominusRecord([
+            { type: "stand", at: twoAgo.getTime() - 60000 },
+            { type: "slip", at: twoAgo.getTime(), domain: "youtube.com" },
+            { type: "stand", at: yesterday.getTime() },
+            { type: "stand", at: yesterday.getTime() + 1000 },
+            { type: "stand", at: yesterday.getTime() + 2000 }
+        ]);
+
+        const campaign = await phone.campaign();
+        const slipped = campaign.days[179];
+        const held = campaign.days[180];
+
+        eq(slipped.state, "slipped");
+        eq(slipped.stateLabel, "Slipped");
+        eq(slipped.level, 1);
+        eq(slipped.description, "1 stand, then youtube.com at 23:14.");
+        eq(slipped.label, phone.scope.formatDayLabel(phone.scope.localDateString(twoAgo)));
+
+        eq(held.state, "held");
+        eq(held.level, 2, "three stands is the second shade");
+        eq(held.description, "3 stands, no unlocks.");
+
+        eq(campaign.summary.held, 1);
+        eq(campaign.summary.slipped, 1);
+        eq(campaign.summary.recorded, 2);
+        ok(campaign.summary.span.startsWith("Since "), "the span was not named by when the record starts");
     });
 
     process.exit(report("bridge") ? 1 : 0);

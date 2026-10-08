@@ -41,7 +41,41 @@ final class Record: ObservableObject {
     @Published private(set) var standing: Standing?
     @Published private(set) var todayState: DayState = .untested
     @Published private(set) var today: Day?
+    @Published private(set) var campaign: Campaign?
     @Published private(set) var failure: String?
+
+    // The Campaign's history, as Bridge.js hands it over: every day already
+    // named, described and levelled by TrackProgress.js, and the grid's shape
+    // — how far the first week is pushed down, which columns carry a month —
+    // worked out the way that file works it out.
+    struct Campaign: Decodable {
+        struct Day: Decodable, Identifiable {
+            let date: String
+            let state: DayState
+            let level: Int
+            let label: String
+            let stateLabel: String
+            let description: String
+            let today: Bool
+
+            var id: String { date }
+        }
+
+        struct Summary: Decodable {
+            let recorded: Int
+            let span: String
+            let held: Int
+            let slipped: Int
+            let untested: Int
+        }
+
+        let weeks: Int
+        let blanks: Int
+        let months: [String]
+        let weekdays: [String]
+        let summary: Summary
+        let days: [Day]
+    }
 
     private let rules = SharedRules.shared
     private var defaults: UserDefaults { Gate.defaults ?? .standard }
@@ -127,6 +161,12 @@ final class Record: ObservableObject {
             }
         case .failure(let problem):
             failure = problem.message
+        }
+
+        // Read alongside, not on demand: it is the same record, and a stand
+        // made a moment ago should be on the grid when the tab is opened.
+        if case .success(let data) = rules.campaign() {
+            campaign = try? JSONDecoder().decode(Campaign.self, from: data)
         }
     }
 

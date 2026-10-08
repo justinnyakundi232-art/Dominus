@@ -74,7 +74,7 @@ final class SharedRules {
         context.setObject(read, forKeyedSubscript: "__dominusStorageRead" as NSString)
         context.setObject(write, forKeyedSubscript: "__dominusStorageWrite" as NSString)
 
-        for name in ["Bridge", "Tasks", "Categories", "Applications", "Stats", "Seal", "Sync"] {
+        for name in ["Bridge", "Tasks", "Categories", "Applications", "Stats", "Seal", "Sync", "TrackProgress"] {
             guard
                 let url = Bundle.main.url(forResource: name, withExtension: "js"),
                 let source = try? String(contentsOf: url, encoding: .utf8)
@@ -213,6 +213,12 @@ final class SharedRules {
     // JSON for whoever asked to decode.
     func standing() -> Result<Data, Problem> {
         json("__dominusStanding", [])
+    }
+
+    // The Campaign: the same figures, and twenty-six weeks of days, each one
+    // already labelled, described and shaded by TrackProgress.js.
+    func campaign() -> Result<Data, Problem> {
+        json("__dominusCampaign", [])
     }
 
     // MARK: - Calling in

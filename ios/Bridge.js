@@ -2,7 +2,8 @@
 //
 // Loaded first, before Tasks.js, Categories.js, Applications.js, Stats.js,
 // Seal.js and Sync.js — the same set, in the same order, that the extension's
-// service worker pulls in — which then run unchanged. Everything here stands
+// service worker pulls in — and TrackProgress.js, for what The Campaign says
+// about a day. All of them then run unchanged. Everything here stands
 // in for the platform, never for a rule: the three things a browser gives
 // those scripts that JavaScriptCore does not, and the ways Swift calls them.
 //
@@ -245,6 +246,83 @@ function __dominusStandards(domain) {
                 ? resolveCooldownForDomain(fortress.categories, domain, fortress.cooldown)
                 : normalizeCooldown(fortress.cooldown),
             permanent: named ? isPermanentDomain(fortress.categories, domain) : false
+        });
+    });
+}
+
+// ---- The Campaign ---------------------------------------------------------
+//
+// TrackProgress.js draws The Campaign into a page, which a phone has not got.
+// But what a day is called, how it is described, how deeply it is shaded and
+// how many weeks are shown are all plain functions and constants in that file,
+// so the phone asks them rather than deciding for itself. Each day arrives
+// already labelled, described and levelled; Swift only draws squares.
+//
+// Two small things are worked out here because TrackProgress.js works them out
+// while building page elements, and there is no calling that half without the
+// other: which columns carry a month's name, and the summary line's counts.
+// They follow buildMonthLabels() and renderHistorySummary() step for step.
+
+function __dominusCampaign() {
+    return Promise.all([getStats(), getDayHistory(HISTORY_WEEKS * 7)]).then(function (results) {
+        var stats = results[0];
+        var history = results[1];
+
+        var blanks = history.length ? leadingBlanks(history[0].date) : 0;
+        var today = history.length ? history[history.length - 1].date : null;
+
+        // As buildMonthLabels(): a name only where the month turns over, read
+        // off the day in the column's top row, and never in the first column,
+        // where it would sit over a partial week and read as a full month.
+        var columns = Math.ceil((history.length + blanks) / 7);
+        var months = [];
+        var lastMonth = null;
+        for (var column = 0; column < columns; column++) {
+            var top = history[Math.max(0, (column * 7) - blanks)];
+            var month = top ? dateFromLocalString(top.date).getMonth() : null;
+            if (month !== null && month !== lastMonth && column > 0) {
+                months.push(MONTH_LABELS[month]);
+                lastMonth = month;
+            } else {
+                months.push("");
+            }
+        }
+
+        // As renderHistorySummary(): days before the history began are not
+        // counted — they are not untested, they simply are not known — so the
+        // span is named by when the record starts.
+        var counts = { held: 0, slipped: 0, untested: 0, inferred: 0, before: 0 };
+        history.forEach(function (day) { counts[day.state] += 1; });
+        var covered = history.find(function (day) { return day.state !== "before"; });
+
+        return JSON.stringify({
+            standing: stats,
+            weeks: HISTORY_WEEKS,
+            blanks: blanks,
+            months: months,
+            weekdays: WEEKDAY_LABELS,
+            summary: {
+                recorded: counts.held + counts.slipped + counts.inferred,
+                span: counts.before > 0 && covered
+                    ? "Since " + formatDayLabel(covered.date).slice(4)
+                    : HISTORY_WEEKS + " weeks",
+                held: counts.held,
+                slipped: counts.slipped,
+                untested: counts.untested
+            },
+            days: history.map(function (day) {
+                return {
+                    date: day.date,
+                    state: day.state,
+                    level: day.state === "held" ? standLevel(day.entry.stands)
+                        : day.state === "slipped" ? slipLevel(day.entry.unlocks)
+                        : 0,
+                    label: formatDayLabel(day.date),
+                    stateLabel: stateLabel(day.state),
+                    description: describeDay(day),
+                    today: day.date === today
+                };
+            })
         });
     });
 }
