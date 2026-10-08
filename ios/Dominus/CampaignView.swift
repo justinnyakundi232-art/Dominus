@@ -8,8 +8,11 @@ import SwiftUI
 // TrackProgress.js; this file only draws what it is handed.
 //
 // What it cannot borrow is hovering. The extension describes a day when the
-// pointer rests on its square; here a finger slid across the grid does the
-// same, and the day under it is described below the grid as it moves.
+// pointer rests on its square, and on a phone twenty-six weeks across the
+// screen makes a square too small to aim at. So the day being read is named
+// in large type above the grid, with an arrow either side to step through the
+// days one at a time. Touching or sliding across the grid still picks a day,
+// for anyone who wants to jump — but nothing depends on hitting a square.
 struct CampaignView: View {
     @EnvironmentObject private var record: Record
 
@@ -104,27 +107,78 @@ struct CampaignView: View {
                     .foregroundStyle(Theme.goldDim)
             }
 
-            HistoryGrid(campaign: campaign, selected: $selected)
-
-            // What the extension shows in a tooltip.
             if let day = described(in: campaign) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("\(day.label) · \(day.stateLabel)")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(Theme.gold)
-                    Text(day.description)
-                        .foregroundStyle(Theme.parchment)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(12)
-                .background(Theme.panel)
+                stepper(day, in: campaign)
             }
-            Text("Slide a finger across the grid to read any day.")
-                .font(.caption)
-                .foregroundStyle(Theme.goldDim)
+
+            HistoryGrid(campaign: campaign, selected: $selected)
 
             legend
         }
+    }
+
+    // The day being read, and the way to the ones either side of it. What the
+    // extension shows in a tooltip.
+    private func stepper(_ day: Record.Campaign.Day, in campaign: Record.Campaign) -> some View {
+        let earlier = neighbour(of: day, by: -1, in: campaign)
+        let later = neighbour(of: day, by: 1, in: campaign)
+
+        return VStack(spacing: 10) {
+            HStack(spacing: 12) {
+                arrow("chevron.left", to: earlier, label: "Earlier day")
+                VStack(spacing: 2) {
+                    Text(day.label)
+                        .font(.system(.title2, design: .serif).weight(.bold))
+                        .foregroundStyle(Theme.gold)
+                    Text(day.today ? "\(day.stateLabel) · Today" : day.stateLabel)
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(Theme.goldDim)
+                }
+                .frame(maxWidth: .infinity)
+                arrow("chevron.right", to: later, label: "Later day")
+            }
+            Text(day.description)
+                .foregroundStyle(Theme.parchment)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
+            if !day.today {
+                Button("Back to today") { selected = nil }
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Theme.gold)
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity)
+        .background(Theme.panel)
+    }
+
+    // A full-size target, whatever the size of the squares.
+    private func arrow(_ symbol: String, to day: Record.Campaign.Day?, label: String) -> some View {
+        Button {
+            if let day {
+                selected = day.date
+            }
+        } label: {
+            Image(systemName: symbol)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(day == nil ? Theme.goldDim.opacity(0.35) : Theme.gold)
+                .frame(width: 44, height: 44)
+                .overlay(Rectangle().stroke(day == nil ? Theme.goldDim.opacity(0.2) : Theme.goldDim, lineWidth: 1))
+        }
+        .disabled(day == nil)
+        .accessibilityLabel(label)
+    }
+
+    // The day one step earlier or later, or nil at either end. The earlier
+    // end is where the record begins, not where the grid does: stepping back
+    // through months of "before your history begins" would be a long walk to
+    // nothing.
+    private func neighbour(of day: Record.Campaign.Day, by step: Int, in campaign: Record.Campaign) -> Record.Campaign.Day? {
+        guard let index = campaign.days.firstIndex(where: { $0.date == day.date }) else { return nil }
+        let next = index + step
+        guard campaign.days.indices.contains(next) else { return nil }
+        let candidate = campaign.days[next]
+        return candidate.state == .before ? nil : candidate
     }
 
     private func described(in campaign: Record.Campaign) -> Record.Campaign.Day? {
