@@ -497,6 +497,38 @@ async function run() {
         ok(campaign.summary.span.startsWith("Since "), "the span was not named by when the record starts");
     });
 
+    await it("a day with several unlocks says how many before it says whose", async () => {
+        const phone = loadPhone();
+        const describe = (entry) => phone.scope.describeDay({ state: "slipped", entry });
+
+        // The day this wording was changed for: read on a phone as the same
+        // two unlocks stated twice. Two of x.com and two apps, which iOS
+        // gives no name for.
+        eq(describe({ stands: 8, unlocks: 4, sites: { "x.com": 2 }, firstSlip: "07:48" }),
+            "8 stands, then 4 unlocks: x.com twice and 2 others. First at 07:48.");
+
+        // Three sites tied at one each: the first is named, and the other two
+        // are still counted rather than lost.
+        eq(describe({ stands: 0, unlocks: 3, sites: { "x.com": 1, "reddit.com": 1, "youtube.com": 1 }, firstSlip: "09:00" }),
+            "3 unlocks: x.com and 2 others. First at 09:00.");
+        eq(describe({ stands: 0, unlocks: 2, sites: { "x.com": 1 }, firstSlip: "09:00" }),
+            "2 unlocks: x.com and 1 other. First at 09:00.");
+        eq(describe({ stands: 1, unlocks: 3, sites: { "x.com": 3 }, firstSlip: "22:10" }),
+            "1 stand, then x.com 3 times. First at 22:10.");
+        eq(describe({ stands: 0, unlocks: 3, sites: {}, firstSlip: "22:10" }),
+            "3 unlocks. First at 22:10.");
+    });
+
+    await it("a day with one unlock stays as short as it was", async () => {
+        const phone = loadPhone();
+        const describe = (entry) => phone.scope.describeDay({ state: "slipped", entry });
+
+        eq(describe({ stands: 2, unlocks: 1, sites: { "youtube.com": 1 }, firstSlip: "23:14" }),
+            "2 stands, then youtube.com at 23:14.");
+        eq(describe({ stands: 0, unlocks: 1, sites: {}, firstSlip: "23:14" }), "one unlock at 23:14.");
+        eq(describe({ stands: 0, unlocks: 1, sites: {}, firstSlip: null }), "one unlock.");
+    });
+
     process.exit(report("bridge") ? 1 : 0);
 }
 

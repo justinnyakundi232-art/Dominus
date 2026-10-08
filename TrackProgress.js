@@ -159,15 +159,13 @@ function describeDay(day) {
     // Slipped. Name the site that actually gave way, and when — the late-night
     // pattern is the useful thing here, and a bare count hides it.
     const gave = describeSlip(entry);
-    const when = entry.firstSlip ? ` at ${entry.firstSlip}` : "";
 
-    return entry.stands > 0
-        ? `${stands}, then ${gave}${when}.`
-        : `${gave}${when}.`;
+    return entry.stands > 0 ? `${stands}, then ${gave}` : gave;
 }
 
-// What gave way, in as many words as it takes to account for every unlock on
-// the day — and never fewer.
+// What gave way, and when, in as many words as it takes to account for every
+// unlock on the day — and never fewer. A whole sentence, or two, ending in its
+// own full stop.
 //
 // Naming only the worst site used to lose the count entirely. Three unlocks
 // across three different sites left all three tied at one, so the ×N suffix was
@@ -179,22 +177,53 @@ function describeDay(day) {
 // So whatever the named site doesn't account for is stated too. The remainder
 // is counted in unlocks rather than in sites, because unlocks are what coloured
 // the square and because recordUnlock() takes its domain optionally: an unlock
-// recorded without one belongs in that remainder, not nowhere.
+// recorded without one belongs in that remainder, not nowhere. On a phone that
+// is every unlocked app, which iOS gives no name for.
+//
+// It used to do all that in symbols — "x.com ×2, +2 more at 07:48" — and was
+// read as the same two unlocks stated twice, with a time that might have
+// belonged to any of them. A day with several unlocks now says how many, in
+// words, before it says whose, and says that the time is the first one's:
+//
+//     4 unlocks: x.com twice and 2 others. First at 07:48.
+//
+// A day with a single unlock has nothing to add up, and stays as short as it
+// was: "youtube.com at 23:14."
 function describeSlip(entry) {
     const sites = Object.keys(entry.sites)
         .sort((a, b) => entry.sites[b] - entry.sites[a]);
+    const worst = sites[0];
 
-    // Nothing named the whole day. A real shape, not a corrupt one.
-    if (sites.length === 0) {
-        return entry.unlocks === 1 ? "one unlock" : `${entry.unlocks} unlocks`;
+    if (entry.unlocks <= 1) {
+        const when = entry.firstSlip ? ` at ${entry.firstSlip}` : "";
+        // Nothing named it. A real shape, not a corrupt one.
+        return `${worst || "one unlock"}${when}.`;
     }
 
-    const worst = sites[0];
+    const first = entry.firstSlip ? ` First at ${entry.firstSlip}.` : "";
+
+    // Nothing named the whole day.
+    if (!worst) {
+        return `${entry.unlocks} unlocks.${first}`;
+    }
+
     const share = entry.sites[worst];
-    const named = `${worst}${share > 1 ? ` ×${share}` : ""}`;
     const rest = entry.unlocks - share;
 
-    return rest > 0 ? `${named}, +${rest} more` : named;
+    // One site accounts for all of them: the total and the site's own count
+    // would be the same number said twice.
+    if (rest <= 0) {
+        return `${worst} ${timesInWords(share)}.${first}`;
+    }
+
+    const named = share > 1 ? `${worst} ${timesInWords(share)}` : worst;
+    const others = rest === 1 ? "1 other" : `${rest} others`;
+
+    return `${entry.unlocks} unlocks: ${named} and ${others}.${first}`;
+}
+
+function timesInWords(count) {
+    return count === 2 ? "twice" : `${count} times`;
 }
 
 function stateLabel(state) {
