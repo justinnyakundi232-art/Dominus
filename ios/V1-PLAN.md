@@ -32,6 +32,31 @@ out by the same code as in Chrome.
 | **Task swaps** | Wait at the gate like a weakening, since one could be, but are called a change, not a taking down. One rule with Chrome. |
 | **Taking it all down** | The slowest thing in the app. Asking starts a 30-minute wait that needn't be watched and changes nothing; afterwards it must be confirmed, within an hour, or the request lapses. It never falls by itself, stays down until raised, and is not counted as a slip. |
 
+## The Seal, as agreed
+
+Set 10 October 2026, before any of it was written.
+
+What `Seal.js` already decides, and the phone runs as it is: the seal guards
+only weakening; at least four characters, kept as a PBKDF2 hash with an
+optional hint; two free wrong attempts, then a wait that doubles from five
+seconds to a ceiling of five minutes; a forgotten seal lifts itself an hour
+after it is asked for, with no master code; unlocking one app or site is not
+sealed; changing or removing the seal asks for the current one.
+
+What was chosen for the phone:
+
+| | |
+|---|---|
+| **Face ID** | Never stands in for the seal. It is always typed: a glance is no friction at all, and friction is what the seal is. May become an option with the settings work, for someone who only wants to keep others out. |
+| **The sealed gate** | The password only, as in Chrome. The seal replaces the ten-second wait rather than adding to it. The gate still lists what comes down and shows the streak. |
+| **Taking it all down** | The seal to start the request, then the thirty minutes and the confirmation as they are. |
+| **Recovery** | The same hour as Chrome. Shown on The Keep with the time left and a way to call it off; everything stays blocked and sealed until it ends, and afterwards the fortress is unsealed but still standing. |
+
+Added on the phone without changing any of that: the same hash format as
+Chrome, so a sealed fortress can one day sync; a notification when a recovery
+finishes; and a password field that works with a password manager, which the
+extension allows for the same reason it allows pasting a seal.
+
 ## The screens
 
 Four tabs, the same sections as the other two halves.
