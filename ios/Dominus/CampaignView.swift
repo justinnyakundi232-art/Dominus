@@ -20,7 +20,7 @@ struct CampaignView: View {
     @State private var selected: String?
 
     var body: some View {
-        Page("The Campaign", subtitle: "A wise commander studies the battlefield before the next advance.") {
+        Page("The Campaign", subtitle: "A wise commander studies the battlefield before the next advance.", emblem: "Medieval_Strategy") {
             victoryRate
             streaks
             if let campaign = record.campaign {
@@ -44,7 +44,7 @@ struct CampaignView: View {
         ) {
             let ratio = record.standing?.ratio
             Text(ratio.map { "\(Int(($0 * 100).rounded()))%" } ?? "No data yet")
-                .font(.system(size: ratio == nil ? 28 : 44, weight: .bold, design: .serif))
+                .font(.display(ratio == nil ? 28 : 44))
                 .foregroundStyle(Theme.gold)
             HStack(spacing: 6) {
                 let filled = Int(((ratio ?? 0) * 10).rounded())
@@ -54,6 +54,13 @@ struct CampaignView: View {
                         .overlay(RoundedRectangle(cornerRadius: 4).stroke(Theme.gold, lineWidth: 1))
                         .aspectRatio(1, contentMode: .fit)
                 }
+            }
+            // The laurel and the cracked shield that flank the meter in the
+            // extension: what holding the line earns, and what giving way costs.
+            HStack {
+                Emblem(name: "Cracked_Shield", height: 44)
+                Spacer()
+                Emblem(name: "Laurel_Wreath", height: 44)
             }
         }
     }
@@ -85,7 +92,7 @@ struct CampaignView: View {
                 .foregroundStyle(Theme.goldDim)
             Spacer()
             Text(value.map { "\($0) \($0 == 1 ? unit.0 : unit.1)" } ?? "–")
-                .font(.system(.title3, design: .serif).weight(.bold))
+                .font(.display(20, relativeTo: .title3))
                 .foregroundStyle(Theme.gold)
         }
     }
@@ -130,7 +137,7 @@ struct CampaignView: View {
                 }
                 VStack(spacing: 2) {
                     Text(day.label)
-                        .font(.system(.title2, design: .serif).weight(.bold))
+                        .font(.display(22, relativeTo: .title2))
                         .foregroundStyle(Theme.gold)
                     Text(day.today ? "\(day.stateLabel) · Today" : day.stateLabel)
                         .font(.footnote.weight(.semibold))

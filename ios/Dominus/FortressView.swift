@@ -45,10 +45,16 @@ struct FortressView: View {
     @State private var typedRejected: String?
     @State private var failure: String?
 
+    // Which categories have their sites showing, and whether the sites
+    // blocked by hand are all listed. Closed to begin with: a fortress with a
+    // few categories on would otherwise open as one long list of domains.
+    @State private var open: Set<String> = []
+    @State private var allByHand = false
+
     private let rules = SharedRules.shared
 
     var body: some View {
-        Page("The Fortress") {
+        Page("The Fortress", emblem: "Fortress") {
             if center.authorizationStatus != .approved {
                 permission
             } else {
@@ -71,7 +77,12 @@ struct FortressView: View {
                     .font(.caption)
                     .foregroundStyle(.red)
             }
-            plumbing
+            // Said only when something is wrong. While the test builds were
+            // finding out what worked it was worth stating every time; now it
+            // would be three lines of reassurance nobody asked for.
+            if plumbingIsBroken {
+                plumbing
+            }
         }
         // The picker edits a copy. What was chosen is only taken up once it
         // closes, so dropping an app can be made to wait like any other
@@ -257,13 +268,33 @@ struct FortressView: View {
     // MARK: - Sites
 
     private func categoryPanel(_ category: FortressPlan.Category, in plan: FortressPlan) -> some View {
-        Panel(category.name) {
+        let isOpen = open.contains(category.id)
+
+        return Panel(category.name) {
             HStack(spacing: 10) {
-                Text(category.glyph)
-                    .foregroundStyle(Color(hexString: plan.hex(of: category)))
-                Text("\(category.sites.count) \(category.sites.count == 1 ? "site" : "sites")")
-                    .font(.footnote)
-                    .foregroundStyle(Theme.goldDim)
+                // The count is the handle: touching it opens and closes the
+                // list of sites beneath.
+                Button {
+                    if isOpen {
+                        open.remove(category.id)
+                    } else {
+                        open.insert(category.id)
+                    }
+                } label: {
+                    HStack(spacing: 10) {
+                        Text(category.glyph)
+                            .foregroundStyle(Color(hexString: plan.hex(of: category)))
+                        Text("\(category.sites.count) \(category.sites.count == 1 ? "site" : "sites")")
+                            .font(.footnote)
+                            .foregroundStyle(Theme.goldDim)
+                        Image(systemName: isOpen ? "chevron.up" : "chevron.down")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Theme.gold)
+                    }
+                    .frame(minHeight: 32)
+                    .contentShape(Rectangle())
+                }
+                .accessibilityLabel(isOpen ? "Hide the sites in \(category.name)" : "Show the sites in \(category.name)")
                 Spacer()
                 // Bound to the stored value, not to a copy: if the gate is
                 // turned away from, nothing changed and the switch shows so.
@@ -274,12 +305,19 @@ struct FortressView: View {
                 .labelsHidden()
                 .tint(Theme.gold)
             }
-            if category.enabled {
-                siteRows(category.sites, remove: nil)
+            if isOpen {
+                if category.sites.isEmpty {
+                    Text("No sites yet.")
+                        .font(.footnote)
+                        .foregroundStyle(Theme.goldDim)
+                } else {
+                    // Unlock is only offered on a site that is being blocked.
+                    siteRows(category.sites, unlockable: category.enabled, remove: nil)
+                }
+                Button("Edit this category") { sheet = .category(category) }
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Theme.gold)
             }
-            Button("Edit") { sheet = .category(category) }
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(Theme.gold)
         }
     }
 
@@ -311,23 +349,34 @@ struct FortressView: View {
                 Text("None.")
                     .foregroundStyle(Theme.parchment)
             } else {
-                siteRows(plan.manualSites) { site in
+                // The first few, and the rest on request.
+                let shown = allByHand ? plan.manualSites : Array(plan.manualSites.prefix(FortressView.byHandShown))
+                siteRows(shown, unlockable: true) { site in
                     attempt(.edit(.manualSites(plan.manualSites.filter { $0 != site })))
+                }
+                if plan.manualSites.count > FortressView.byHandShown {
+                    Button(allByHand ? "Show fewer" : "Show all \(plan.manualSites.count)") {
+                        allByHand.toggle()
+                    }
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(Theme.gold)
                 }
             }
         }
     }
 
+    private static let byHandShown = 5
+
     // The filter's page for a site blocked by name has no buttons, so its row
     // here is the only way to unlock one.
-    private func siteRows(_ sites: [String], remove: ((String) -> Void)?) -> some View {
+    private func siteRows(_ sites: [String], unlockable: Bool, remove: ((String) -> Void)?) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             ForEach(sites, id: \.self) { site in
                 HStack(spacing: 16) {
                     Text(site)
                         .foregroundStyle(Theme.parchment)
                     Spacer()
-                    if fortress.isStanding {
+                    if fortress.isStanding && unlockable {
                         if fortress.isOpen(.site(site)) {
                             Text("Open")
                                 .font(.footnote)
@@ -427,9 +476,13 @@ struct FortressView: View {
 
     // MARK: - Plumbing
 
-    // What every build depends on, stated rather than assumed: the
-    // extension's JavaScript, the storage shared with the block screen, and
-    // whether the block screen's last notification got through.
+    private var plumbingIsBroken: Bool {
+        !rules.isLoaded || Gate.defaults == nil || Gate.notificationFailure != nil
+    }
+
+    // What everything depends on: the extension's JavaScript, the storage
+    // shared with the block screen, and whether the block screen's last
+    // notification got through.
     private var plumbing: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(rules.isLoaded

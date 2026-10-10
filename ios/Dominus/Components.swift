@@ -120,15 +120,38 @@ struct GoldButton: View {
     }
 }
 
-// The scrolling black page each tab sits on, under its name.
+// The extension's artwork, bundled from the repository's Assets folder as it
+// is. Nothing if the picture is missing: it is decoration, and a page must not
+// depend on it.
+struct Emblem: View {
+    let name: String
+    var height: CGFloat = 64
+
+    var body: some View {
+        if let image = UIImage(named: name) {
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFit()
+                .frame(height: height)
+                // Purely decorative: it labels nothing, and a screen reader
+                // announcing it between figures would be noise.
+                .accessibilityHidden(true)
+        }
+    }
+}
+
+// The scrolling black page each tab sits on, under its name, with the emblem
+// the extension gives the same section.
 struct Page<Content: View>: View {
     private let title: String
     private let subtitle: String?
+    private let emblem: String?
     private let content: Content
 
-    init(_ title: String, subtitle: String? = nil, @ViewBuilder content: () -> Content) {
+    init(_ title: String, subtitle: String? = nil, emblem: String? = nil, @ViewBuilder content: () -> Content) {
         self.title = title
         self.subtitle = subtitle
+        self.emblem = emblem
         self.content = content()
     }
 
@@ -137,15 +160,21 @@ struct Page<Content: View>: View {
             Theme.ground.ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(title.uppercased())
-                            .font(.system(.largeTitle, design: .serif).weight(.bold))
-                            .tracking(3)
-                            .foregroundStyle(Theme.gold)
-                        if let subtitle {
-                            Text(subtitle)
-                                .font(.footnote)
-                                .foregroundStyle(Theme.goldDim)
+                    HStack(alignment: .center, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(title.uppercased())
+                                .font(.display(30, relativeTo: .largeTitle))
+                                .tracking(2)
+                                .foregroundStyle(Theme.gold)
+                            if let subtitle {
+                                Text(subtitle)
+                                    .font(.footnote)
+                                    .foregroundStyle(Theme.goldDim)
+                            }
+                        }
+                        Spacer(minLength: 0)
+                        if let emblem {
+                            Emblem(name: emblem)
                         }
                     }
                     content

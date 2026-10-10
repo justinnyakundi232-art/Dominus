@@ -123,6 +123,13 @@ It starts a DeviceActivity timer of the same length, and `DominusMonitor`
 re-applies the fortress when it ends. DeviceActivity refuses intervals under
 15 minutes, so the timer's end is rounded up to the next whole minute.
 
+## One promise to keep true
+
+The welcome screen says "everything stays on this phone". For a standalone
+first release that is so. It is the fourth place Dominus makes that promise —
+with the changelog, the store listing and the extension's Seal panel — and
+the release in which the phone starts to sync has to change all four.
+
 ## Requirements
 
 - iOS 16 or later on the phone (`.individual` Screen Time authorization).

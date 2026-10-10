@@ -22,7 +22,7 @@ struct SealView: View {
     @State private var problem: String?
 
     var body: some View {
-        Page("The Seal", subtitle: "Strengthening the fortress is free. Weakening it costs the seal.") {
+        Page("The Seal", subtitle: "Strengthening the fortress is free. Weakening it costs the seal.", emblem: "Seal") {
             if let status = seal.status {
                 if !status.enabled {
                     unsealed(status)
@@ -215,7 +215,7 @@ struct RecoveryStatus: View {
 
     var body: some View {
         Text("Your seal lifts in \(seal.status?.recoveryRemaining ?? "under an hour").")
-            .font(.system(.title3, design: .serif))
+            .font(.display(20, relativeTo: .title3, bold: false))
             .foregroundStyle(Theme.parchment)
         Text("Until then everything stays blocked and sealed. Afterwards the fortress is still standing, without a seal, and you can set a new one.")
             .font(.footnote)

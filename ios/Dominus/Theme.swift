@@ -30,3 +30,17 @@ extension Color {
         self.init(hex: UInt32(digits, radix: 16) ?? 0xD4AF37)
     }
 }
+
+extension Font {
+    // Playfair Display, the extension's and the desktop app's typeface for
+    // headings and figures. Bundled as one variable font (Fonts/), the same
+    // family under the same licence as the copy in Styles/fonts — that one is
+    // a web font, which an iPhone app cannot load.
+    //
+    // Sized against a text style so it still grows with the reader's chosen
+    // text size. If the font is ever missing, iOS falls back to the system
+    // face rather than failing.
+    static func display(_ size: CGFloat, relativeTo style: Font.TextStyle = .title, bold: Bool = true) -> Font {
+        Font.custom("Playfair Display", size: size, relativeTo: style).weight(bold ? .bold : .regular)
+    }
+}

@@ -96,7 +96,7 @@ struct UnlockFlow: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
                     Text("UNLOCK")
-                        .font(.system(.largeTitle, design: .serif).weight(.bold))
+                        .font(.display(34, relativeTo: .largeTitle))
                         .tracking(4)
                         .foregroundStyle(Theme.gold)
                     TargetLabel(target: target)
@@ -262,7 +262,7 @@ struct UnlockFlow: View {
         let escalating = (cooldownSettings["escalate"] as? Bool) == true
         return VStack(alignment: .leading, spacing: 14) {
             Text(SharedRules.shared.formatClock(remaining))
-                .font(.system(size: 64, weight: .bold, design: .serif))
+                .font(.display(64))
                 .monospacedDigit()
                 .foregroundStyle(Theme.gold)
             Text(startedOver

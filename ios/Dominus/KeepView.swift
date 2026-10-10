@@ -15,7 +15,7 @@ struct KeepView: View {
     @ObservedObject private var center = AuthorizationCenter.shared
 
     var body: some View {
-        Page("The Keep") {
+        Page("The Keep", emblem: "Watchtower") {
             // Whatever needs you, first and glowing.
             Group {
                 if let request = session.pending {
@@ -117,7 +117,7 @@ struct KeepView: View {
             switch record.todayState {
             case .slipped:
                 Text("A gate gave way today.")
-                    .font(.system(.title3, design: .serif))
+                    .font(.display(20, relativeTo: .title3, bold: false))
                     .foregroundStyle(Theme.parchment)
                 if let time = record.today?.firstSlip {
                     Text("First unlock at \(time).")
@@ -127,14 +127,14 @@ struct KeepView: View {
             case .held:
                 let stands = record.today?.stands ?? 0
                 Text("You have held the line \(stands) \(stands == 1 ? "time" : "times") today.")
-                    .font(.system(.title3, design: .serif))
+                    .font(.display(20, relativeTo: .title3, bold: false))
                     .foregroundStyle(Theme.parchment)
                 Text("Every one of those was a choice.")
                     .font(.footnote)
                     .foregroundStyle(Theme.goldDim)
             default:
                 Text("Nothing has tested you today.")
-                    .font(.system(.title3, design: .serif))
+                    .font(.display(20, relativeTo: .title3, bold: false))
                     .foregroundStyle(Theme.parchment)
                 Text("An untested day keeps your streak — it just wasn't a fight.")
                     .font(.footnote)
@@ -173,7 +173,7 @@ struct KeepView: View {
         Panel(title, info: info) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(value.map { String($0) } ?? "–")
-                    .font(.system(size: 44, weight: .bold, design: .serif))
+                    .font(.display(44))
                     .foregroundStyle(Theme.gold)
                 Text("\(value == 1 ? unit.0 : unit.1) in a row")
                     .font(.footnote)
@@ -197,7 +197,7 @@ struct KeepView: View {
             let unlocks = standing?.unlockCount ?? 0
             let total = stands + unlocks
             Text(standing?.ratio.map { "\(Int(($0 * 100).rounded()))%" } ?? "–")
-                .font(.system(size: 44, weight: .bold, design: .serif))
+                .font(.display(44))
                 .foregroundStyle(Theme.gold)
             Text(total == 0
                  ? "Nothing has tested you yet"

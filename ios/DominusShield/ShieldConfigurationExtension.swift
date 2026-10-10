@@ -40,7 +40,7 @@ final class ShieldConfigurationExtension: ShieldConfigurationDataSource {
         return ShieldConfiguration(
             backgroundBlurStyle: .systemUltraThinMaterialDark,
             backgroundColor: .black,
-            icon: UIImage(named: "SHIELDICON"),
+            icon: UIImage(named: "Ornate_golden_shield_logo-removebg-preview"),
             title: ShieldConfiguration.Label(text: "ACCESS DENIED", color: gold),
             subtitle: ShieldConfiguration.Label(text: "\(held) You are in control.", color: parchment),
             primaryButtonLabel: ShieldConfiguration.Label(text: "Stay focused", color: .black),

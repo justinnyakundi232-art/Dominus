@@ -30,24 +30,28 @@ struct RootView: View {
     @StateObject private var seal = Seal()
     @StateObject private var session = Session()
 
+    // Shown once, to a phone that has never had a fortress. Read before the
+    // fortress is made for the first time, which is what "never had one"
+    // means: an install from before the welcome existed has one already and
+    // is not walked through it. See WelcomeView.
+    @State private var welcoming = !UserDefaults.standard.bool(forKey: WelcomeView.seenKey)
+        && FortressState.load() == nil
+
     private let tick = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
 
     var body: some View {
-        TabView(selection: $session.tab) {
-            KeepView()
-                .tabItem { Label("Keep", systemImage: "shield.lefthalf.filled") }
-                .tag(Session.Tab.keep)
-            FortressView()
-                .tabItem { Label("Fortress", systemImage: "building.columns") }
-                .tag(Session.Tab.fortress)
-            CampaignView()
-                .tabItem { Label("Campaign", systemImage: "chart.bar") }
-            .tag(Session.Tab.campaign)
-            SealView()
-                .tabItem { Label("Seal", systemImage: "lock.shield") }
-            .tag(Session.Tab.seal)
+        Group {
+            if welcoming {
+                WelcomeView {
+                    UserDefaults.standard.set(true, forKey: WelcomeView.seenKey)
+                    session.tab = .fortress
+                    welcoming = false
+                    refresh()
+                }
+            } else {
+                tabs
+            }
         }
-        .tint(Theme.gold)
         .environmentObject(fortress)
         .environmentObject(record)
         .environmentObject(seal)
@@ -69,6 +73,24 @@ struct RootView: View {
             fortress.refreshIfAnyEnded()
             seal.refreshIfRecovering()
         }
+    }
+
+    private var tabs: some View {
+        TabView(selection: $session.tab) {
+            KeepView()
+                .tabItem { Label("Keep", systemImage: "shield.lefthalf.filled") }
+                .tag(Session.Tab.keep)
+            FortressView()
+                .tabItem { Label("Fortress", systemImage: "building.columns") }
+                .tag(Session.Tab.fortress)
+            CampaignView()
+                .tabItem { Label("Campaign", systemImage: "chart.bar") }
+            .tag(Session.Tab.campaign)
+            SealView()
+                .tabItem { Label("Seal", systemImage: "lock.shield") }
+            .tag(Session.Tab.seal)
+        }
+        .tint(Theme.gold)
     }
 
     // Everything that can have changed while the app was away: the fortress
