@@ -125,7 +125,9 @@ struct CampaignView: View {
 
         return VStack(spacing: 10) {
             HStack(spacing: 12) {
-                arrow("chevron.left", to: earlier, label: "Earlier day")
+                StepArrow(symbol: "chevron.left", enabled: earlier != nil, label: "Earlier day") {
+                    move(by: -1, in: campaign)
+                }
                 VStack(spacing: 2) {
                     Text(day.label)
                         .font(.system(.title2, design: .serif).weight(.bold))
@@ -135,7 +137,9 @@ struct CampaignView: View {
                         .foregroundStyle(Theme.goldDim)
                 }
                 .frame(maxWidth: .infinity)
-                arrow("chevron.right", to: later, label: "Later day")
+                StepArrow(symbol: "chevron.right", enabled: later != nil, label: "Later day") {
+                    move(by: 1, in: campaign)
+                }
             }
             Text(day.description)
                 .foregroundStyle(Theme.parchment)
@@ -152,21 +156,15 @@ struct CampaignView: View {
         .background(Theme.panel)
     }
 
-    // A full-size target, whatever the size of the squares.
-    private func arrow(_ symbol: String, to day: Record.Campaign.Day?, label: String) -> some View {
-        Button {
-            if let day {
-                selected = day.date
-            }
-        } label: {
-            Image(systemName: symbol)
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(day == nil ? Theme.goldDim.opacity(0.35) : Theme.gold)
-                .frame(width: 44, height: 44)
-                .overlay(Rectangle().stroke(day == nil ? Theme.goldDim.opacity(0.2) : Theme.goldDim, lineWidth: 1))
-        }
-        .disabled(day == nil)
-        .accessibilityLabel(label)
+    // One step from whichever day is being read now. Worked out afresh each
+    // time rather than fixed when the arrow was drawn, because a held arrow
+    // keeps calling this long after that.
+    private func move(by step: Int, in campaign: Record.Campaign) {
+        guard
+            let day = described(in: campaign),
+            let next = neighbour(of: day, by: step, in: campaign)
+        else { return }
+        selected = next.date
     }
 
     // The day one step earlier or later, or nil at either end. The earlier
@@ -203,6 +201,69 @@ struct CampaignView: View {
                 .font(.caption)
                 .foregroundStyle(Theme.goldDim)
         }
+    }
+}
+
+// An arrow that steps once when tapped and keeps stepping while held. A
+// full-size target, whatever the size of the squares.
+//
+// Half a year is a long way to go a tap at a time. Holding waits a moment, so
+// a slow tap is still one step, and then walks at about nine days a second —
+// quick enough to cross months, slow enough to stop on a day.
+private struct StepArrow: View {
+    let symbol: String
+    let enabled: Bool
+    let label: String
+    let step: () -> Void
+
+    @State private var holding: Task<Void, Never>?
+
+    var body: some View {
+        Image(systemName: symbol)
+            .font(.title3.weight(.semibold))
+            .foregroundStyle(enabled ? Theme.gold : Theme.goldDim.opacity(0.35))
+            .frame(width: 44, height: 44)
+            .overlay(Rectangle().stroke(enabled ? Theme.goldDim : Theme.goldDim.opacity(0.2), lineWidth: 1))
+            .contentShape(Rectangle())
+            // Never completes: it is only here to say when a finger goes down
+            // and when it comes up.
+            .onLongPressGesture(minimumDuration: .infinity, maximumDistance: 40, perform: {}, onPressingChanged: { pressing in
+                release()
+                if pressing && enabled {
+                    press()
+                }
+            })
+            // The end of the record, or of the grid: nothing further to walk to.
+            .onChange(of: enabled) { enabled in
+                if !enabled {
+                    release()
+                }
+            }
+            .onDisappear(perform: release)
+            .accessibilityElement()
+            .accessibilityLabel(label)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction {
+                if enabled {
+                    step()
+                }
+            }
+    }
+
+    private func press() {
+        step()
+        holding = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 450_000_000)
+            while !Task.isCancelled {
+                step()
+                try? await Task.sleep(nanoseconds: 110_000_000)
+            }
+        }
+    }
+
+    private func release() {
+        holding?.cancel()
+        holding = nil
     }
 }
 

@@ -38,7 +38,7 @@ settings:
     # Info.plists stated a version, so 0.x sorts below them in TestFlight,
     # which calls it "an older version" and sends no email. Install from
     # TestFlight directly.
-    CURRENT_PROJECT_VERSION: "14"
+    CURRENT_PROJECT_VERSION: "15"
     SWIFT_VERSION: "5.0"
     # Not offered on a Mac or Vision Pro as an iPhone app, since Screen Time
     # blocking only exists on iPhone. iPhone-only itself is set per target,
