@@ -14,8 +14,14 @@
 //
 // Tasks.js's randomInt() draws from crypto.getRandomValues, and Sync.js names
 // this device and each event with crypto.randomUUID. Both are backed by the
-// system. crypto.subtle, which Seal.js hashes a password with, is not here
-// yet: nothing calls it until a seal is set.
+// system.
+//
+// crypto.subtle is what Seal.js hashes a seal with: PBKDF2-SHA256, by way of
+// importKey() and deriveBits(). Only those two calls, in only that shape, are
+// answered here, and the hashing itself is the system's — CommonCrypto, behind
+// __dominusPBKDF2. It has to give the very bytes WebCrypto gives, because a
+// seal set on the phone is one a browser will be asked to check once the two
+// sync. Tests/bridge.test.js holds this against the real thing.
 
 var crypto = {
     getRandomValues: function (array) {
@@ -24,8 +30,84 @@ var crypto = {
     },
     randomUUID: function () {
         return __dominusUUID();
+    },
+    subtle: {
+        // The "key" is only the password's bytes, kept for deriveBits().
+        importKey: function (format, bytes) {
+            return Promise.resolve({ raw: bytes });
+        },
+        deriveBits: function (parameters, key, bits) {
+            var derived = __dominusPBKDF2(
+                __dominusBytesToBase64(key.raw),
+                __dominusBytesToBase64(parameters.salt),
+                parameters.iterations,
+                bits / 8
+            );
+            return Promise.resolve(__dominusBase64ToBytes(derived).buffer);
+        }
     }
 };
+
+// ---- Text and base64 ------------------------------------------------------
+//
+// Three more things every browser has and JavaScriptCore has not. Seal.js
+// turns a password into bytes with TextEncoder and keeps its salt and verifier
+// as base64 with btoa and atob.
+
+function TextEncoder() {}
+
+// UTF-8, as the real one always is.
+TextEncoder.prototype.encode = function (text) {
+    var utf8 = unescape(encodeURIComponent(String(text)));
+    var bytes = new Uint8Array(utf8.length);
+    for (var i = 0; i < utf8.length; i++) bytes[i] = utf8.charCodeAt(i);
+    return bytes;
+};
+
+var __dominusBase64Alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+// A string of characters 0–255 to base64, and back — what btoa and atob do.
+function btoa(binary) {
+    var out = "";
+    for (var i = 0; i < binary.length; i += 3) {
+        var a = binary.charCodeAt(i);
+        var b = i + 1 < binary.length ? binary.charCodeAt(i + 1) : NaN;
+        var c = i + 2 < binary.length ? binary.charCodeAt(i + 2) : NaN;
+        out += __dominusBase64Alphabet.charAt(a >> 2);
+        out += __dominusBase64Alphabet.charAt(((a & 3) << 4) | (isNaN(b) ? 0 : b >> 4));
+        out += isNaN(b) ? "=" : __dominusBase64Alphabet.charAt(((b & 15) << 2) | (isNaN(c) ? 0 : c >> 6));
+        out += isNaN(c) ? "=" : __dominusBase64Alphabet.charAt(c & 63);
+    }
+    return out;
+}
+
+function atob(text) {
+    var clean = String(text).replace(/[^A-Za-z0-9+/]/g, "");
+    var out = "";
+    for (var i = 0; i < clean.length; i += 4) {
+        var a = __dominusBase64Alphabet.indexOf(clean.charAt(i));
+        var b = __dominusBase64Alphabet.indexOf(clean.charAt(i + 1));
+        var c = i + 2 < clean.length ? __dominusBase64Alphabet.indexOf(clean.charAt(i + 2)) : -1;
+        var d = i + 3 < clean.length ? __dominusBase64Alphabet.indexOf(clean.charAt(i + 3)) : -1;
+        out += String.fromCharCode((a << 2) | (b >> 4));
+        if (c >= 0) out += String.fromCharCode(((b & 15) << 4) | (c >> 2));
+        if (d >= 0) out += String.fromCharCode(((c & 3) << 6) | d);
+    }
+    return out;
+}
+
+function __dominusBytesToBase64(bytes) {
+    var binary = "";
+    for (var i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    return btoa(binary);
+}
+
+function __dominusBase64ToBytes(text) {
+    var binary = atob(text);
+    var bytes = new Uint8Array(binary.length);
+    for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+}
 
 // ---- chrome.storage.local -------------------------------------------------
 //
@@ -325,4 +407,56 @@ function __dominusCampaign() {
             })
         });
     });
+}
+
+// ---- The seal -------------------------------------------------------------
+//
+// Seal.js sets, checks, changes, breaks and recovers a seal. Its prompt is
+// built out of page elements and stays behind; everything else is called as
+// it is. These only gather what a screen needs into one answer, as JSON.
+
+// Where the seal stands. loadSeal() also resolves a recovery whose hour has
+// run out, so asking is what lifts it.
+function __dominusSeal() {
+    return Promise.all([loadSeal(), loadSealAttempts()]).then(function (results) {
+        var seal = results[0];
+        var remaining = recoveryRemainingMs(seal);
+        return JSON.stringify({
+            enabled: seal.enabled,
+            hint: seal.hint || "",
+            recovering: !!(seal.enabled && seal.recovery),
+            recoveryRemainingMs: remaining,
+            recoveryRemaining: remaining > 0 ? formatRecoveryRemaining(remaining) : "",
+            waitSeconds: lockoutRemaining(results[1]),
+            minLength: SEAL_MIN_LENGTH,
+            maxHintLength: MAX_SEAL_HINT_LENGTH
+        });
+    });
+}
+
+// { ok, error }. The error is Seal.js's own wording, wait included.
+function __dominusCheckSeal(password) {
+    return verifySeal(password).then(function (result) {
+        return JSON.stringify(result.ok ? { ok: true, error: "" } : sealFailure(result));
+    });
+}
+
+function __dominusSetSeal(password, hint) {
+    return setSeal(password, hint).then(JSON.stringify);
+}
+
+function __dominusChangeSeal(current, next, hint) {
+    return changeSeal(current, next, hint).then(JSON.stringify);
+}
+
+function __dominusClearSeal(password) {
+    return clearSeal(password).then(JSON.stringify);
+}
+
+function __dominusRequestSealRecovery() {
+    return requestSealRecovery().then(__dominusSeal);
+}
+
+function __dominusCancelSealRecovery() {
+    return cancelSealRecovery().then(__dominusSeal);
 }

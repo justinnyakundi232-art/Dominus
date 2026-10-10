@@ -14,6 +14,7 @@ import UserNotifications
 struct FortressView: View {
     @EnvironmentObject private var fortress: Fortress
     @EnvironmentObject private var record: Record
+    @EnvironmentObject private var seal: Seal
     @EnvironmentObject private var session: Session
     @ObservedObject private var center = AuthorizationCenter.shared
 
@@ -23,12 +24,16 @@ struct FortressView: View {
         case category(FortressPlan.Category?)
         case standards
         case gate(Fortress.Change, Fortress.Cost)
+        // Asking to take the whole fortress down, on a sealed fortress: the
+        // seal to begin, before the thirty minutes start.
+        case standDown
 
         var id: String {
             switch self {
             case .category(let category): return "category-\(category?.id ?? "new")"
             case .standards: return "standards"
             case .gate: return "gate"
+            case .standDown: return "standDown"
             }
         }
     }
@@ -100,8 +105,25 @@ struct FortressView: View {
                     changeOnly: cost.changeOnly,
                     seconds: fortress.plan?.removeCooldownSeconds ?? 10,
                     streak: record.standing?.currentStreak ?? 0,
+                    seal: seal,
                     confirm: {
                         fortress.perform(change)
+                        self.sheet = nil
+                    },
+                    keep: { self.sheet = nil }
+                )
+            case .standDown:
+                PauseGate(
+                    lines: [
+                        "The whole fortress comes down — nothing on this phone stays blocked.",
+                        "Not yet: this starts a 30-minute wait, and it has to be confirmed afterwards."
+                    ],
+                    changeOnly: false,
+                    seconds: fortress.plan?.removeCooldownSeconds ?? 10,
+                    streak: record.standing?.currentStreak ?? 0,
+                    seal: seal,
+                    confirm: {
+                        fortress.requestStandDown()
                         self.sheet = nil
                     },
                     keep: { self.sheet = nil }
@@ -174,8 +196,18 @@ struct FortressView: View {
                 Text("Standing. Everything below is blocked.")
                     .foregroundStyle(Theme.parchment)
                 if fortress.standDown == .none {
-                    GoldButton("Take it down", secondary: true) { fortress.requestStandDown() }
-                    Text("Asking starts a 30-minute wait you don't have to watch. Nothing changes until you come back and confirm.")
+                    GoldButton("Take it down", secondary: true) {
+                        // Unsealed, asking is free: it changes nothing, and
+                        // the wait is the cost. Sealed, the seal comes first.
+                        if seal.isSealed {
+                            sheet = .standDown
+                        } else {
+                            fortress.requestStandDown()
+                        }
+                    }
+                    Text(seal.isSealed
+                         ? "Asking takes your seal, then starts a 30-minute wait you don't have to watch. Nothing changes until you come back and confirm."
+                         : "Asking starts a 30-minute wait you don't have to watch. Nothing changes until you come back and confirm.")
                         .font(.footnote)
                         .foregroundStyle(Theme.goldDim)
                 } else {

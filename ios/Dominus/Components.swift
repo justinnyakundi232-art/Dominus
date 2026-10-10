@@ -171,21 +171,6 @@ struct TargetLabel: View {
     }
 }
 
-// A tab that is on the plan and not built yet, saying so plainly.
-struct ComingView: View {
-    let title: String
-    let what: String
-
-    var body: some View {
-        Page(title) {
-            Panel("Not built yet") {
-                Text(what)
-                    .foregroundStyle(Theme.parchment)
-            }
-        }
-    }
-}
-
 // A request to take the whole fortress down, while it waits and once it can
 // be confirmed. Shown on The Keep, where it glows, and in The Fortress beside
 // the button that started it.

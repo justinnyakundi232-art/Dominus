@@ -23,7 +23,8 @@ project.
 The extension's shared scripts are bundled from the repository root as they
 are and run through JavaScriptCore by `SharedRules.swift`: `Tasks.js`,
 `Categories.js`, `Applications.js`, `Stats.js`, `Seal.js` and `Sync.js`, the
-set the extension's service worker loads, in the same order. So the whole
+set the extension's service worker loads, in the same order, and
+`TrackProgress.js` for what The Campaign says about a day. So the whole
 repository has to be checked out on the Mac, not just `ios/`.
 
 That makes the phone's fortress the extension's: stored in its shape, read
@@ -34,8 +35,11 @@ and slip, so the record a peer will one day merge is being kept from the
 start.
 
 What they need from a browser is supplied by `Bridge.js`, loaded before them:
-`crypto.getRandomValues` and `randomUUID`, `chrome.storage.local` (backed by
-the App Group), and a clock that can be held, so a
+`crypto.getRandomValues` and `randomUUID`; `crypto.subtle`'s PBKDF2, backed by
+CommonCrypto and held to the very bytes WebCrypto gives, so a seal set on the
+phone is one a browser can check; `TextEncoder`, `btoa` and `atob`;
+`chrome.storage.local` (backed by the App Group); and a clock that can be
+held, so a
 stand made at the block screen while the app was closed is recorded on the day
 it was made. None of the Swift can be compiled on Windows, but this part can
 be run there:

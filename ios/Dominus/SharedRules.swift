@@ -1,5 +1,6 @@
 import Foundation
 import JavaScriptCore
+import CommonCrypto
 
 // The extension's own shared layer, run on the phone through JavaScriptCore:
 // Tasks.js, Categories.js, Applications.js, Stats.js, Seal.js and Sync.js —
@@ -71,6 +72,18 @@ final class SharedRules {
         let uuid: @convention(block) () -> String = { UUID().uuidString.lowercased() }
         context.setObject(random, forKeyedSubscript: "__dominusRandomUInt32" as NSString)
         context.setObject(uuid, forKeyedSubscript: "__dominusUUID" as NSString)
+
+        // What Seal.js's crypto.subtle comes down to. Bytes cross as base64,
+        // which both sides already speak.
+        let pbkdf2: @convention(block) (String, String, Int, Int) -> String = { password, salt, iterations, length in
+            SharedRules.pbkdf2(
+                password: Data(base64Encoded: password) ?? Data(),
+                salt: Data(base64Encoded: salt) ?? Data(),
+                iterations: iterations,
+                length: length
+            ).base64EncodedString()
+        }
+        context.setObject(pbkdf2, forKeyedSubscript: "__dominusPBKDF2" as NSString)
         context.setObject(read, forKeyedSubscript: "__dominusStorageRead" as NSString)
         context.setObject(write, forKeyedSubscript: "__dominusStorageWrite" as NSString)
 
@@ -84,6 +97,43 @@ final class SharedRules {
             }
             context.evaluateScript(source, withSourceURL: url)
         }
+
+        // A seal set here has to be one a browser can check. If this phone's
+        // hashing ever disagreed with the published answer, every seal it set
+        // would be unopenable anywhere else, and nothing would say so until
+        // then — so it is asked once, now, and the app reports it.
+        let known = SharedRules.pbkdf2(password: Data("password".utf8), salt: Data("salt".utf8), iterations: 1, length: 32)
+        if failure == nil && known.map({ String(format: "%02x", $0) }).joined() != SharedRules.pbkdf2Vector {
+            failure = "This phone's password hashing does not match the standard. Do not set a seal."
+        }
+    }
+
+    // PBKDF2-HMAC-SHA256 with one iteration over "password" and "salt": the
+    // published test vector, and the one Tests/bridge.test.js checks too.
+    private static let pbkdf2Vector = "120fb6cffcf8b32c43e7225256c4f837a86548c92ccc35480805987cb70be17b"
+
+    // PBKDF2-HMAC-SHA256, the system's. Empty on failure, which no verifier
+    // will ever equal.
+    private static func pbkdf2(password: Data, salt: Data, iterations: Int, length: Int) -> Data {
+        guard length > 0, iterations > 0 else { return Data() }
+        var derived = [UInt8](repeating: 0, count: length)
+
+        let status: Int32 = password.withUnsafeBytes { passwordBytes in
+            salt.withUnsafeBytes { saltBytes in
+                CCKeyDerivationPBKDF(
+                    CCPBKDFAlgorithm(kCCPBKDF2),
+                    passwordBytes.bindMemory(to: Int8.self).baseAddress,
+                    password.count,
+                    saltBytes.bindMemory(to: UInt8.self).baseAddress,
+                    salt.count,
+                    CCPseudoRandomAlgorithm(kCCPRFHmacAlgSHA256),
+                    UInt32(iterations),
+                    &derived,
+                    length
+                )
+            }
+        }
+        return status == Int32(kCCSuccess) ? Data(derived) : Data()
     }
 
     // MARK: - Categories.js
@@ -149,6 +199,37 @@ final class SharedRules {
             let data = try? JSONEncoder().encode(sites)
         else { return }
         defaults.set(String(decoding: data, as: UTF8.self), forKey: SharedRules.storagePrefix + "blockedSites")
+    }
+
+    // MARK: - The seal (Seal.js, by way of Bridge.js)
+
+    // Where the seal stands. Asking also lifts one whose recovery has run out.
+    func seal() -> Result<Data, Problem> {
+        json("__dominusSeal", [])
+    }
+
+    func checkSeal(_ password: String) -> Result<Data, Problem> {
+        json("__dominusCheckSeal", [password])
+    }
+
+    func setSeal(_ password: String, hint: String) -> Result<Data, Problem> {
+        json("__dominusSetSeal", [password, hint])
+    }
+
+    func changeSeal(current: String, next: String, hint: String) -> Result<Data, Problem> {
+        json("__dominusChangeSeal", [current, next, hint])
+    }
+
+    func clearSeal(_ password: String) -> Result<Data, Problem> {
+        json("__dominusClearSeal", [password])
+    }
+
+    func requestSealRecovery() -> Result<Data, Problem> {
+        json("__dominusRequestSealRecovery", [])
+    }
+
+    func cancelSealRecovery() -> Result<Data, Problem> {
+        json("__dominusCancelSealRecovery", [])
     }
 
     // MARK: - Tasks.js

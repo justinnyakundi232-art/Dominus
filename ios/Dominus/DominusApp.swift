@@ -27,6 +27,7 @@ struct RootView: View {
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var fortress = Fortress()
     @StateObject private var record = Record()
+    @StateObject private var seal = Seal()
     @StateObject private var session = Session()
 
     private let tick = Timer.publish(every: 5, on: .main, in: .common).autoconnect()
@@ -42,16 +43,14 @@ struct RootView: View {
             CampaignView()
                 .tabItem { Label("Campaign", systemImage: "chart.bar") }
             .tag(Session.Tab.campaign)
-            ComingView(
-                title: "The Seal",
-                what: "A password on taking defences down. Until it is here, removing a block on the phone costs nothing."
-            )
-            .tabItem { Label("Seal", systemImage: "lock.shield") }
+            SealView()
+                .tabItem { Label("Seal", systemImage: "lock.shield") }
             .tag(Session.Tab.seal)
         }
         .tint(Theme.gold)
         .environmentObject(fortress)
         .environmentObject(record)
+        .environmentObject(seal)
         .environmentObject(session)
         .fullScreenCover(item: $session.unlocking) { unlocking in
             UnlockFlow(target: unlocking.target, fortress: fortress, record: record) {
@@ -68,6 +67,7 @@ struct RootView: View {
         // An unlock that runs out while the app is open ends in front of you.
         .onReceive(tick) { _ in
             fortress.refreshIfAnyEnded()
+            seal.refreshIfRecovering()
         }
     }
 
@@ -77,6 +77,7 @@ struct RootView: View {
     private func refresh() {
         fortress.refresh()
         record.refresh()
+        seal.refresh()
         session.refresh()
         // A request to take the fortress down that is now ready is what its
         // notification was about, so it is put in front.

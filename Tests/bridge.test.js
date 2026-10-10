@@ -33,6 +33,10 @@ function loadPhone() {
     const scope = vm.createContext({
         __dominusRandomUInt32: () => nodeCrypto.randomBytes(4).readUInt32BE(0),
         __dominusUUID: () => nodeCrypto.randomUUID(),
+        // CommonCrypto's part on the phone: PBKDF2-HMAC-SHA256 over raw bytes.
+        __dominusPBKDF2: (password, salt, iterations, length) => nodeCrypto.pbkdf2Sync(
+            Buffer.from(password, "base64"), Buffer.from(salt, "base64"), iterations, length, "sha256"
+        ).toString("base64"),
         // JSON strings, one per key, as the App Group holds them.
         __dominusStorageRead: (key) => (key in store ? store[key] : null),
         __dominusStorageWrite: (key, json) => { store[key] = json; }
@@ -54,7 +58,11 @@ function loadPhone() {
         reviewWhole: async (next) => JSON.parse(await scope.__dominusReview(JSON.stringify(next))),
         commit: async (next) => JSON.parse(await scope.__dominusCommit(JSON.stringify(next))),
         standards: async (domain) => JSON.parse(await scope.__dominusStandards(domain)),
-        campaign: async () => JSON.parse(await scope.__dominusCampaign())
+        campaign: async () => JSON.parse(await scope.__dominusCampaign()),
+        seal: async () => JSON.parse(await scope.__dominusSeal()),
+        checkSeal: async (password) => JSON.parse(await scope.__dominusCheckSeal(password)),
+        // Moves the scripts' clock on, for waits no test should sit through.
+        skip: (ms) => scope.__dominusHoldClock(Date.now() + ms)
     };
 }
 
@@ -527,6 +535,130 @@ async function run() {
             "2 stands, then youtube.com at 23:14.");
         eq(describe({ stands: 0, unlocks: 1, sites: {}, firstSlip: "23:14" }), "one unlock at 23:14.");
         eq(describe({ stands: 0, unlocks: 1, sites: {}, firstSlip: null }), "one unlock.");
+    });
+
+    describe("The seal");
+
+    await it("hashes a seal to the very bytes a browser's WebCrypto gives", async () => {
+        const phone = loadPhone();
+        const real = async (password, salt, iterations) => {
+            const key = await nodeCrypto.webcrypto.subtle.importKey(
+                "raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
+            const bits = await nodeCrypto.webcrypto.subtle.deriveBits(
+                { name: "PBKDF2", salt: Buffer.from(salt, "base64"), iterations, hash: "SHA-256" }, key, 256);
+            return Buffer.from(bits).toString("base64");
+        };
+
+        // Plain, accented and beyond the basic plane: a password is typed by a
+        // person, and the bytes have to agree whatever they typed.
+        for (const password of ["hunter2", "pässwörd", "seal 🔒 封印"]) {
+            const salt = phone.scope.randomSalt();
+            eq(await phone.scope.deriveVerifier(password, salt, 1000), await real(password, salt, 1000), password);
+        }
+        // The published PBKDF2-HMAC-SHA256 vector, which the app also checks
+        // CommonCrypto against when it starts.
+        eq(Buffer.from(await phone.scope.deriveVerifier("password", Buffer.from("salt").toString("base64"), 1), "base64").toString("hex"),
+            "120fb6cffcf8b32c43e7225256c4f837a86548c92ccc35480805987cb70be17b");
+    });
+
+    await it("base64 survives the round trip, at every length", async () => {
+        const phone = loadPhone();
+
+        for (let length = 0; length < 40; length++) {
+            const bytes = nodeCrypto.randomBytes(length);
+            const text = phone.scope.__dominusBytesToBase64(bytes);
+            eq(text, bytes.toString("base64"));
+            eq(Buffer.from(phone.scope.__dominusBase64ToBytes(text)).toString("hex"), bytes.toString("hex"));
+        }
+    });
+
+    await it("an unsealed fortress says so, and lets anything through", async () => {
+        const phone = loadPhone();
+
+        eq((await phone.seal()).enabled, false);
+        eq((await phone.checkSeal("anything")).ok, true);
+    });
+
+    await it("a seal is set, kept as a hash, and checked", async () => {
+        const phone = loadPhone();
+
+        eq(JSON.parse(await phone.scope.__dominusSetSeal("abc", "")).ok, false, "three characters was accepted");
+        eq(JSON.parse(await phone.scope.__dominusSetSeal("correct horse", "correct horse")).ok, false, "a hint that is the seal was accepted");
+        eq(JSON.parse(await phone.scope.__dominusSetSeal("correct horse", "the usual one")).ok, true);
+
+        const status = await phone.seal();
+        eq(status.enabled, true);
+        eq(status.hint, "the usual one");
+        ok(!JSON.stringify(phone.read("seal")).includes("correct horse"), "the seal itself was stored");
+
+        eq((await phone.checkSeal("correct horse")).ok, true);
+        eq(await phone.checkSeal("wrong"), { ok: false, error: "That isn't your seal." });
+    });
+
+    await it("two wrong tries are free; after that the wait doubles", async () => {
+        const phone = loadPhone();
+        await phone.scope.__dominusSetSeal("correct horse", "");
+
+        await phone.checkSeal("wrong");
+        await phone.checkSeal("wrong");
+        eq((await phone.seal()).waitSeconds, 0);
+
+        ok((await phone.checkSeal("wrong")).error.includes("Wait 5 sec"), "the third failure did not cost five seconds");
+        // Still waiting: even the right seal is turned away.
+        eq((await phone.checkSeal("correct horse")).ok, false);
+
+        phone.skip(6000);
+        ok((await phone.checkSeal("wrong")).error.includes("Wait 10 sec"), "the fourth failure did not cost ten");
+
+        phone.skip(20000);
+        eq((await phone.checkSeal("correct horse")).ok, true);
+        eq((await phone.seal()).waitSeconds, 0, "a right answer did not clear the count");
+        phone.scope.__dominusReleaseClock();
+    });
+
+    await it("changing or breaking a seal asks for the current one", async () => {
+        const phone = loadPhone();
+        await phone.scope.__dominusSetSeal("first seal", "");
+
+        eq(JSON.parse(await phone.scope.__dominusChangeSeal("wrong", "second seal", "")).ok, false);
+        eq(JSON.parse(await phone.scope.__dominusChangeSeal("first seal", "second seal", "")).ok, true);
+        eq((await phone.checkSeal("first seal")).ok, false);
+        eq((await phone.checkSeal("second seal")).ok, true);
+
+        eq(JSON.parse(await phone.scope.__dominusClearSeal("wrong")).ok, false);
+        eq(JSON.parse(await phone.scope.__dominusClearSeal("second seal")).ok, true);
+        eq((await phone.seal()).enabled, false);
+    });
+
+    await it("a forgotten seal lifts itself after the hour, and not before", async () => {
+        const phone = loadPhone();
+        await phone.scope.__dominusSetSeal("forgotten", "");
+
+        const started = JSON.parse(await phone.scope.__dominusRequestSealRecovery());
+        eq(started.recovering, true);
+        eq(started.recoveryRemaining, "1 hour");
+
+        phone.skip(59 * 60 * 1000);
+        const nearly = await phone.seal();
+        eq(nearly.enabled, true, "it lifted early");
+        eq(nearly.recoveryRemaining, "under a minute");
+
+        phone.skip(61 * 60 * 1000);
+        eq((await phone.seal()).enabled, false, "the hour passed and it is still sealed");
+        phone.scope.__dominusReleaseClock();
+    });
+
+    await it("a recovery can be called off, and the seal stands", async () => {
+        const phone = loadPhone();
+        await phone.scope.__dominusSetSeal("remembered", "");
+        await phone.scope.__dominusRequestSealRecovery();
+
+        const after = JSON.parse(await phone.scope.__dominusCancelSealRecovery());
+        eq(after.recovering, false);
+
+        phone.skip(2 * 60 * 60 * 1000);
+        eq((await phone.seal()).enabled, true);
+        phone.scope.__dominusReleaseClock();
     });
 
     process.exit(report("bridge") ? 1 : 0);

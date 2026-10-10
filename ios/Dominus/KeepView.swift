@@ -11,28 +11,41 @@ struct KeepView: View {
     @EnvironmentObject private var fortress: Fortress
     @EnvironmentObject private var record: Record
     @EnvironmentObject private var session: Session
+    @EnvironmentObject private var seal: Seal
     @ObservedObject private var center = AuthorizationCenter.shared
 
     var body: some View {
         Page("The Keep") {
-            if let request = session.pending {
-                unlockRequested(request)
-            }
-            if !fortress.openUnlocks.isEmpty {
-                openForNow
-            }
-            if fortress.standDown != .none {
-                Panel("The fortress is coming down", glowing: true) {
-                    StandDownStatus()
+            // Whatever needs you, first and glowing.
+            Group {
+                if let request = session.pending {
+                    unlockRequested(request)
                 }
-            }
-            if center.authorizationStatus != .approved {
-                notSetUp
+                if !fortress.openUnlocks.isEmpty {
+                    openForNow
+                }
+                if fortress.standDown != .none {
+                    Panel("The fortress is coming down", glowing: true) {
+                        StandDownStatus()
+                    }
+                }
+                // A seal lifting in an hour is worth knowing about here most
+                // of all: this is where you find out what your defences are
+                // still worth.
+                if seal.isRecovering {
+                    Panel("The seal is lifting", glowing: true) {
+                        RecoveryStatus()
+                    }
+                }
+                if center.authorizationStatus != .approved {
+                    notSetUp
+                }
             }
             today
             streaks
             victoryRate
             whatStands
+            theSeal
             if let failure = record.failure {
                 Text("The record couldn't be read: \(failure)")
                     .font(.caption)
@@ -191,6 +204,22 @@ struct KeepView: View {
                  : "From \(total) \(total == 1 ? "moment" : "moments"): \(stands) \(stands == 1 ? "stand" : "stands"), \(unlocks) \(unlocks == 1 ? "unlock" : "unlocks")")
                 .font(.footnote)
                 .foregroundStyle(Theme.goldDim)
+        }
+    }
+
+    // The extension's Keep, line for line.
+    private var theSeal: some View {
+        Panel("The seal") {
+            if !seal.isSealed {
+                Text("No seal set. Anything that weakens your fortress goes through a ten-second gate.")
+                    .foregroundStyle(Theme.parchment)
+            } else if seal.isRecovering {
+                Text("Set — but a recovery is running, and will lift it.")
+                    .foregroundStyle(Theme.parchment)
+            } else {
+                Text("Set. Taking a defence down asks for it first.")
+                    .foregroundStyle(Theme.parchment)
+            }
         }
     }
 
